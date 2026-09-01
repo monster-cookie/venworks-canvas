@@ -1,0 +1,50 @@
+﻿#######################################
+## Papyrus Exclusions
+
+# Log Files
+[Ll]og/
+[Ll]ogs/
+*.log
+
+#######################################
+## VSCode Exclusions
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Local History for Visual Studio Code
+.history/
+
+
+#######################################
+## Project Exclusions
+
+# User Environment Setup
+.env
+
+# Spriggit Key Files
+!spriggit.meta
+
+# Distribution Folders
+Public*
+Dist*
+publish/
+
+# MO2 Meta files when folder junction is being used
+meta.ini
+
+# Converted Art Resources from the pipeline
+art-converted/
+
+# Codex/GitHub Actions
+artifacts/
+
+# Codex local work tree
+.work/
+
+# Backup and temp files
+*.bak
+*.tmp
