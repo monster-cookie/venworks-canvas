@@ -5,6 +5,8 @@
       <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this)]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryLoader)]]></token>
+      <token><![CDATA[removeChild(this.VenworksCanvasRegistryLoader)]]></token>
       <token><![CDATA[Event.REMOVED_FROM_STAGE]]></token>
       <token><![CDATA[IOErrorEvent.IO_ERROR]]></token>
       <token><![CDATA[SecurityErrorEvent.SECURITY_ERROR]]></token>
@@ -93,9 +95,9 @@
             this.disposeVenworksCanvasRegistry();
             return;
          }
-         if(loadedContent.parent !== this)
+         if(this.VenworksCanvasRegistryLoader.parent !== this)
          {
-            addChild(loadedContent);
+            addChild(this.VenworksCanvasRegistryLoader);
          }
       }
 
@@ -127,7 +129,6 @@
 
       private function disposeVenworksCanvasRegistry() : void
       {
-         var loadedContent:DisplayObject = null;
          if(this.VenworksCanvasRegistryDisposed)
          {
             return;
@@ -145,17 +146,13 @@
             {
             }
          }
-         if(this.VenworksCanvasRegistryBridge is DisplayObject)
-         {
-            loadedContent = this.VenworksCanvasRegistryBridge as DisplayObject;
-            if(loadedContent.parent === this)
-            {
-               removeChild(loadedContent);
-            }
-         }
          this.VenworksCanvasRegistryBridge = null;
          if(this.VenworksCanvasRegistryLoader != null)
          {
+            if(this.VenworksCanvasRegistryLoader.parent === this)
+            {
+               removeChild(this.VenworksCanvasRegistryLoader);
+            }
             try
             {
                this.VenworksCanvasRegistryLoader.unload();

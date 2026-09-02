@@ -1,0 +1,10 @@
+SpriggitSource:
+  PackageName: Spriggit.Yaml.Starfield
+  Version: 0.40.1
+ModKey: VWCANVAS9-Host.esm
+GameRelease: Starfield
+ModHeader:
+  Flags:
+  - Master
+  Stats:
+    Version: 1

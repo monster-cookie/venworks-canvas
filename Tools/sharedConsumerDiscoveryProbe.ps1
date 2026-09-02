@@ -47,6 +47,33 @@ function Write-ConsumerDiscoveryUtf8WithoutBom {
   [System.IO.File]::WriteAllText($Path, $canonicalText, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Get-ConsumerDiscoveryFileSha256 {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+}
+
+function Get-ConsumerDiscoveryDirectoryDigest {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $resolvedRoot = Resolve-ConsumerDiscoveryRequiredDirectory -Path $Path -Description 'Directory digest root'
+  $digestRows = @(
+    Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
+      $relativePath = [System.IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
+      "$relativePath`:$((Get-ConsumerDiscoveryFileSha256 -Path $_.FullName))"
+    } | Sort-Object
+  )
+  $digestText = [string]::Join("`n", $digestRows) + "`n"
+  $digestBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($digestText)
+  return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($digestBytes))
+}
+
 function Assert-ConsumerDiscoveryRemovalPath {
   param(
     [Parameter(Mandatory = $true)]

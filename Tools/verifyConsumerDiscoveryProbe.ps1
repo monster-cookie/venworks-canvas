@@ -513,8 +513,14 @@ if ($SourceOnly -and $ArtifactsOnly) {
   throw 'SourceOnly and ArtifactsOnly cannot be combined.'
 }
 
-if ([int]$matrix.Version -ne 4 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3') {
-  throw 'Consumer-discovery matrix must declare the v4 paged dynamic registry probe contract.'
+if ([int]$matrix.Version -ne 5 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3') {
+  throw 'Consumer-discovery matrix must declare the v5 paged dynamic registry probe contract.'
+}
+if ([string]$matrix.Spriggit.PackageName -cne 'Spriggit.Yaml' -or
+    [string]$matrix.Spriggit.MetadataPackageName -cne 'Spriggit.Yaml.Starfield' -or
+    [string]$matrix.Spriggit.Version -cne '0.40.1' -or
+    [string]$matrix.Spriggit.OutputRoot -cne 'Spriggit/ConsumerDiscovery') {
+  throw 'Consumer discovery must pin the approved Spriggit YAML-only review contract.'
 }
 
 $expectedPackageKeys = [string[]]@('Host', 'ConsumerA', 'ConsumerB')
@@ -704,11 +710,13 @@ $registrySource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papy
 foreach ($token in @(
   'Extends Venworks:Canvas:Base:BaseQuest'
   'Struct ConsumerRegistration'
-  'ConsumerRegistration[] Consumers'
+  'ConsumerRegistration[] Property Consumers Auto Const Mandatory'
   'Quest Owner'
   'Consumers.Add(registration)'
   'Consumers[existingIndex].Owner != owner'
   'Consumers[index].Owner == None'
+  'If (!EnsureStorage())'
+  'PublishDiagnostic("registry-storage-missing")'
   'PublishDiagnostic("registration-pruned:"'
   'PublishSnapshot("refresh")'
   'RegisterForMenuOpenCloseEvent("HUDMenu")'
@@ -729,7 +737,7 @@ foreach ($token in @(
     throw "Dynamic Papyrus registry is missing token '$token'."
   }
 }
-foreach ($forbiddenToken in @('MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace')) {
+foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'Consumers = new ConsumerRegistration', 'MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace')) {
   if ($registrySource.Contains($forbiddenToken)) {
     throw "Dynamic Papyrus registry retained forbidden parallel-storage, fixed-capacity, or direct-log token '$forbiddenToken'."
   }
@@ -840,6 +848,22 @@ if ($hostSource.Contains('Interface/VenworksCanvas/')) {
 if ($hostSource.Contains('MAX_CONSUMERS')) {
   throw 'Dynamic ActionScript host retained a fixed total consumer limit.'
 }
+$shipPatchSource = [System.IO.File]::ReadAllText((Join-Path $consumerRoot 'patches\spaceship-hud-auxiliary-loader.xml'))
+foreach ($token in @(
+  'addChild(this.VenworksCanvasRegistryLoader)'
+  'removeChild(this.VenworksCanvasRegistryLoader)'
+  'this.VenworksCanvasRegistryLoader.parent !== this'
+  'this.VenworksCanvasRegistryLoader.parent === this'
+)) {
+  if (!$shipPatchSource.Contains($token)) {
+    throw "Ship HUD auxiliary patch is missing Loader ownership token '$token'."
+  }
+}
+foreach ($forbiddenToken in @('addChild(loadedContent)', 'removeChild(loadedContent)')) {
+  if ($shipPatchSource.Contains($forbiddenToken)) {
+    throw "Ship HUD auxiliary patch retained forbidden Loader-content reparenting token '$forbiddenToken'."
+  }
+}
 $loaderIdentityGuard = 'if(loader == null || this.loaders[loader.name] !== loader)'
 if ([regex]::Matches($hostSource, [regex]::Escape($loaderIdentityGuard)).Count -ne 3) {
   throw 'Dynamic ActionScript host must reject stale init, completion, and error events from replaced loaders.'
@@ -872,6 +896,7 @@ $toolPaths = @(
   'Tools\buildConsumerDiscoveryProbe.ps1'
   'Tools\buildConsumerDiscoveryShipMovies.ps1'
   'Tools\compileConsumerDiscoveryScripts.ps1'
+  'Tools\dumpConsumerDiscoveryPluginsToYaml.ps1'
   'Tools\stageConsumerDiscoveryProbe.ps1'
   'Tools\verifyConsumerDiscoveryProbe.ps1'
 )
@@ -896,6 +921,14 @@ foreach ($forbiddenToken in @('Assert-VwHudV2Fixture', 'RequiredPipelineFiles', 
 }
 if (!$allToolText.Contains('VWCANVAS-owned, VWHUD-v2-derived') -or !$allToolText.Contains("'-compression=None'")) {
   throw 'Consumer-discovery tooling must describe the VWCANVAS-owned, VWHUD-v2-derived build and retain uncompressed General archives.'
+}
+if (!$allToolText.Contains('Spriggit.CLI.exe') -or
+    !$allToolText.Contains('$spriggitTranslatorPath serialize') -or
+    !$allToolText.Contains('Temp\Spriggit\Translations') -or
+    !$allToolText.Contains('dumpConsumerDiscoveryPluginsToYaml.ps1') -or
+    $allToolText.Contains('--Check') -or
+    $allToolText.Contains(' deserialize ')) {
+  throw 'Consumer-discovery tooling must use the pinned Spriggit translator to serialize review-only YAML and must never assemble plugins from it.'
 }
 
 Write-Host -ForegroundColor Green "Verified resilient dynamic source contracts, profile '$($resolvedProfile.Key)', parser fixtures, PC archive-only matrix, and PowerShell syntax."
@@ -1060,6 +1093,63 @@ foreach ($plugin in @($matrix.Plugins)) {
   if ([string]$evidenceMatches[0].Sha256 -cne $expectedHash -or
       (Get-FileSha256 -Path $pluginPath) -cne $expectedHash) {
     throw "Generated plugin '$fileName' does not match its profile-bound binary-readback evidence."
+  }
+}
+
+$spriggitOutputRoot = Resolve-ConsumerDiscoveryRequiredDirectory `
+  -Path (Join-Path $repositoryRoot ([string]$matrix.Spriggit.OutputRoot)) `
+  -Description 'Tracked consumer-discovery Spriggit output root'
+$spriggitProfilePath = Resolve-ConsumerDiscoveryRequiredDirectory `
+  -Path (Join-Path $spriggitOutputRoot ([string]$resolvedProfile.Key)) `
+  -Description "Tracked Spriggit output for profile '$($resolvedProfile.Key)'"
+$expectedSpriggitProfileEntries = @('dump-evidence.json') + @($matrix.Plugins.FileName)
+$actualSpriggitProfileEntries = @(Get-ChildItem -LiteralPath $spriggitProfilePath -Force | ForEach-Object { $_.Name } | Sort-Object)
+if ($actualSpriggitProfileEntries.Count -ne $expectedSpriggitProfileEntries.Count -or
+    [string]::Join("`n", $actualSpriggitProfileEntries) -cne [string]::Join("`n", @($expectedSpriggitProfileEntries | Sort-Object))) {
+  throw "Tracked Spriggit profile '$($resolvedProfile.Key)' does not contain exactly its evidence and three plugin directories."
+}
+$spriggitEvidencePath = Resolve-ConsumerDiscoveryRequiredFile `
+  -Path (Join-Path $spriggitProfilePath 'dump-evidence.json') `
+  -Description "Tracked Spriggit evidence for profile '$($resolvedProfile.Key)'"
+$spriggitEvidence = Get-Content -LiteralPath $spriggitEvidencePath -Raw | ConvertFrom-Json
+if ([string]$spriggitEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_SPRIGGIT/2' -or
+    [string]$spriggitEvidence.Profile -cne [string]$resolvedProfile.Key -or
+    [string]$spriggitEvidence.PackageName -cne [string]$matrix.Spriggit.MetadataPackageName -or
+    [string]$spriggitEvidence.SpriggitVersion -cne [string]$matrix.Spriggit.Version -or
+    [string]$spriggitEvidence.SpriggitCliSha256 -notmatch '^[0-9A-F]{64}$' -or
+    [string]$spriggitEvidence.SpriggitTranslatorSha256 -notmatch '^[0-9A-F]{64}$' -or
+    [string]$spriggitEvidence.PluginGenerationEvidenceSha256 -cne (Get-FileSha256 -Path $pluginGenerationEvidencePath) -or
+    @($spriggitEvidence.Plugins).Count -ne @($matrix.Plugins).Count) {
+  throw "Tracked Spriggit evidence does not match selected profile '$($resolvedProfile.Key)'."
+}
+foreach ($plugin in @($matrix.Plugins)) {
+  $fileName = [string]$plugin.FileName
+  $evidenceMatches = @($spriggitEvidence.Plugins | Where-Object {
+    [string]$_.Key -ceq [string]$plugin.Key -and [string]$_.FileName -ceq $fileName
+  })
+  $pluginYamlPath = Resolve-ConsumerDiscoveryRequiredDirectory `
+    -Path (Join-Path $spriggitProfilePath $fileName) `
+    -Description "Tracked Spriggit YAML for '$fileName'"
+  if ($evidenceMatches.Count -ne 1 -or
+      [string]$evidenceMatches[0].Directory -cne $fileName -or
+      [string]$evidenceMatches[0].EsmSha256 -cne [string]$resolvedProfile.PluginSha256[[string]$plugin.Key] -or
+      [string]$evidenceMatches[0].YamlSha256 -cne (Get-ConsumerDiscoveryDirectoryDigest -Path $pluginYamlPath)) {
+    throw "Tracked Spriggit YAML for '$fileName' does not match its profile-bound evidence."
+  }
+
+  $recordDataPath = Resolve-ConsumerDiscoveryRequiredFile `
+    -Path (Join-Path $pluginYamlPath 'RecordData.yaml') `
+    -Description "Tracked Spriggit record data for '$fileName'"
+  $recordData = [System.IO.File]::ReadAllText($recordDataPath)
+  foreach ($token in @(
+    "PackageName: $($matrix.Spriggit.MetadataPackageName)"
+    "Version: $($matrix.Spriggit.Version)"
+    "ModKey: $fileName"
+    'GameRelease: Starfield'
+  )) {
+    if (!$recordData.Contains($token)) {
+      throw "Tracked Spriggit record data for '$fileName' is missing token '$token'."
+    }
   }
 }
 

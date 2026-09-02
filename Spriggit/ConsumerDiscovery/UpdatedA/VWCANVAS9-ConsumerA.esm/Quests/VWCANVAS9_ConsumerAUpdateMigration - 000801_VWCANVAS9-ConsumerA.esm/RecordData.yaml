@@ -1,0 +1,36 @@
+FormKey: 000801:VWCANVAS9-ConsumerA.esm
+EditorID: VWCANVAS9_ConsumerAUpdateMigration
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration
+    Properties:
+    - MutagenObjectType: ScriptObjectProperty
+      Name: Registrar
+      Object: 000800:VWCANVAS9-ConsumerA.esm
+    - MutagenObjectType: ScriptIntProperty
+      Name: UpdatedDescriptorVersion
+      Data: 2
+    - MutagenObjectType: ScriptStringProperty
+      Name: UpdatedDisplayName
+      Data: VWCANVAS-9 Consumer A UPDATED
+    - MutagenObjectType: ScriptStringProperty
+      Name: UpdatedLargeMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/large.swf
+    - MutagenObjectType: ScriptStringProperty
+      Name: UpdatedNormalMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/normal.swf
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS-9 Consumer A Update Migration
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  - RunOnce
+  Unused: 0x000000

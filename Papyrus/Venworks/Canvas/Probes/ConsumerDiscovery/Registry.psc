@@ -9,7 +9,7 @@ Struct ConsumerRegistration
   Int DescriptorVersion
 EndStruct
 
-ConsumerRegistration[] Consumers
+ConsumerRegistration[] Property Consumers Auto Const Mandatory
 Int MessageId = 0
 
 String ModuleName = "Probes:ConsumerDiscovery:Registry"
@@ -21,7 +21,9 @@ Int MaxSnapshotPagePayloadCharacters = 3600
 
 ; Initializes persistent storage, registers both HUD menu callbacks, and publishes the initial registry generation.
 Event OnInit()
-  EnsureStorage()
+  If (!EnsureStorage())
+    Return
+  EndIf
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
   PublishSnapshot("host-init")
@@ -41,7 +43,9 @@ EndEvent
 ; Registers or updates one complete consumer record owned by the supplied quest and publishes the resulting registry generation.
 ; Returns false when the descriptor is invalid or an existing consumer ID belongs to a different owner.
 Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
-  EnsureStorage()
+  If (!EnsureStorage())
+    Return False
+  EndIf
   If (!IsDescriptorValid(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion))
     LogUserWarning(ModuleName, "RegisterConsumer", "Rejected an invalid consumer descriptor.")
     PublishDiagnostic("registration-rejected-invalid")
@@ -89,7 +93,9 @@ EndFunction
 ; Removes one consumer when the supplied quest owns its ID and publishes the resulting registry generation.
 ; Returns true when the consumer is absent or removed, and false when another quest owns the ID.
 Bool Function UnregisterConsumer(Quest owner, String consumerId)
-  EnsureStorage()
+  If (!EnsureStorage())
+    Return False
+  EndIf
   Int existingIndex = FindConsumerIndex(consumerId)
   If (existingIndex < 0)
     PublishSnapshot("unregister-absent")
@@ -111,7 +117,9 @@ EndFunction
 ; Publishes the complete registry as one atomic generation split across as many bounded Watch Alert pages as required.
 ; Returns false without publishing a partial generation when any record or assembled page exceeds its transport budget.
 Bool Function PublishSnapshot(String reason = "manual")
-  EnsureStorage()
+  If (!EnsureStorage())
+    Return False
+  EndIf
   If (!IsPrintableAscii(reason, 1, 40))
     reason = "invalid-reason"
   EndIf
@@ -258,10 +266,13 @@ Int Function GetCharacterCount(String value)
   Return characters.Length
 EndFunction
 
-; Initializes the persistent registration array and prunes records whose owning quest is no longer available.
-Function EnsureStorage()
+; Validates the quest-bound persistent registration array and prunes records whose owning quest is no longer available.
+; Returns false when the mandatory quest property was not bound and no registry operation can proceed safely.
+Bool Function EnsureStorage()
   If (Consumers == None)
-    Consumers = new ConsumerRegistration[0]
+    LogUserCritical(ModuleName, "EnsureStorage", "The mandatory Consumers quest property is not bound.")
+    PublishDiagnostic("registry-storage-missing")
+    Return False
   EndIf
 
   Int index = Consumers.Length - 1
@@ -274,6 +285,7 @@ Function EnsureStorage()
     EndIf
     index -= 1
   EndWhile
+  Return True
 EndFunction
 
 ; Returns the index of a registered consumer ID or negative one when no complete record has that ID.

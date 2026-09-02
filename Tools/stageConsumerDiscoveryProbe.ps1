@@ -117,6 +117,13 @@ foreach ($plugin in @($matrix.Plugins)) {
   }
   $pluginPathsByKey[[string]$plugin.Key] = $pluginPath
 }
+$spriggitDumpPath = Resolve-ConsumerDiscoveryRequiredFile `
+  -Path (Join-Path $PSScriptRoot 'dumpConsumerDiscoveryPluginsToYaml.ps1') `
+  -Description 'Consumer-discovery Spriggit dump tool'
+& $spriggitDumpPath `
+  -ProbeProfile ([string]$resolvedProfile.Key) `
+  -EnvironmentPath $EnvironmentPath `
+  -PluginsDirectory $resolvedPluginsDirectory
 $resolvedScriptsDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ScriptsDirectory -Description 'Compiled Papyrus script directory'
 $resolvedMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $MoviesDirectory -Description 'Built auxiliary movie directory'
 $resolvedShipMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ShipMoviesDirectory -Description 'Built Ship HUD movie directory'

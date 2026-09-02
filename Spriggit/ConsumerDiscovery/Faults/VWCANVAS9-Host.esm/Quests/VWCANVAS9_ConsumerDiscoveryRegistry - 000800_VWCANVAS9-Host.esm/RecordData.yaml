@@ -1,0 +1,23 @@
+FormKey: 000800:VWCANVAS9-Host.esm
+EditorID: VWCANVAS9_ConsumerDiscoveryRegistry
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:Probes:ConsumerDiscovery:Registry
+    Properties:
+    - MutagenObjectType: ScriptStructListProperty
+      Name: Consumers
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS-9 Consumer Discovery Registry
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  - RunOnce
+  Unused: 0x000000
