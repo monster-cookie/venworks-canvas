@@ -25,7 +25,7 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $consumerDiscoveryRoot = Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery'
 $consumerDiscoveryWorkRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
-$resolvedVwHudRoot = Assert-VwHudV2Fixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
+$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 
 if ([string]::IsNullOrWhiteSpace($JavaPath)) {
   $JavaPath = Join-Path $resolvedVwHudRoot '.work\tools\java\bin\java.exe'
@@ -39,7 +39,7 @@ if ([string]::IsNullOrWhiteSpace($FlexSdkPath)) {
 
 $sharedMovieScript = Resolve-ConsumerDiscoveryRequiredFile `
   -Path (Join-Path $resolvedVwHudRoot 'Tools\sharedScaleformMovies.ps1') `
-  -Description 'VWHUD v2 shared Scaleform movie helper'
+  -Description 'Pinned VWHUD shared Scaleform movie helper used by the VWCANVAS build'
 . $sharedMovieScript
 $env:APPDATA = Join-Path $repositoryRoot '.work\appdata'
 
@@ -52,10 +52,10 @@ if (Test-Path -LiteralPath $resolvedOutputDirectory -PathType Container) {
 New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory, $resolvedWorkDirectory | Out-Null
 
 $pipelineEvidence = [System.Collections.Generic.List[object]]::new()
-foreach ($relativePath in @($matrix.VwHudFixture.RequiredPipelineFiles)) {
+foreach ($relativePath in @($matrix.VwHudFixture.RequiredToolchainFiles)) {
   $pipelinePath = Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $resolvedVwHudRoot ([string]$relativePath)) `
-    -Description "VWHUD v2 pipeline file '$relativePath'"
+    -Description "Pinned VWHUD toolchain file '$relativePath'"
   $pipelineEvidence.Add([pscustomobject]@{
     Path = [string]$relativePath
     Sha256 = (Get-FileHash -LiteralPath $pipelinePath -Algorithm SHA256).Hash.ToUpperInvariant()
@@ -67,7 +67,7 @@ foreach ($movie in @($matrix.Movies)) {
   $manifestPath = Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $consumerDiscoveryRoot ([string]$movie.Manifest)) `
     -Description "Consumer-discovery manifest '$($movie.Manifest)'"
-  Write-Host -ForegroundColor Green "Building $($movie.Key) through the VWHUD v2-derived deterministic movie pipeline"
+  Write-Host -ForegroundColor Green "Building $($movie.Key) through the VWCANVAS-owned, VWHUD-v2-derived deterministic movie pipeline"
   $result = Invoke-ConsumerDiscoveryMovieBuild `
     -ManifestPath $manifestPath `
     -OutputDirectory $resolvedOutputDirectory `
@@ -83,10 +83,11 @@ foreach ($movie in @($matrix.Movies)) {
 }
 
 $evidence = [ordered]@{
-  Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_BUILD/1'
+  Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_BUILD/2'
   GeneratedAtUtc = [DateTime]::UtcNow.ToString('o')
+  CanvasPipeline = 'VWCANVAS_OWNED_VWHUD_V2_DERIVED/1'
   VwHudRevision = [string]$matrix.VwHudFixture.Revision
-  VwHudPipeline = @($pipelineEvidence)
+  VwHudToolchain = @($pipelineEvidence)
   Movies = @($buildResults | ForEach-Object {
     [ordered]@{
       Name = $_.Name

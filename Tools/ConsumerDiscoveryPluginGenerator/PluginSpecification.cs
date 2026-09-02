@@ -3,7 +3,7 @@ using Mutagen.Bethesda.Plugins;
 namespace Venworks.Canvas.ConsumerDiscovery.PluginGenerator;
 
 /// <summary>
-/// Describes one deterministic VWCANVAS-9 probe plugin and the quest script that it owns.
+/// Describes one deterministic VWCANVAS-9 probe plugin and every quest it owns.
 /// </summary>
 internal sealed class PluginSpecification
 {
@@ -11,22 +11,21 @@ internal sealed class PluginSpecification
     /// Initializes a probe plugin specification.
     /// </summary>
     /// <param name="fileName">The plugin file name, including its <c>.esm</c> extension.</param>
-    /// <param name="questEditorId">The editor ID assigned to the plugin's start-game-enabled quest.</param>
-    /// <param name="questName">The human-readable quest name stored in the plugin.</param>
-    /// <param name="scriptName">The fully qualified Papyrus script attached to the quest.</param>
-    /// <param name="registryQuest">The host registry quest referenced by a consumer, or <see langword="null"/> for the host plugin.</param>
-    public PluginSpecification(
-        string fileName,
-        string questEditorId,
-        string questName,
-        string scriptName,
-        FormKey? registryQuest)
+    /// <param name="quests">The non-empty ordered quest specifications written into the plugin.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is empty.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="quests"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="quests"/> is empty.</exception>
+    public PluginSpecification(string fileName, IReadOnlyList<QuestSpecification> quests)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentNullException.ThrowIfNull(quests);
+        if (quests.Count == 0)
+        {
+            throw new ArgumentException("A probe plugin must contain at least one quest.", nameof(quests));
+        }
+
         FileName = fileName;
-        QuestEditorId = questEditorId;
-        QuestName = questName;
-        ScriptName = scriptName;
-        RegistryQuest = registryQuest;
+        Quests = quests;
     }
 
     /// <summary>
@@ -40,22 +39,7 @@ internal sealed class PluginSpecification
     public ModKey ModKey => ModKey.FromNameAndExtension(FileName);
 
     /// <summary>
-    /// Gets the editor ID assigned to the start-game-enabled quest.
+    /// Gets the ordered quest specifications written into the plugin.
     /// </summary>
-    public string QuestEditorId { get; }
-
-    /// <summary>
-    /// Gets the human-readable quest name stored in the plugin.
-    /// </summary>
-    public string QuestName { get; }
-
-    /// <summary>
-    /// Gets the fully qualified Papyrus script attached to the quest.
-    /// </summary>
-    public string ScriptName { get; }
-
-    /// <summary>
-    /// Gets the host registry quest referenced by a consumer, or <see langword="null"/> for the host plugin.
-    /// </summary>
-    public FormKey? RegistryQuest { get; }
+    public IReadOnlyList<QuestSpecification> Quests { get; }
 }

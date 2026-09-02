@@ -20,9 +20,19 @@ package
 
       private static const DIAGNOSTIC_TYPE:String = "canvas.registry.diagnostic";
 
+      private static const SNAPSHOT_PREFIX:String = ENVELOPE_PREFIX + SNAPSHOT_TYPE + "|";
+
+      private static const DIAGNOSTIC_PREFIX:String = ENVELOPE_PREFIX + DIAGNOSTIC_TYPE + "|";
+
       private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/1";
 
       private static const PROVIDER:String = "CustomAlertsData";
+
+      private static const MAX_CONSUMERS:int = 8;
+
+      private static const MAX_SNAPSHOT_CHARACTERS:int = 4096;
+
+      private static const MAX_RECORD_CHARACTERS:int = 512;
 
       private var owner:DisplayObjectContainer;
 
@@ -133,9 +143,9 @@ package
             {
                throw new Error("BSUIDataManager definition was null");
             }
-            this.dataManager.GetDataFromClient(PROVIDER,true);
             this.dataManager.Subscribe(PROVIDER,this.callback);
             this.subscribed = true;
+            this.dataManager.GetDataFromClient(PROVIDER,true);
             this.appendDiagnostic("BRIDGE SUBSCRIBED | " + PROVIDER);
          }
          catch(subscriptionError:Error)
@@ -180,95 +190,192 @@ package
 
       private function receiveEnvelope(param1:String) : void
       {
-         var fields:Array = param1.split("|");
-         if(fields.length < 4 || String(fields[0]) != "VWC_EVT/1")
+         if(param1.indexOf(SNAPSHOT_PREFIX) == 0)
          {
+            this.receiveSnapshot(param1.substr(SNAPSHOT_PREFIX.length));
             return;
          }
-         if(String(fields[1]) == SNAPSHOT_TYPE)
+         if(param1.indexOf(DIAGNOSTIC_PREFIX) == 0)
          {
-            this.receiveSnapshot(fields);
-         }
-         else if(String(fields[1]) == DIAGNOSTIC_TYPE)
-         {
-            this.appendDiagnostic("REGISTRY " + fields.slice(3).join(" | "));
+            this.receiveDiagnostic(param1.substr(DIAGNOSTIC_PREFIX.length));
          }
       }
 
-      private function receiveSnapshot(param1:Array) : void
+      private function receiveDiagnostic(param1:String) : void
       {
+         var cursor:int = 0;
+         var messageFrame:Object = null;
+         var diagnosticFrame:Object = null;
+         try
+         {
+            messageFrame = this.readFrame(param1,cursor,12);
+            cursor = int(messageFrame.next);
+            diagnosticFrame = this.readFrame(param1,cursor,220);
+            cursor = int(diagnosticFrame.next);
+            if(cursor != param1.length)
+            {
+               throw new Error("trailing diagnostic data");
+            }
+            this.appendDiagnostic("REGISTRY " + this.parseUnsignedInt(String(messageFrame.value),2147483647) + " | " + this.sanitizeText(diagnosticFrame.value,180));
+         }
+         catch(diagnosticError:Error)
+         {
+            this.appendDiagnostic("DIAGNOSTIC REJECTED | " + this.sanitizeText(diagnosticError,100));
+         }
+      }
+
+      private function receiveSnapshot(param1:String) : void
+      {
+         var cursor:int = 0;
+         var messageFrame:Object = null;
+         var reasonFrame:Object = null;
+         var countFrame:Object = null;
+         var recordFrame:Object = null;
          var messageId:int = 0;
          var expectedCount:int = 0;
-         var records:Array = null;
          var desired:Object = {};
-         var recordText:String = null;
-         var fields:Array = null;
          var descriptor:Object = null;
-         var consumerId:String = null;
-         if(param1.length != 6)
+         var index:int = 0;
+         if(param1.length > MAX_SNAPSHOT_CHARACTERS)
          {
-            this.appendDiagnostic("SNAPSHOT REJECTED | FIELD COUNT " + param1.length);
+            this.appendDiagnostic("SNAPSHOT REJECTED | OVERSIZED " + param1.length);
             return;
          }
-         messageId = int(param1[2]);
-         if(messageId <= this.latestMessageId)
+         try
          {
-            return;
+            messageFrame = this.readFrame(param1,cursor,12);
+            cursor = int(messageFrame.next);
+            reasonFrame = this.readFrame(param1,cursor,40);
+            cursor = int(reasonFrame.next);
+            countFrame = this.readFrame(param1,cursor,4);
+            cursor = int(countFrame.next);
+            messageId = this.parseUnsignedInt(String(messageFrame.value),2147483647);
+            expectedCount = this.parseUnsignedInt(String(countFrame.value),MAX_CONSUMERS);
+            if(messageId <= this.latestMessageId)
+            {
+               return;
+            }
+            while(index < expectedCount)
+            {
+               recordFrame = this.readFrame(param1,cursor,MAX_RECORD_CHARACTERS);
+               cursor = int(recordFrame.next);
+               try
+               {
+                  descriptor = this.parseDescriptor(String(recordFrame.value));
+                  if(desired[descriptor.consumerId] != null)
+                  {
+                     this.appendDiagnostic("DESCRIPTOR REJECTED | DUPLICATE " + descriptor.consumerId);
+                  }
+                  else
+                  {
+                     desired[descriptor.consumerId] = descriptor;
+                  }
+               }
+               catch(descriptorError:Error)
+               {
+                  this.appendDiagnostic("DESCRIPTOR REJECTED | " + this.sanitizeText(descriptorError,100));
+               }
+               index++;
+            }
+            if(cursor != param1.length)
+            {
+               throw new Error("trailing snapshot data");
+            }
          }
-         expectedCount = int(param1[4]);
-         records = String(param1[5]).length == 0 ? [] : String(param1[5]).split(";");
-         if(records.length != expectedCount)
+         catch(snapshotError:Error)
          {
-            this.appendDiagnostic("SNAPSHOT REJECTED | EXPECTED " + expectedCount + " GOT " + records.length);
+            this.appendDiagnostic("SNAPSHOT REJECTED | " + this.sanitizeText(snapshotError,100));
             return;
-         }
-         for each(recordText in records)
-         {
-            fields = recordText.split("~");
-            if(fields.length != 5)
-            {
-               this.appendDiagnostic("DESCRIPTOR REJECTED | FIELD COUNT " + fields.length);
-               return;
-            }
-            descriptor = {
-               "consumerId":this.sanitizeText(fields[0],80),
-               "displayName":this.sanitizeText(fields[1],80),
-               "normalPath":this.sanitizePath(fields[2]),
-               "largePath":this.sanitizePath(fields[3]),
-               "version":int(fields[4])
-            };
-            try
-            {
-               this.validateDescriptor(descriptor);
-            }
-            catch(descriptorError:Error)
-            {
-               this.appendDiagnostic("DESCRIPTOR REJECTED | " + this.sanitizeText(descriptorError,100));
-               return;
-            }
-            if(desired[descriptor.consumerId] != null)
-            {
-               this.appendDiagnostic("DESCRIPTOR REJECTED | DUPLICATE " + descriptor.consumerId);
-               return;
-            }
-            desired[descriptor.consumerId] = descriptor;
          }
          this.latestMessageId = messageId;
-         this.appendDiagnostic("SNAPSHOT " + messageId + " | " + this.sanitizeText(param1[3],40) + " | " + expectedCount + " CONSUMER(S)");
+         this.appendDiagnostic("SNAPSHOT " + messageId + " | " + this.sanitizeText(reasonFrame.value,40) + " | " + expectedCount + " CONSUMER(S)");
          this.reconcile(desired);
+      }
+
+      private function parseDescriptor(param1:String) : Object
+      {
+         var cursor:int = 0;
+         var consumerIdFrame:Object = this.readFrame(param1,cursor,64);
+         cursor = int(consumerIdFrame.next);
+         var displayNameFrame:Object = this.readFrame(param1,cursor,80);
+         cursor = int(displayNameFrame.next);
+         var normalPathFrame:Object = this.readFrame(param1,cursor,180);
+         cursor = int(normalPathFrame.next);
+         var largePathFrame:Object = this.readFrame(param1,cursor,180);
+         cursor = int(largePathFrame.next);
+         var versionFrame:Object = this.readFrame(param1,cursor,4);
+         cursor = int(versionFrame.next);
+         if(cursor != param1.length)
+         {
+            throw new Error("trailing descriptor data");
+         }
+         var descriptor:Object = {
+            "consumerId":String(consumerIdFrame.value),
+            "displayName":String(displayNameFrame.value),
+            "normalPath":String(normalPathFrame.value),
+            "largePath":String(largePathFrame.value),
+            "version":this.parseUnsignedInt(String(versionFrame.value),9999)
+         };
+         this.validateDescriptor(descriptor);
+         return descriptor;
       }
 
       private function validateDescriptor(param1:Object) : void
       {
-         if(param1.consumerId.length == 0 || param1.displayName.length == 0 || param1.version < 1)
+         var consumerId:String = String(param1.consumerId);
+         var displayName:String = String(param1.displayName);
+         if(!/^[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]$/.test(consumerId) || consumerId.indexOf(".") <= 0 || consumerId.indexOf("..") >= 0)
          {
-            throw new Error("incomplete consumer descriptor");
+            throw new Error("invalid consumer ID");
          }
-         var prefix:String = "Interface/VenworksCanvas/Consumers/" + param1.consumerId + "/";
+         if(displayName.length == 0 || !/^[\x20-\x7E]+$/.test(displayName) || param1.version < 1)
+         {
+            throw new Error("invalid consumer metadata");
+         }
+         var prefix:String = "VenworksCanvas/Consumers/" + consumerId + "/";
          if(param1.normalPath != prefix + "normal.swf" || param1.largePath != prefix + "large.swf")
          {
-            throw new Error("consumer path is not namespaced to " + param1.consumerId);
+            throw new Error("consumer path is not namespaced to " + consumerId);
          }
+      }
+
+      private function readFrame(param1:String, param2:int, param3:int) : Object
+      {
+         if(param2 < 0 || param2 >= param1.length)
+         {
+            throw new Error("missing frame");
+         }
+         var delimiter:int = param1.indexOf(":",param2);
+         if(delimiter < 0 || delimiter == param2 || delimiter - param2 > 6)
+         {
+            throw new Error("invalid frame length");
+         }
+         var lengthText:String = param1.substring(param2,delimiter);
+         var lengthValue:int = this.parseUnsignedInt(lengthText,param3);
+         var valueStart:int = delimiter + 1;
+         var valueEnd:int = valueStart + lengthValue;
+         if(valueEnd > param1.length)
+         {
+            throw new Error("truncated frame");
+         }
+         return {
+            "value":param1.substring(valueStart,valueEnd),
+            "next":valueEnd
+         };
+      }
+
+      private function parseUnsignedInt(param1:String, param2:int) : int
+      {
+         if(param1.length == 0 || !/^[0-9]+$/.test(param1))
+         {
+            throw new Error("invalid unsigned integer");
+         }
+         var value:Number = Number(param1);
+         if(isNaN(value) || value < 0 || value > param2 || value != Math.floor(value))
+         {
+            throw new Error("unsigned integer out of range");
+         }
+         return int(value);
       }
 
       private function reconcile(param1:Object) : void

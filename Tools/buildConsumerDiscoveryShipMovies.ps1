@@ -26,7 +26,7 @@ Set-StrictMode -Version Latest
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
-$resolvedVwHudRoot = Assert-VwHudV2Fixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
+$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 Import-ConsumerDiscoveryEnvironment -Path $EnvironmentPath
 
 if ([string]::IsNullOrWhiteSpace($JavaPath)) {
@@ -83,7 +83,7 @@ foreach ($generatedDirectory in @($resolvedOutputDirectory, $resolvedWorkDirecto
 
 $compileScript = Resolve-ConsumerDiscoveryRequiredFile `
   -Path (Join-Path $resolvedVwHudRoot 'Tools\compileScaleform.ps1') `
-  -Description 'VWHUD v2 underlying Scaleform compiler'
+  -Description 'Pinned VWHUD Scaleform compiler invoked by the VWCANVAS Ship HUD build'
 $manifestPaths = @(
   (Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu.build.xml')
   (Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu-lrg.build.xml')
@@ -108,4 +108,4 @@ foreach ($outputName in @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')) {
     -Description "Patched Ship HUD movie '$outputName'")
 }
 
-Write-Host -ForegroundColor Green "Built and hash-validated both Ship HUD movies through the pinned VWHUD v2 pipeline at $resolvedOutputDirectory"
+Write-Host -ForegroundColor Green "Built and hash-validated both Ship HUD movies through the VWCANVAS-owned build using the pinned VWHUD compiler at $resolvedOutputDirectory"

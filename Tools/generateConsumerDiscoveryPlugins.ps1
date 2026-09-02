@@ -2,6 +2,8 @@
 param(
   [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\plugins'),
 
+  [string]$Profile = 'Baseline',
+
   [switch]$NoRestore
 )
 
@@ -16,6 +18,8 @@ $projectPath = Resolve-ConsumerDiscoveryRequiredFile `
   -Description 'Mutagen consumer-discovery plugin generator project'
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
+$matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
+$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -Profile $Profile
 
 if (Test-Path -LiteralPath $resolvedOutputDirectory -PathType Container) {
   Assert-ConsumerDiscoveryRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
@@ -35,16 +39,15 @@ if (!$NoRestore) {
   }
 }
 
-& dotnet run --project $projectPath --no-restore -- --output $resolvedOutputDirectory
+& dotnet run --project $projectPath --no-restore -- --output $resolvedOutputDirectory --profile ([string]$resolvedProfile.Key)
 if ($LASTEXITCODE -ne 0) {
   throw "Consumer-discovery plugin generation failed with exit code $LASTEXITCODE."
 }
 
-$matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
 foreach ($plugin in @($matrix.Plugins)) {
   [void](Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $resolvedOutputDirectory ([string]$plugin.FileName)) `
     -Description "Generated plugin '$($plugin.Key)'")
 }
 
-Write-Host -ForegroundColor Green "Generated and read back $(@($matrix.Plugins).Count) deterministic Mutagen plugins at $resolvedOutputDirectory"
+Write-Host -ForegroundColor Green "Generated and read back $(@($matrix.Plugins).Count) deterministic Mutagen plugins for profile '$($resolvedProfile.Key)' at $resolvedOutputDirectory"

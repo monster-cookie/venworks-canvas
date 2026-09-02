@@ -81,6 +81,26 @@ function Get-ConsumerDiscoveryMatrix {
   return Import-PowerShellDataFile -LiteralPath $matrixPath
 }
 
+function Resolve-ConsumerDiscoveryProfile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Matrix,
+
+    [string]$Profile
+  )
+
+  $profileKey = $Profile
+  if ([string]::IsNullOrWhiteSpace($profileKey)) {
+    $profileKey = [string]$Matrix.DefaultProfile
+  }
+  $matches = @($Matrix.Profiles | Where-Object { [string]$_.Key -ceq $profileKey })
+  if ($matches.Count -ne 1) {
+    $available = [string]::Join(', ', @($Matrix.Profiles | ForEach-Object { [string]$_.Key }))
+    throw "Unknown consumer-discovery profile '$profileKey'. Expected exactly one of: $available."
+  }
+  return $matches[0]
+}
+
 function Import-ConsumerDiscoveryEnvironment {
   param(
     [string]$Path = (Join-Path ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) '.env')
@@ -125,7 +145,7 @@ function Resolve-ConsumerDiscoveryExecutable {
   return Resolve-ConsumerDiscoveryRequiredFile -Path $candidate -Description $Description
 }
 
-function Assert-VwHudV2Fixture {
+function Assert-PinnedVwHudToolchainFixture {
   param(
     [Parameter(Mandatory = $true)]
     [string]$VwHudRepositoryPath,
@@ -153,10 +173,10 @@ function Assert-VwHudV2Fixture {
   if ($status.Count -ne 0) {
     throw "VWHUD fixture worktree is not clean: $([string]::Join(', ', $status))"
   }
-  foreach ($relativePath in @($Matrix.VwHudFixture.RequiredPipelineFiles)) {
+  foreach ($relativePath in @($Matrix.VwHudFixture.RequiredToolchainFiles)) {
     [void](Resolve-ConsumerDiscoveryRequiredFile `
       -Path (Join-Path $resolvedRoot ([string]$relativePath)) `
-      -Description "Required VWHUD v2 pipeline file '$relativePath'")
+      -Description "Required pinned VWHUD toolchain file '$relativePath'")
   }
   return $resolvedRoot
 }

@@ -3,6 +3,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$VwHudRepositoryPath,
 
+  [string]$Profile = 'Baseline',
+
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
 
   [string]$PluginsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\plugins'),
@@ -40,7 +42,8 @@ function Assert-ConsumerDiscoveryStagingTarget {
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
-$resolvedVwHudRoot = Assert-VwHudV2Fixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
+$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -Profile $Profile
+$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 Import-ConsumerDiscoveryEnvironment -Path $EnvironmentPath
 if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) {
   throw "TOOL_PATH_ARCHIVER must be configured in $EnvironmentPath."
@@ -71,6 +74,14 @@ foreach ($staging in @($matrix.Staging)) {
   New-Item -ItemType Directory -Force -Path $stagingPath | Out-Null
 }
 
+$consumerAMovieDefinitions = @($matrix.Movies | Where-Object {
+  [string]$_.Key -ceq [string]$resolvedProfile.ConsumerAMovie
+})
+if ($consumerAMovieDefinitions.Count -ne 1) {
+  throw "Profile '$($resolvedProfile.Key)' must select exactly one Consumer A movie definition."
+}
+$consumerAMoviePath = Join-Path $resolvedMoviesDirectory ([string]$consumerAMovieDefinitions[0].Output)
+
 $payloads = @{
   Host = @(
     @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasConsumerDiscoveryHost.swf'); Target = 'Interface\venworkscui.swf' }
@@ -79,8 +90,8 @@ $payloads = @{
     @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\Registry.pex'); Target = 'Scripts\Venworks\Canvas\Probes\ConsumerDiscovery\Registry.pex' }
   )
   ConsumerA = @(
-    @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasDiscoveryConsumerA.swf'); Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.probe.consumer-a\normal.swf' }
-    @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasDiscoveryConsumerA.swf'); Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.probe.consumer-a\large.swf' }
+    @{ Source = $consumerAMoviePath; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.probe.consumer-a\normal.swf' }
+    @{ Source = $consumerAMoviePath; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.probe.consumer-a\large.swf' }
     @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.pex'); Target = 'Scripts\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.pex' }
   )
   ConsumerB = @(
@@ -159,7 +170,8 @@ foreach ($staging in @($matrix.Staging)) {
 }
 
 $evidence = [ordered]@{
-  Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_STAGING/1'
+  Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_STAGING/2'
+  Profile = [string]$resolvedProfile.Key
   VwHudRevision = [string]$matrix.VwHudFixture.Revision
   Staging = @($stageEvidence)
 }
@@ -167,4 +179,4 @@ Write-ConsumerDiscoveryUtf8WithoutBom `
   -Path (Join-Path $workRoot 'staging-evidence.json') `
   -Text (($evidence | ConvertTo-Json -Depth 10) + "`n")
 
-Write-Host -ForegroundColor Green 'Created the exact Host, ConsumerA, and ConsumerB archive-only staging roots.'
+Write-Host -ForegroundColor Green "Created the exact Host, ConsumerA, and ConsumerB archive-only staging roots for profile '$($resolvedProfile.Key)'."

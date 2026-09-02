@@ -11,7 +11,9 @@
     <token>VWC_EVT/1</token>
     <token>canvas.registry.snapshot</token>
     <token>CustomAlertsData</token>
-    <token>Interface/VenworksCanvas/Consumers/</token>
+    <token>VenworksCanvas/Consumers/</token>
+    <token>readFrame</token>
+    <token>parseUnsignedInt</token>
     <token>getCanvasDiscoveryRecord</token>
     <token>public function initialize</token>
     <token>public function reapplyVanillaPlacements</token>
