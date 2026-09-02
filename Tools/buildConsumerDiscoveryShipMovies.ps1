@@ -124,10 +124,10 @@ foreach ($outputName in @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')) {
   })
 }
 
-foreach ($input in $shipInputEvidence) {
-  $inputPath = Join-Path $repositoryRoot ([string]$input.Path)
-  if ((Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne [string]$input.Sha256) {
-    throw "Ship HUD build input changed during compilation: $($input.Path)"
+foreach ($shipInput in $shipInputEvidence) {
+  $inputPath = Join-Path $repositoryRoot ([string]$shipInput.Path)
+  if ((Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne [string]$shipInput.Sha256) {
+    throw "Ship HUD build input changed during compilation: $($shipInput.Path)"
   }
 }
 if ((Get-FileHash -LiteralPath $compileScript -Algorithm SHA256).Hash.ToUpperInvariant() -cne $compilerSha256Before) {

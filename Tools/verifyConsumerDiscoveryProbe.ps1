@@ -532,11 +532,11 @@ $expectedStagingByKey = @{
 }
 foreach ($key in @($expectedStagingByKey.Keys)) {
   $expected = $expectedStagingByKey[$key]
-  $matches = @($matrix.Staging | Where-Object { [string]$_.Key -ceq $key })
-  if ($matches.Count -ne 1 -or
-      [string]$matches[0].Directory -cne [string]$expected.Directory -or
-      [string]$matches[0].Plugin -cne [string]$expected.Plugin -or
-      [string]$matches[0].Archive -cne [string]$expected.Archive) {
+  $stagingMatches = @($matrix.Staging | Where-Object { [string]$_.Key -ceq $key })
+  if ($stagingMatches.Count -ne 1 -or
+      [string]$stagingMatches[0].Directory -cne [string]$expected.Directory -or
+      [string]$stagingMatches[0].Plugin -cne [string]$expected.Plugin -or
+      [string]$stagingMatches[0].Archive -cne [string]$expected.Archive) {
     throw "Staging matrix entry '$key' must match its canonical directory, plugin, and archive contract."
   }
 }
@@ -571,14 +571,14 @@ if ($profileKeys.Count -ne 3 -or
   throw 'Consumer discovery must define exactly the Baseline, Faults, and UpdatedA profiles.'
 }
 $resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -ProbeProfile $ProbeProfile
-foreach ($profile in @($matrix.Profiles)) {
-  $profilePluginKeys = @($profile.PluginSha256.Keys | Sort-Object)
+foreach ($profileDefinition in @($matrix.Profiles)) {
+  $profilePluginKeys = @($profileDefinition.PluginSha256.Keys | Sort-Object)
   if ([string]::Join("`n", $profilePluginKeys) -cne [string]::Join("`n", @($expectedPackageKeys | Sort-Object))) {
-    throw "Profile '$($profile.Key)' does not pin exactly the Host, ConsumerA, and ConsumerB plugin hashes."
+    throw "Profile '$($profileDefinition.Key)' does not pin exactly the Host, ConsumerA, and ConsumerB plugin hashes."
   }
   foreach ($packageKey in $expectedPackageKeys) {
-    if ([string]$profile.PluginSha256[$packageKey] -notmatch '^[0-9A-F]{64}$') {
-      throw "Profile '$($profile.Key)' contains an invalid pinned plugin hash for '$packageKey'."
+    if ([string]$profileDefinition.PluginSha256[$packageKey] -notmatch '^[0-9A-F]{64}$') {
+      throw "Profile '$($profileDefinition.Key)' contains an invalid pinned plugin hash for '$packageKey'."
     }
   }
 }
@@ -1006,8 +1006,8 @@ if (@($shipBuildEvidence.Inputs).Count -ne $expectedShipInputs.Count) {
   throw 'Ship HUD build evidence does not contain the exact source-input inventory.'
 }
 foreach ($relativePath in $expectedShipInputs) {
-  $matches = @($shipBuildEvidence.Inputs | Where-Object { [string]$_.Path -ceq $relativePath })
-  if ($matches.Count -ne 1 -or [string]$matches[0].Sha256 -cne (Get-FileSha256 -Path (Join-Path $repositoryRoot $relativePath))) {
+  $shipInputMatches = @($shipBuildEvidence.Inputs | Where-Object { [string]$_.Path -ceq $relativePath })
+  if ($shipInputMatches.Count -ne 1 -or [string]$shipInputMatches[0].Sha256 -cne (Get-FileSha256 -Path (Join-Path $repositoryRoot $relativePath))) {
     throw "Ship HUD build evidence drifted for '$relativePath'."
   }
 }
@@ -1078,18 +1078,18 @@ if ([string]$compileEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_SCRIPTS/1
 }
 foreach ($output in $expectedScriptOutputs) {
   $source = [System.IO.Path]::ChangeExtension([string]$output, '.psc')
-  $matches = @($compileEvidence.Scripts | Where-Object {
+  $scriptEvidenceMatches = @($compileEvidence.Scripts | Where-Object {
     [string]$_.Source -ceq $source -and [string]$_.Output -ceq [string]$output
   })
-  if ($matches.Count -ne 1 -or
-      [string]$matches[0].SourceSha256 -cne (Get-FileSha256 -Path (Join-Path $repositoryRoot "Papyrus\$source")) -or
-      [string]$matches[0].Sha256 -cne (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory ([string]$output)))) {
+  if ($scriptEvidenceMatches.Count -ne 1 -or
+      [string]$scriptEvidenceMatches[0].SourceSha256 -cne (Get-FileSha256 -Path (Join-Path $repositoryRoot "Papyrus\$source")) -or
+      [string]$scriptEvidenceMatches[0].Sha256 -cne (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory ([string]$output)))) {
     throw "Papyrus compile evidence does not contain exactly one source-bound row for '$output'."
   }
 }
 foreach ($coreSource in @($matrix.VenworksCoreFixture.SourceFiles)) {
-  $matches = @($compileEvidence.VenworksCoreSources | Where-Object { [string]$_.Path -ceq [string]$coreSource.Path })
-  if ($matches.Count -ne 1 -or [string]$matches[0].Sha256 -cne [string]$coreSource.Sha256) {
+  $coreSourceMatches = @($compileEvidence.VenworksCoreSources | Where-Object { [string]$_.Path -ceq [string]$coreSource.Path })
+  if ($coreSourceMatches.Count -ne 1 -or [string]$coreSourceMatches[0].Sha256 -cne [string]$coreSource.Sha256) {
     throw "Papyrus compile evidence does not contain the exact pinned Core source '$($coreSource.Path)'."
   }
 }

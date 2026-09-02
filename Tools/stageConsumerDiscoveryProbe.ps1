@@ -134,11 +134,11 @@ if (@($matrix.Staging).Count -ne $expectedStagingByKey.Count) {
 }
 foreach ($key in @($expectedStagingByKey.Keys)) {
   $expected = $expectedStagingByKey[$key]
-  $matches = @($matrix.Staging | Where-Object { [string]$_.Key -ceq $key })
-  if ($matches.Count -ne 1 -or
-      [string]$matches[0].Directory -cne [string]$expected.Directory -or
-      [string]$matches[0].Plugin -cne [string]$expected.Plugin -or
-      [string]$matches[0].Archive -cne [string]$expected.Archive) {
+  $stagingMatches = @($matrix.Staging | Where-Object { [string]$_.Key -ceq $key })
+  if ($stagingMatches.Count -ne 1 -or
+      [string]$stagingMatches[0].Directory -cne [string]$expected.Directory -or
+      [string]$stagingMatches[0].Plugin -cne [string]$expected.Plugin -or
+      [string]$stagingMatches[0].Archive -cne [string]$expected.Archive) {
     throw "Staging matrix entry '$key' must match its canonical directory, plugin, and archive contract."
   }
 }
