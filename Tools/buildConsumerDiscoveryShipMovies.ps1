@@ -88,6 +88,17 @@ $manifestPaths = @(
   (Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu.build.xml')
   (Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu-lrg.build.xml')
 )
+$shipInputPaths = @($manifestPaths) + @(
+  (Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery\patches\spaceship-hud-auxiliary-loader.xml')
+)
+$shipInputEvidence = @($shipInputPaths | ForEach-Object {
+  $inputPath = Resolve-ConsumerDiscoveryRequiredFile -Path $_ -Description 'Ship HUD build input'
+  [ordered]@{
+    Path = ([System.IO.Path]::GetRelativePath($repositoryRoot, $inputPath)).Replace('\', '/')
+    Sha256 = (Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant()
+  }
+})
+$compilerSha256Before = (Get-FileHash -LiteralPath $compileScript -Algorithm SHA256).Hash.ToUpperInvariant()
 $env:APPDATA = Join-Path $repositoryRoot '.work\appdata'
 & $compileScript `
   -JavaPath $resolvedJavaPath `
@@ -102,10 +113,38 @@ if ($LASTEXITCODE -ne 0) {
   throw "VWHUD Ship HUD build failed with exit code $LASTEXITCODE."
 }
 
+$outputEvidence = [System.Collections.Generic.List[object]]::new()
 foreach ($outputName in @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')) {
-  [void](Resolve-ConsumerDiscoveryRequiredFile `
+  $outputPath = Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $resolvedOutputDirectory $outputName) `
-    -Description "Patched Ship HUD movie '$outputName'")
+    -Description "Patched Ship HUD movie '$outputName'"
+  $outputEvidence.Add([ordered]@{
+    File = $outputName
+    Sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToUpperInvariant()
+  })
 }
+
+foreach ($input in $shipInputEvidence) {
+  $inputPath = Join-Path $repositoryRoot ([string]$input.Path)
+  if ((Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne [string]$input.Sha256) {
+    throw "Ship HUD build input changed during compilation: $($input.Path)"
+  }
+}
+if ((Get-FileHash -LiteralPath $compileScript -Algorithm SHA256).Hash.ToUpperInvariant() -cne $compilerSha256Before) {
+  throw 'The pinned VWHUD Ship HUD compiler changed during compilation.'
+}
+$shipEvidence = [ordered]@{
+  Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_SHIP_BUILD/1'
+  VwHudRevision = [string]$matrix.VwHudFixture.Revision
+  VwHudCompiler = [ordered]@{
+    Path = [string]$matrix.VwHudFixture.ShipCompilerFile
+    Sha256 = $compilerSha256Before
+  }
+  Inputs = $shipInputEvidence
+  Movies = @($outputEvidence)
+}
+Write-ConsumerDiscoveryUtf8WithoutBom `
+  -Path (Join-Path $resolvedOutputDirectory 'build-evidence.json') `
+  -Text (($shipEvidence | ConvertTo-Json -Depth 6) + "`n")
 
 Write-Host -ForegroundColor Green "Built and hash-validated both Ship HUD movies through the VWCANVAS-owned build using the pinned VWHUD compiler at $resolvedOutputDirectory"

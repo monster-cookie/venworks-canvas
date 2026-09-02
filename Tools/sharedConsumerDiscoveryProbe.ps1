@@ -182,6 +182,54 @@ function Assert-PinnedVwHudToolchainFixture {
   return $resolvedRoot
 }
 
+function Assert-PinnedVenworksCoreFixture {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$VenworksCoreRepositoryPath,
+
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Matrix
+  )
+
+  $resolvedRoot = Resolve-ConsumerDiscoveryRequiredDirectory `
+    -Path $VenworksCoreRepositoryPath `
+    -Description 'Venworks Core repository'
+  $safeDirectory = $resolvedRoot.Replace('\', '/')
+  $headOutput = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot rev-parse HEAD)
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to read the Venworks Core fixture revision from $resolvedRoot."
+  }
+  $head = ([string]::Join('', $headOutput)).Trim()
+  if ($head -cne [string]$Matrix.VenworksCoreFixture.Revision) {
+    throw "Venworks Core fixture drifted. Expected $($Matrix.VenworksCoreFixture.Revision); found $head."
+  }
+
+  $requiredDefinitions = @($Matrix.VenworksCoreFixture.SourceFiles) + @($Matrix.VenworksCoreFixture.RuntimeScripts)
+  $requiredPaths = @($requiredDefinitions | ForEach-Object {
+    if ($_.ContainsKey('Path')) { [string]$_.Path } else { [string]$_.Source }
+  })
+  $status = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot status --porcelain=v1 -- @requiredPaths)
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to inspect the required Venworks Core fixture paths at $resolvedRoot."
+  }
+  if ($status.Count -ne 0) {
+    throw "Required Venworks Core fixture paths are not clean: $([string]::Join(', ', $status))"
+  }
+
+  foreach ($definition in $requiredDefinitions) {
+    $relativePath = if ($definition.ContainsKey('Path')) { [string]$definition.Path } else { [string]$definition.Source }
+    $path = Resolve-ConsumerDiscoveryRequiredFile `
+      -Path (Join-Path $resolvedRoot $relativePath) `
+      -Description "Required pinned Venworks Core file '$relativePath'"
+    $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($actualHash -cne [string]$definition.Sha256) {
+      throw "Venworks Core fixture hash drifted for '$relativePath'. Expected $($definition.Sha256); found $actualHash."
+    }
+  }
+
+  return $resolvedRoot
+}
+
 function Get-VwHudExpectedMovieHash {
   param(
     [Parameter(Mandatory = $true)]
@@ -382,6 +430,7 @@ function Get-ConsumerDiscoveryBuildDefinition {
     Name = [string]$build.name
     Role = [string]$build.role
     OutputFile = [string]$build.outputFile
+    ManifestPath = $resolvedManifestPath
     SourcePath = Resolve-ConsumerDiscoveryRequiredFile `
       -Path (Join-Path $manifestDirectory ([string]$build.documentClass)) `
       -Description 'Consumer-discovery ActionScript entrypoint'
@@ -544,7 +593,15 @@ function Invoke-ConsumerDiscoveryMovieBuild {
     [switch]$KeepWork
   )
 
-  $definition = Get-ConsumerDiscoveryBuildDefinition -ManifestPath $ManifestPath
+  $resolvedManifestPath = Resolve-ConsumerDiscoveryRequiredFile `
+    -Path $ManifestPath `
+    -Description 'Consumer-discovery movie build manifest'
+  $manifestSha256Before = (Get-FileHash -LiteralPath $resolvedManifestPath -Algorithm SHA256).Hash.ToUpperInvariant()
+  $definition = Get-ConsumerDiscoveryBuildDefinition -ManifestPath $resolvedManifestPath
+  if ((Get-FileHash -LiteralPath $resolvedManifestPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $manifestSha256Before) {
+    throw "Consumer-discovery movie manifest changed while it was being parsed: $resolvedManifestPath"
+  }
+  $sourceSha256Before = (Get-FileHash -LiteralPath $definition.SourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
   $resolvedJavaPath = Resolve-ConsumerDiscoveryRequiredFile -Path $JavaPath -Description 'Java executable'
   $resolvedJpexsJarPath = Resolve-ConsumerDiscoveryRequiredFile -Path $JpexsJarPath -Description 'JPEXS JAR'
   $resolvedFlexSdkPath = Resolve-ConsumerDiscoveryRequiredDirectory -Path $FlexSdkPath -Description 'Apache Flex SDK'
@@ -573,6 +630,9 @@ function Invoke-ConsumerDiscoveryMovieBuild {
   New-Item -ItemType Directory -Path $sourceRoot, $firstPassRoot, $secondPassRoot | Out-Null
   $entrypointPath = Join-Path $sourceRoot ([System.IO.Path]::GetFileName($definition.SourcePath))
   Copy-Item -LiteralPath $definition.SourcePath -Destination $entrypointPath
+  if ((Get-FileHash -LiteralPath $entrypointPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
+    throw "Consumer-discovery ActionScript changed while its build snapshot was being captured: $($definition.SourcePath)"
+  }
 
   try {
     $passResults = [System.Collections.Generic.List[object]]::new()
@@ -630,12 +690,20 @@ function Invoke-ConsumerDiscoveryMovieBuild {
     Write-ConsumerDiscoveryUtf8WithoutBom `
       -Path "$destinationPath.classes.txt" `
       -Text ([string]::Join("`n", $passResults[1].ClassInventory) + "`n")
+    if ((Get-FileHash -LiteralPath $definition.ManifestPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $manifestSha256Before -or
+        (Get-FileHash -LiteralPath $definition.SourcePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
+      throw "Consumer-discovery movie '$($definition.Name)' source inputs changed during compilation; generated evidence was not accepted."
+    }
     return [pscustomobject]@{
       Name = $definition.Name
       Role = $definition.Role
       OutputFile = $definition.OutputFile
       Path = $destinationPath
       Sha256 = $passResults[1].Sha256
+      ManifestPath = $definition.ManifestPath
+      ManifestSha256 = $manifestSha256Before
+      SourcePath = $definition.SourcePath
+      SourceSha256 = $sourceSha256Before
       ClassInventory = @($passResults[1].ClassInventory)
       BuildPasses = 2
     }

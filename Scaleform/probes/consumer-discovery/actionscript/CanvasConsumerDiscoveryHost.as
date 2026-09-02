@@ -28,11 +28,11 @@ package
 
       private static const PROVIDER:String = "CustomAlertsData";
 
-      private static const MAX_CONSUMERS:int = 8;
-
       private static const MAX_SNAPSHOT_CHARACTERS:int = 4096;
 
       private static const MAX_RECORD_CHARACTERS:int = 512;
+
+      private static const MAX_CONSUMER_MOVIE_URL_CHARACTERS:int = 180;
 
       private var owner:DisplayObjectContainer;
 
@@ -49,6 +49,24 @@ package
       private var ownerLabel:String = "uninitialized";
 
       private var latestMessageId:int = -1;
+
+      private var pendingGenerationId:int = -1;
+
+      private var pendingReason:String = "";
+
+      private var pendingPageCount:int = 0;
+
+      private var pendingTotalRecordCount:int = 0;
+
+      private var pendingReceivedPageCount:int = 0;
+
+      private var pendingReceivedRecordCount:int = 0;
+
+      private var pendingPages:Object = {};
+
+      private var pendingPageBodies:Object = {};
+
+      private var pendingHasRejectedDescriptor:Boolean = false;
 
       private var loaders:Object = {};
 
@@ -124,6 +142,7 @@ package
          this.loaders = {};
          this.paths = {};
          this.versions = {};
+         this.resetPendingGeneration();
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {
             removeChild(this.diagnostics);
@@ -227,15 +246,22 @@ package
       private function receiveSnapshot(param1:String) : void
       {
          var cursor:int = 0;
-         var messageFrame:Object = null;
+         var generationFrame:Object = null;
          var reasonFrame:Object = null;
-         var countFrame:Object = null;
+         var pageIndexFrame:Object = null;
+         var pageCountFrame:Object = null;
+         var totalRecordCountFrame:Object = null;
+         var pageRecordCountFrame:Object = null;
          var recordFrame:Object = null;
-         var messageId:int = 0;
-         var expectedCount:int = 0;
-         var desired:Object = {};
+         var generationId:int = -1;
+         var pageIndex:int = 0;
+         var pageCount:int = 0;
+         var totalRecordCount:int = 0;
+         var pageRecordCount:int = 0;
+         var pageDescriptors:Array = [];
          var descriptor:Object = null;
          var index:int = 0;
+         var pageHasRejectedDescriptor:Boolean = false;
          if(param1.length > MAX_SNAPSHOT_CHARACTERS)
          {
             this.appendDiagnostic("SNAPSHOT REJECTED | OVERSIZED " + param1.length);
@@ -243,53 +269,155 @@ package
          }
          try
          {
-            messageFrame = this.readFrame(param1,cursor,12);
-            cursor = int(messageFrame.next);
+            generationFrame = this.readFrame(param1,cursor,12);
+            cursor = int(generationFrame.next);
             reasonFrame = this.readFrame(param1,cursor,40);
             cursor = int(reasonFrame.next);
-            countFrame = this.readFrame(param1,cursor,4);
-            cursor = int(countFrame.next);
-            messageId = this.parseUnsignedInt(String(messageFrame.value),2147483647);
-            expectedCount = this.parseUnsignedInt(String(countFrame.value),MAX_CONSUMERS);
-            if(messageId <= this.latestMessageId)
+            pageIndexFrame = this.readFrame(param1,cursor,12);
+            cursor = int(pageIndexFrame.next);
+            pageCountFrame = this.readFrame(param1,cursor,12);
+            cursor = int(pageCountFrame.next);
+            totalRecordCountFrame = this.readFrame(param1,cursor,12);
+            cursor = int(totalRecordCountFrame.next);
+            pageRecordCountFrame = this.readFrame(param1,cursor,12);
+            cursor = int(pageRecordCountFrame.next);
+            generationId = this.parseUnsignedInt(String(generationFrame.value),2147483647);
+            pageIndex = this.parseUnsignedInt(String(pageIndexFrame.value),2147483647);
+            pageCount = this.parseUnsignedInt(String(pageCountFrame.value),2147483647);
+            totalRecordCount = this.parseUnsignedInt(String(totalRecordCountFrame.value),2147483647);
+            pageRecordCount = this.parseUnsignedInt(String(pageRecordCountFrame.value),2147483647);
+            if(pageCount < 1 || pageIndex >= pageCount || pageRecordCount > totalRecordCount)
+            {
+               throw new Error("invalid snapshot page metadata");
+            }
+            if(generationId <= this.latestMessageId)
             {
                return;
             }
-            while(index < expectedCount)
+            while(index < pageRecordCount)
             {
                recordFrame = this.readFrame(param1,cursor,MAX_RECORD_CHARACTERS);
                cursor = int(recordFrame.next);
                try
                {
                   descriptor = this.parseDescriptor(String(recordFrame.value));
-                  if(desired[descriptor.consumerId] != null)
-                  {
-                     this.appendDiagnostic("DESCRIPTOR REJECTED | DUPLICATE " + descriptor.consumerId);
-                  }
-                  else
-                  {
-                     desired[descriptor.consumerId] = descriptor;
-                  }
+                  pageDescriptors.push(descriptor);
                }
                catch(descriptorError:Error)
                {
+                  pageHasRejectedDescriptor = true;
                   this.appendDiagnostic("DESCRIPTOR REJECTED | " + this.sanitizeText(descriptorError,100));
                }
                index++;
             }
             if(cursor != param1.length)
             {
-               throw new Error("trailing snapshot data");
+               throw new Error("trailing snapshot page data");
             }
+
+            if(this.pendingGenerationId >= 0 && generationId < this.pendingGenerationId)
+            {
+               return;
+            }
+            if(generationId != this.pendingGenerationId)
+            {
+               this.resetPendingGeneration();
+               this.pendingGenerationId = generationId;
+               this.pendingReason = String(reasonFrame.value);
+               this.pendingPageCount = pageCount;
+               this.pendingTotalRecordCount = totalRecordCount;
+            }
+            if(this.pendingReason != String(reasonFrame.value) || this.pendingPageCount != pageCount || this.pendingTotalRecordCount != totalRecordCount)
+            {
+               throw new Error("inconsistent snapshot generation metadata");
+            }
+            if(this.pendingPages.hasOwnProperty(String(pageIndex)))
+            {
+               if(this.pendingPageBodies[String(pageIndex)] === param1)
+               {
+                  return;
+               }
+               throw new Error("conflicting duplicate snapshot page");
+            }
+            this.pendingPages[String(pageIndex)] = pageDescriptors;
+            this.pendingPageBodies[String(pageIndex)] = param1;
+            this.pendingHasRejectedDescriptor = this.pendingHasRejectedDescriptor || pageHasRejectedDescriptor;
+            this.pendingReceivedPageCount++;
+            this.pendingReceivedRecordCount += pageRecordCount;
          }
          catch(snapshotError:Error)
          {
             this.appendDiagnostic("SNAPSHOT REJECTED | " + this.sanitizeText(snapshotError,100));
+            if(generationId == this.pendingGenerationId)
+            {
+               this.resetPendingGeneration();
+            }
             return;
          }
-         this.latestMessageId = messageId;
-         this.appendDiagnostic("SNAPSHOT " + messageId + " | " + this.sanitizeText(reasonFrame.value,40) + " | " + expectedCount + " CONSUMER(S)");
-         this.reconcile(desired);
+
+         if(this.pendingReceivedPageCount == this.pendingPageCount)
+         {
+            this.commitPendingGeneration();
+         }
+      }
+
+      private function commitPendingGeneration() : void
+      {
+         var pageIndex:int = 0;
+         var pageDescriptors:Array = null;
+         var descriptor:Object = null;
+         var desired:Object = {};
+         if(this.pendingGenerationId < 0 || this.pendingReceivedPageCount != this.pendingPageCount || this.pendingReceivedRecordCount != this.pendingTotalRecordCount)
+         {
+            this.appendDiagnostic("SNAPSHOT REJECTED | INCOMPLETE GENERATION");
+            this.resetPendingGeneration();
+            return;
+         }
+
+         while(pageIndex < this.pendingPageCount)
+         {
+            if(!this.pendingPages.hasOwnProperty(String(pageIndex)))
+            {
+               this.appendDiagnostic("SNAPSHOT REJECTED | MISSING PAGE " + pageIndex);
+               this.resetPendingGeneration();
+               return;
+            }
+            pageDescriptors = this.pendingPages[String(pageIndex)] as Array;
+            for each(descriptor in pageDescriptors)
+            {
+               if(desired[descriptor.consumerId] != null)
+               {
+                  this.appendDiagnostic("DESCRIPTOR REJECTED | DUPLICATE " + descriptor.consumerId);
+               }
+               else
+               {
+                  desired[descriptor.consumerId] = descriptor;
+               }
+            }
+            pageIndex++;
+         }
+
+         this.latestMessageId = this.pendingGenerationId;
+         this.appendDiagnostic("SNAPSHOT " + this.pendingGenerationId + " | " + this.sanitizeText(this.pendingReason,40) + " | " + this.pendingTotalRecordCount + " CONSUMER(S) | " + this.pendingPageCount + " PAGE(S)");
+         if(this.pendingHasRejectedDescriptor)
+         {
+            this.appendDiagnostic("REMOVAL HOLD | REJECTED DESCRIPTOR");
+         }
+         this.reconcile(desired,!this.pendingHasRejectedDescriptor);
+         this.resetPendingGeneration();
+      }
+
+      private function resetPendingGeneration() : void
+      {
+         this.pendingGenerationId = -1;
+         this.pendingReason = "";
+         this.pendingPageCount = 0;
+         this.pendingTotalRecordCount = 0;
+         this.pendingReceivedPageCount = 0;
+         this.pendingReceivedRecordCount = 0;
+         this.pendingPages = {};
+         this.pendingPageBodies = {};
+         this.pendingHasRejectedDescriptor = false;
       }
 
       private function parseDescriptor(param1:String) : Object
@@ -299,9 +427,9 @@ package
          cursor = int(consumerIdFrame.next);
          var displayNameFrame:Object = this.readFrame(param1,cursor,80);
          cursor = int(displayNameFrame.next);
-         var normalPathFrame:Object = this.readFrame(param1,cursor,180);
+         var normalPathFrame:Object = this.readFrame(param1,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
          cursor = int(normalPathFrame.next);
-         var largePathFrame:Object = this.readFrame(param1,cursor,180);
+         var largePathFrame:Object = this.readFrame(param1,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
          cursor = int(largePathFrame.next);
          var versionFrame:Object = this.readFrame(param1,cursor,4);
          cursor = int(versionFrame.next);
@@ -378,18 +506,21 @@ package
          return int(value);
       }
 
-      private function reconcile(param1:Object) : void
+      private function reconcile(param1:Object, param2:Boolean) : void
       {
          var consumerId:String = null;
          var consumerIds:Array = this.getLoaderIds();
          var descriptor:Object = null;
          var path:String = null;
-         for each(consumerId in consumerIds)
+         if(param2)
          {
-            if(param1[consumerId] == null)
+            for each(consumerId in consumerIds)
             {
-               this.appendDiagnostic("REMOVE " + consumerId);
-               this.unloadConsumer(consumerId);
+               if(param1[consumerId] == null)
+               {
+                  this.appendDiagnostic("REMOVE " + consumerId);
+                  this.unloadConsumer(consumerId);
+               }
             }
          }
          for(consumerId in param1)
@@ -490,7 +621,7 @@ package
       private function onConsumerError(param1:Event) : void
       {
          var loader:Loader = param1.currentTarget.loader as Loader;
-         if(loader == null)
+         if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }

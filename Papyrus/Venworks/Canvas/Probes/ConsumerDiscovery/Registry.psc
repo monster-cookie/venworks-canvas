@@ -1,19 +1,25 @@
-ScriptName Venworks:Canvas:Probes:ConsumerDiscovery:Registry Extends Quest
+ScriptName Venworks:Canvas:Probes:ConsumerDiscovery:Registry Extends Venworks:Canvas:Base:BaseQuest
 
-Quest[] ConsumerOwners
-String[] ConsumerIds
-String[] DisplayNames
-String[] NormalMoviePaths
-String[] LargeMoviePaths
-Int[] DescriptorVersions
+Struct ConsumerRegistration
+  Quest Owner
+  String ConsumerId
+  String DisplayName
+  String NormalMovieUrl
+  String LargeMovieUrl
+  Int DescriptorVersion
+EndStruct
+
+ConsumerRegistration[] Consumers
 Int MessageId = 0
 
-Int MaxConsumers = 8
+String ModuleName = "Probes:ConsumerDiscovery:Registry"
 Int MaxConsumerIdCharacters = 64
 Int MaxDisplayNameCharacters = 80
-Int MaxMoviePathCharacters = 180
-Int MaxSnapshotCharacters = 4096
+Int MaxConsumerMovieUrlCharacters = 180
+Int MaxSnapshotPageCharacters = 4096
+Int MaxSnapshotPagePayloadCharacters = 3600
 
+; Initializes persistent storage, registers both HUD menu callbacks, and publishes the initial registry generation.
 Event OnInit()
   EnsureStorage()
   RegisterForMenuOpenCloseEvent("HUDMenu")
@@ -21,6 +27,7 @@ Event OnInit()
   PublishSnapshot("host-init")
 EndEvent
 
+; Replays the complete current registry generation three times when either supported HUD menu opens.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     PublishSnapshot("menu-" + menuName + "-0")
@@ -31,123 +38,164 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   EndIf
 EndEvent
 
-Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMoviePath, String largeMoviePath, Int descriptorVersion)
+; Registers or updates one complete consumer record owned by the supplied quest and publishes the resulting registry generation.
+; Returns false when the descriptor is invalid or an existing consumer ID belongs to a different owner.
+Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
   EnsureStorage()
-  If (!IsDescriptorValid(owner, consumerId, displayName, normalMoviePath, largeMoviePath, descriptorVersion))
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Rejected an invalid consumer descriptor.", 1)
+  If (!IsDescriptorValid(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion))
+    LogUserWarning(ModuleName, "RegisterConsumer", "Rejected an invalid consumer descriptor.")
     PublishDiagnostic("registration-rejected-invalid")
     Return False
   EndIf
 
-  Int existingIndex = ConsumerIds.Find(consumerId)
+  Int existingIndex = FindConsumerIndex(consumerId)
   If (existingIndex >= 0)
-    If (ConsumerOwners[existingIndex] != owner)
-      Debug.Trace("[Venworks Canvas][VWCANVAS-9] Rejected duplicate consumer ID '" + consumerId + "' from a different owner.", 1)
+    If (Consumers[existingIndex].Owner != owner)
+      LogUserWarning(ModuleName, "RegisterConsumer", "Rejected duplicate consumer ID '" + consumerId + "' from a different owner.")
       PublishDiagnostic("registration-rejected-owner:" + consumerId)
       Return False
     EndIf
 
-    Bool changed = DisplayNames[existingIndex] != displayName || NormalMoviePaths[existingIndex] != normalMoviePath || LargeMoviePaths[existingIndex] != largeMoviePath || DescriptorVersions[existingIndex] != descriptorVersion
+    Bool changed = Consumers[existingIndex].DisplayName != displayName || Consumers[existingIndex].NormalMovieUrl != normalMovieUrl || Consumers[existingIndex].LargeMovieUrl != largeMovieUrl || Consumers[existingIndex].DescriptorVersion != descriptorVersion
     If (!changed)
       PublishSnapshot("refresh")
       Return True
     EndIf
 
-    DisplayNames[existingIndex] = displayName
-    NormalMoviePaths[existingIndex] = normalMoviePath
-    LargeMoviePaths[existingIndex] = largeMoviePath
-    DescriptorVersions[existingIndex] = descriptorVersion
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Updated consumer '" + consumerId + "'.")
+    Consumers[existingIndex].DisplayName = displayName
+    Consumers[existingIndex].NormalMovieUrl = normalMovieUrl
+    Consumers[existingIndex].LargeMovieUrl = largeMovieUrl
+    Consumers[existingIndex].DescriptorVersion = descriptorVersion
+    LogUserInformational(ModuleName, "RegisterConsumer", "Updated consumer '" + consumerId + "'.")
     PublishDiagnostic("registration-updated:" + consumerId)
     PublishSnapshot("update")
     Return True
   EndIf
 
-  If (ConsumerIds.Length >= MaxConsumers)
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Rejected consumer '" + consumerId + "' because the bounded registry is full.", 1)
-    PublishDiagnostic("registration-rejected-capacity:" + consumerId)
-    Return False
-  EndIf
-
-  ConsumerOwners.Add(owner)
-  ConsumerIds.Add(consumerId)
-  DisplayNames.Add(displayName)
-  NormalMoviePaths.Add(normalMoviePath)
-  LargeMoviePaths.Add(largeMoviePath)
-  DescriptorVersions.Add(descriptorVersion)
-  Debug.Trace("[Venworks Canvas][VWCANVAS-9] Registered consumer '" + consumerId + "'.")
+  ConsumerRegistration registration = new ConsumerRegistration
+  registration.Owner = owner
+  registration.ConsumerId = consumerId
+  registration.DisplayName = displayName
+  registration.NormalMovieUrl = normalMovieUrl
+  registration.LargeMovieUrl = largeMovieUrl
+  registration.DescriptorVersion = descriptorVersion
+  Consumers.Add(registration)
+  LogUserInformational(ModuleName, "RegisterConsumer", "Registered consumer '" + consumerId + "'.")
   PublishDiagnostic("registration-added:" + consumerId)
   PublishSnapshot("register")
   Return True
 EndFunction
 
+; Removes one consumer when the supplied quest owns its ID and publishes the resulting registry generation.
+; Returns true when the consumer is absent or removed, and false when another quest owns the ID.
 Bool Function UnregisterConsumer(Quest owner, String consumerId)
   EnsureStorage()
-  Int existingIndex = ConsumerIds.Find(consumerId)
+  Int existingIndex = FindConsumerIndex(consumerId)
   If (existingIndex < 0)
     PublishSnapshot("unregister-absent")
     Return True
   EndIf
-  If (ConsumerOwners[existingIndex] != owner)
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Rejected unregister for consumer '" + consumerId + "' from a different owner.", 1)
+  If (Consumers[existingIndex].Owner != owner)
+    LogUserWarning(ModuleName, "UnregisterConsumer", "Rejected unregister for consumer '" + consumerId + "' from a different owner.")
     PublishDiagnostic("unregister-rejected-owner:" + consumerId)
     Return False
   EndIf
 
-  RemoveStorageAt(existingIndex)
-  Debug.Trace("[Venworks Canvas][VWCANVAS-9] Unregistered consumer '" + consumerId + "'.")
+  Consumers.Remove(existingIndex)
+  LogUserInformational(ModuleName, "UnregisterConsumer", "Unregistered consumer '" + consumerId + "'.")
   PublishDiagnostic("registration-removed:" + consumerId)
   PublishSnapshot("unregister")
   Return True
 EndFunction
 
+; Publishes the complete registry as one atomic generation split across as many bounded Watch Alert pages as required.
+; Returns false without publishing a partial generation when any record or assembled page exceeds its transport budget.
 Bool Function PublishSnapshot(String reason = "manual")
   EnsureStorage()
-  MessageId += 1
-  String body = EncodeField(MessageId as String) + EncodeField(reason) + EncodeField(ConsumerIds.Length as String)
-  Int index = 0
-  While (index < ConsumerIds.Length)
-    String record = EncodeField(ConsumerIds[index]) + EncodeField(DisplayNames[index]) + EncodeField(NormalMoviePaths[index]) + EncodeField(LargeMoviePaths[index]) + EncodeField(DescriptorVersions[index] as String)
-    body += EncodeField(record)
-    index += 1
-  EndWhile
-
-  If (GetCharacterCount(body) > MaxSnapshotCharacters)
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Rejected an oversized registry snapshot.", 2)
-    PublishDiagnostic("snapshot-rejected-oversized")
-    Return False
+  If (!IsPrintableAscii(reason, 1, 40))
+    reason = "invalid-reason"
   EndIf
 
-  Game.ShowCustomWatchAlert("VWC_EVT/1|canvas.registry.snapshot|" + body)
-  Debug.Trace("[Venworks Canvas][VWCANVAS-9] Submitted registry snapshot " + MessageId + " with " + ConsumerIds.Length + " consumer(s).")
+  String[] pagePayloads = new String[0]
+  Int[] pageRecordCounts = new Int[0]
+  String currentPayload = ""
+  Int currentRecordCount = 0
+  Int consumerIndex = 0
+  While (consumerIndex < Consumers.Length)
+    String record = EncodeField(Consumers[consumerIndex].ConsumerId) + EncodeField(Consumers[consumerIndex].DisplayName) + EncodeField(Consumers[consumerIndex].NormalMovieUrl) + EncodeField(Consumers[consumerIndex].LargeMovieUrl) + EncodeField(Consumers[consumerIndex].DescriptorVersion as String)
+    String framedRecord = EncodeField(record)
+    If (GetCharacterCount(framedRecord) > MaxSnapshotPagePayloadCharacters)
+      LogUserError(ModuleName, "PublishSnapshot", "Rejected consumer '" + Consumers[consumerIndex].ConsumerId + "' because its framed record exceeds one snapshot page.")
+      PublishDiagnostic("snapshot-rejected-record-oversized:" + Consumers[consumerIndex].ConsumerId)
+      Return False
+    EndIf
+    If (currentRecordCount > 0 && GetCharacterCount(currentPayload + framedRecord) > MaxSnapshotPagePayloadCharacters)
+      pagePayloads.Add(currentPayload)
+      pageRecordCounts.Add(currentRecordCount)
+      currentPayload = ""
+      currentRecordCount = 0
+    EndIf
+    currentPayload += framedRecord
+    currentRecordCount += 1
+    consumerIndex += 1
+  EndWhile
+
+  If (currentRecordCount > 0 || pagePayloads.Length == 0)
+    pagePayloads.Add(currentPayload)
+    pageRecordCounts.Add(currentRecordCount)
+  EndIf
+
+  MessageId += 1
+  String[] pageBodies = new String[0]
+  Int pageIndex = 0
+  While (pageIndex < pagePayloads.Length)
+    String body = EncodeField(MessageId as String) + EncodeField(reason) + EncodeField(pageIndex as String) + EncodeField(pagePayloads.Length as String) + EncodeField(Consumers.Length as String) + EncodeField(pageRecordCounts[pageIndex] as String) + pagePayloads[pageIndex]
+    If (GetCharacterCount(body) > MaxSnapshotPageCharacters)
+      LogUserError(ModuleName, "PublishSnapshot", "Rejected registry generation " + MessageId + " because page " + pageIndex + " exceeds the Watch Alert transport budget.")
+      PublishDiagnostic("snapshot-rejected-page-oversized")
+      Return False
+    EndIf
+    pageBodies.Add(body)
+    pageIndex += 1
+  EndWhile
+
+  pageIndex = 0
+  While (pageIndex < pageBodies.Length)
+    Game.ShowCustomWatchAlert("VWC_EVT/1|canvas.registry.snapshot|" + pageBodies[pageIndex])
+    pageIndex += 1
+  EndWhile
+  LogUserInformational(ModuleName, "PublishSnapshot", "Submitted registry generation " + MessageId + " with " + Consumers.Length + " consumer(s) across " + pageBodies.Length + " page(s).")
   Return True
 EndFunction
 
+; Publishes a bounded registry diagnostic on the same one-way Watch Alert bridge using its own monotonic message ID.
 Function PublishDiagnostic(String diagnostic)
   MessageId += 1
   String body = EncodeField(MessageId as String) + EncodeField(diagnostic)
   Game.ShowCustomWatchAlert("VWC_EVT/1|canvas.registry.diagnostic|" + body)
 EndFunction
 
-Bool Function IsDescriptorValid(Quest owner, String consumerId, String displayName, String normalMoviePath, String largeMoviePath, Int descriptorVersion)
+; Returns whether a proposed owner and descriptor satisfy the bounded, canonical consumer contract.
+Bool Function IsDescriptorValid(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
   If (owner == None || descriptorVersion < 1 || descriptorVersion > 9999)
     Return False
   EndIf
   If (!IsConsumerIdValid(consumerId) || !IsPrintableAscii(displayName, 1, MaxDisplayNameCharacters))
     Return False
   EndIf
-  If (!IsPrintableAscii(normalMoviePath, 1, MaxMoviePathCharacters) || !IsPrintableAscii(largeMoviePath, 1, MaxMoviePathCharacters))
+  If (!IsPrintableAscii(normalMovieUrl, 1, MaxConsumerMovieUrlCharacters) || !IsPrintableAscii(largeMovieUrl, 1, MaxConsumerMovieUrlCharacters))
     Return False
   EndIf
-  If (normalMoviePath != "VenworksCanvas/Consumers/" + consumerId + "/normal.swf")
+  If (normalMovieUrl != "VenworksCanvas/Consumers/" + consumerId + "/normal.swf")
     Return False
   EndIf
-  If (largeMoviePath != "VenworksCanvas/Consumers/" + consumerId + "/large.swf")
+  If (largeMovieUrl != "VenworksCanvas/Consumers/" + consumerId + "/large.swf")
     Return False
   EndIf
   Return True
 EndFunction
 
+; Returns whether a consumer ID is bounded lowercase ASCII, namespaced, and safe for use in canonical loader URLs.
 Bool Function IsConsumerIdValid(String consumerId)
   Int[] characters = Utility.SplitStringChars(consumerId)
   If (characters == None || characters.Length < 3 || characters.Length > MaxConsumerIdCharacters)
@@ -175,10 +223,12 @@ Bool Function IsConsumerIdValid(String consumerId)
   Return foundNamespaceSeparator
 EndFunction
 
+; Returns whether one character code is a lowercase ASCII letter or decimal digit.
 Bool Function IsAsciiLetterOrDigit(Int character)
   Return (character >= 97 && character <= 122) || (character >= 48 && character <= 57)
 EndFunction
 
+; Returns whether a value has a character count inside the supplied bounds and contains only printable ASCII.
 Bool Function IsPrintableAscii(String value, Int minimumLength, Int maximumLength)
   Int[] characters = Utility.SplitStringChars(value)
   If (characters == None || characters.Length < minimumLength || characters.Length > maximumLength)
@@ -194,10 +244,12 @@ Bool Function IsPrintableAscii(String value, Int minimumLength, Int maximumLengt
   Return True
 EndFunction
 
+; Encodes one value as a decimal character length followed by a colon and its unescaped contents.
 String Function EncodeField(String value)
   Return GetCharacterCount(value) + ":" + value
 EndFunction
 
+; Returns the Papyrus character count for a string, treating an unavailable split result as zero.
 Int Function GetCharacterCount(String value)
   Int[] characters = Utility.SplitStringChars(value)
   If (characters == None)
@@ -206,87 +258,32 @@ Int Function GetCharacterCount(String value)
   Return characters.Length
 EndFunction
 
+; Initializes the persistent registration array and prunes records whose owning quest is no longer available.
 Function EnsureStorage()
-  If (ConsumerOwners == None)
-    ConsumerOwners = new Quest[0]
-  EndIf
-  If (ConsumerIds == None)
-    ConsumerIds = new String[0]
-  EndIf
-  If (DisplayNames == None)
-    DisplayNames = new String[0]
-  EndIf
-  If (NormalMoviePaths == None)
-    NormalMoviePaths = new String[0]
-  EndIf
-  If (LargeMoviePaths == None)
-    LargeMoviePaths = new String[0]
-  EndIf
-  If (DescriptorVersions == None)
-    DescriptorVersions = new Int[0]
+  If (Consumers == None)
+    Consumers = new ConsumerRegistration[0]
   EndIf
 
-  NormalizeStorageLengths()
-  Int index = ConsumerOwners.Length - 1
+  Int index = Consumers.Length - 1
   While (index >= 0)
-    If (ConsumerOwners[index] == None)
-      String staleConsumerId = ConsumerIds[index]
-      RemoveStorageAt(index)
-      Debug.Trace("[Venworks Canvas][VWCANVAS-9] Pruned unavailable consumer owner '" + staleConsumerId + "'.", 1)
+    If (Consumers[index].Owner == None)
+      String staleConsumerId = Consumers[index].ConsumerId
+      Consumers.Remove(index)
+      LogUserWarning(ModuleName, "EnsureStorage", "Pruned unavailable consumer owner '" + staleConsumerId + "'.")
       PublishDiagnostic("registration-pruned:" + staleConsumerId)
     EndIf
     index -= 1
   EndWhile
 EndFunction
 
-Function NormalizeStorageLengths()
-  Int minimumLength = ConsumerOwners.Length
-  If (ConsumerIds.Length < minimumLength)
-    minimumLength = ConsumerIds.Length
-  EndIf
-  If (DisplayNames.Length < minimumLength)
-    minimumLength = DisplayNames.Length
-  EndIf
-  If (NormalMoviePaths.Length < minimumLength)
-    minimumLength = NormalMoviePaths.Length
-  EndIf
-  If (LargeMoviePaths.Length < minimumLength)
-    minimumLength = LargeMoviePaths.Length
-  EndIf
-  If (DescriptorVersions.Length < minimumLength)
-    minimumLength = DescriptorVersions.Length
-  EndIf
-
-  Bool repaired = ConsumerOwners.Length != minimumLength || ConsumerIds.Length != minimumLength || DisplayNames.Length != minimumLength || NormalMoviePaths.Length != minimumLength || LargeMoviePaths.Length != minimumLength || DescriptorVersions.Length != minimumLength
-  While (ConsumerOwners.Length > minimumLength)
-    ConsumerOwners.Remove(ConsumerOwners.Length - 1)
+; Returns the index of a registered consumer ID or negative one when no complete record has that ID.
+Int Function FindConsumerIndex(String consumerId)
+  Int index = 0
+  While (index < Consumers.Length)
+    If (Consumers[index].ConsumerId == consumerId)
+      Return index
+    EndIf
+    index += 1
   EndWhile
-  While (ConsumerIds.Length > minimumLength)
-    ConsumerIds.Remove(ConsumerIds.Length - 1)
-  EndWhile
-  While (DisplayNames.Length > minimumLength)
-    DisplayNames.Remove(DisplayNames.Length - 1)
-  EndWhile
-  While (NormalMoviePaths.Length > minimumLength)
-    NormalMoviePaths.Remove(NormalMoviePaths.Length - 1)
-  EndWhile
-  While (LargeMoviePaths.Length > minimumLength)
-    LargeMoviePaths.Remove(LargeMoviePaths.Length - 1)
-  EndWhile
-  While (DescriptorVersions.Length > minimumLength)
-    DescriptorVersions.Remove(DescriptorVersions.Length - 1)
-  EndWhile
-  If (repaired)
-    Debug.Trace("[Venworks Canvas][VWCANVAS-9] Repaired mismatched persistent registry storage.", 1)
-    PublishDiagnostic("registry-storage-repaired")
-  EndIf
-EndFunction
-
-Function RemoveStorageAt(Int index)
-  ConsumerOwners.Remove(index)
-  ConsumerIds.Remove(index)
-  DisplayNames.Remove(index)
-  NormalMoviePaths.Remove(index)
-  LargeMoviePaths.Remove(index)
-  DescriptorVersions.Remove(index)
+  Return -1
 EndFunction

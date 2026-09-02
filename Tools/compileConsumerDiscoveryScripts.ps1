@@ -1,5 +1,8 @@
 [CmdletBinding()]
 param(
+  [Parameter(Mandatory = $true)]
+  [string]$VenworksCoreRepositoryPath,
+
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
 
   [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\scripts')
@@ -14,6 +17,11 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $sourceRoot = Join-Path $repositoryRoot 'Papyrus'
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+$matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
+$resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture `
+  -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath `
+  -Matrix $matrix
+$venworksCoreSourceRoot = Join-Path $resolvedVenworksCoreRoot 'Papyrus'
 Import-ConsumerDiscoveryEnvironment -Path $EnvironmentPath
 
 foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAGS', 'PAPYRUS_SCRIPTS_SOURCE_PATH')) {
@@ -43,16 +51,27 @@ if (Test-Path -LiteralPath $resolvedOutputDirectory -PathType Container) {
 New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $sources = @(
+  'Venworks\Canvas\GlobalConfig.psc'
+  'Venworks\Canvas\Base\BaseQuest.psc'
   'Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc'
   'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'
   'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerBRegistrar.psc'
+  'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerAUpdateMigration.psc'
 )
-$compiled = [System.Collections.Generic.List[object]]::new()
+$sourcePaths = @{}
+$sourceHashes = @{}
 foreach ($relativeSource in $sources) {
   $sourcePath = Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $sourceRoot $relativeSource) `
     -Description "Consumer-discovery Papyrus source '$relativeSource'"
-  & $compilerPath $sourcePath -f -optimize "-flags=$resolvedFlagsPath" "-output=$resolvedOutputDirectory" "-import=$sourceRoot;$resolvedGameSourcePath" -ignorecwd
+  $sourcePaths[$relativeSource] = $sourcePath
+  $sourceHashes[$relativeSource] = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
+}
+$compiled = [System.Collections.Generic.List[object]]::new()
+foreach ($relativeSource in $sources) {
+  $sourcePath = [string]$sourcePaths[$relativeSource]
+  $sourceSha256Before = [string]$sourceHashes[$relativeSource]
+  & $compilerPath $sourcePath -f -optimize "-flags=$resolvedFlagsPath" "-output=$resolvedOutputDirectory" "-import=$sourceRoot;$venworksCoreSourceRoot;$resolvedGameSourcePath" -ignorecwd
   if ($LASTEXITCODE -ne 0) {
     throw "Papyrus compilation failed for '$relativeSource' with exit code $LASTEXITCODE."
   }
@@ -60,16 +79,37 @@ foreach ($relativeSource in $sources) {
   $outputPath = Resolve-ConsumerDiscoveryRequiredFile `
     -Path (Join-Path $resolvedOutputDirectory $outputName) `
     -Description "Compiled Papyrus script '$outputName'"
+  if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
+    throw "Consumer-discovery Papyrus source changed during compilation: $relativeSource"
+  }
   $compiled.Add([ordered]@{
     Source = $relativeSource.Replace('\', '/')
+    SourceSha256 = $sourceSha256Before
     Output = $outputName.Replace('\', '/')
     Sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToUpperInvariant()
   })
 }
 
+[void](Assert-PinnedVenworksCoreFixture `
+  -VenworksCoreRepositoryPath $resolvedVenworksCoreRoot `
+  -Matrix $matrix)
+foreach ($relativeSource in $sources) {
+  $currentHash = (Get-FileHash -LiteralPath ([string]$sourcePaths[$relativeSource]) -Algorithm SHA256).Hash.ToUpperInvariant()
+  if ($currentHash -cne [string]$sourceHashes[$relativeSource]) {
+    throw "Consumer-discovery Papyrus source changed during the complete compile: $relativeSource"
+  }
+}
+
 $evidence = [ordered]@{
   Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_SCRIPTS/1'
   CompilerVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($compilerPath).FileVersion
+  VenworksCoreRevision = [string]$matrix.VenworksCoreFixture.Revision
+  VenworksCoreSources = @($matrix.VenworksCoreFixture.SourceFiles | ForEach-Object {
+    [ordered]@{
+      Path = [string]$_.Path
+      Sha256 = [string]$_.Sha256
+    }
+  })
   Scripts = @($compiled)
 }
 Write-ConsumerDiscoveryUtf8WithoutBom `
