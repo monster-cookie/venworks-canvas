@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<canvasDiscoveryMovieBuild name="consumer-discovery-host"
+                           role="host"
+                           outputFile="CanvasConsumerDiscoveryHost.swf"
+                           documentClass="../actionscript/CanvasConsumerDiscoveryHost.as"
+                           className="CanvasConsumerDiscoveryHost"
+                           stageWidth="1920"
+                           stageHeight="1080"
+                           frameRate="30">
+  <requiredTokens>
+    <token>VWCANVAS_DISCOVERY_PROBE/1</token>
+    <token>VenworksCanvas/Consumers/</token>
+    <token>getCanvasDiscoveryRecord</token>
+    <token>public function initialize</token>
+    <token>public function reapplyVanillaPlacements</token>
+    <token>public function updateVanillaHudModeVisibility</token>
+    <token>public function dispose</token>
+    <token>hudmenu_lrg</token>
+    <token>IOErrorEvent.IO_ERROR</token>
+    <token>SecurityErrorEvent.SECURITY_ERROR</token>
+    <token>COMPLETE | READY</token>
+  </requiredTokens>
+  <forbiddenTokens>
+    <token>Game.ShowCustomWatchAlert</token>
+    <token>CustomAlertsData</token>
+    <token>URLLoader</token>
+    <token>FileReference</token>
+    <token>ExternalInterface</token>
+    <token>navigateToURL</token>
+  </forbiddenTokens>
+</canvasDiscoveryMovieBuild>

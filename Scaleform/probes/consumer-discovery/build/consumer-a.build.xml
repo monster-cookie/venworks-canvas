@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<canvasDiscoveryMovieBuild name="consumer-a1"
+                           role="consumer"
+                           outputFile="CanvasDiscoveryConsumerA.swf"
+                           documentClass="../actionscript/CanvasDiscoveryConsumerA.as"
+                           className="CanvasDiscoveryConsumerA"
+                           stageWidth="1920"
+                           stageHeight="1080"
+                           frameRate="30">
+  <requiredTokens>
+    <token>VWCANVAS_DISCOVERY_PROBE/1</token>
+    <token>slot-00</token>
+    <token>venworks.canvas.probe.consumer-a</token>
+    <token>1.0.0</token>
+    <token>A1</token>
+    <token>getCanvasDiscoveryRecord</token>
+    <token>public function dispose</token>
+  </requiredTokens>
+  <forbiddenTokens>
+    <token>Game.ShowCustomWatchAlert</token>
+    <token>CustomAlertsData</token>
+    <token>URLLoader</token>
+    <token>ExternalInterface</token>
+  </forbiddenTokens>
+</canvasDiscoveryMovieBuild>
