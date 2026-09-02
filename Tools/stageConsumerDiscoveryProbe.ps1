@@ -3,7 +3,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$VwHudRepositoryPath,
 
-  [string]$Profile = 'Baseline',
+  [Alias('Profile')]
+  [string]$ProbeProfile = 'Baseline',
 
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
 
@@ -42,7 +43,7 @@ function Assert-ConsumerDiscoveryStagingTarget {
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
-$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -ProbeProfile $ProbeProfile
 $resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 Import-ConsumerDiscoveryEnvironment -Path $EnvironmentPath
 if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) {

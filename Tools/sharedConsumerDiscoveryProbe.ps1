@@ -86,19 +86,20 @@ function Resolve-ConsumerDiscoveryProfile {
     [Parameter(Mandatory = $true)]
     [hashtable]$Matrix,
 
-    [string]$Profile
+    [Alias('Profile')]
+    [string]$ProbeProfile
   )
 
-  $profileKey = $Profile
+  $profileKey = $ProbeProfile
   if ([string]::IsNullOrWhiteSpace($profileKey)) {
     $profileKey = [string]$Matrix.DefaultProfile
   }
-  $matches = @($Matrix.Profiles | Where-Object { [string]$_.Key -ceq $profileKey })
-  if ($matches.Count -ne 1) {
+  $profileMatches = @($Matrix.Profiles | Where-Object { [string]$_.Key -ceq $profileKey })
+  if ($profileMatches.Count -ne 1) {
     $available = [string]::Join(', ', @($Matrix.Profiles | ForEach-Object { [string]$_.Key }))
     throw "Unknown consumer-discovery profile '$profileKey'. Expected exactly one of: $available."
   }
-  return $matches[0]
+  return $profileMatches[0]
 }
 
 function Import-ConsumerDiscoveryEnvironment {

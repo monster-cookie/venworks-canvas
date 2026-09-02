@@ -2,7 +2,8 @@
 param(
   [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\plugins'),
 
-  [string]$Profile = 'Baseline',
+  [Alias('Profile')]
+  [string]$ProbeProfile = 'Baseline',
 
   [switch]$NoRestore
 )
@@ -19,7 +20,7 @@ $projectPath = Resolve-ConsumerDiscoveryRequiredFile `
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
-$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -ProbeProfile $ProbeProfile
 
 if (Test-Path -LiteralPath $resolvedOutputDirectory -PathType Container) {
   Assert-ConsumerDiscoveryRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot

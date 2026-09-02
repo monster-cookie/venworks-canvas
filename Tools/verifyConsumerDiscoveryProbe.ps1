@@ -4,7 +4,8 @@ param(
 
   [string]$VwHudRepositoryPath,
 
-  [string]$Profile = 'Baseline',
+  [Alias('Profile')]
+  [string]$ProbeProfile = 'Baseline',
 
   [string]$MoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\movies'),
 
@@ -333,7 +334,7 @@ if ($profileKeys.Count -ne 3 -or
     [string]::Join("`n", @($profileKeys | Sort-Object)) -cne [string]::Join("`n", @('Baseline', 'Faults', 'UpdatedA' | Sort-Object))) {
   throw 'Consumer discovery must define exactly the Baseline, Faults, and UpdatedA profiles.'
 }
-$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -ProbeProfile $ProbeProfile
 
 $requiredParserCases = @(
   'delimiter-display-name'
@@ -609,12 +610,12 @@ if ($toolchainEvidence.Count -ne $requiredToolchainFiles.Count) {
   throw 'Auxiliary movie build evidence does not contain the exact pinned VWHUD toolchain inventory.'
 }
 foreach ($relativePath in $requiredToolchainFiles) {
-  $matches = @($toolchainEvidence | Where-Object { [string]$_.Path -ceq [string]$relativePath })
-  if ($matches.Count -ne 1) {
+  $toolchainMatches = @($toolchainEvidence | Where-Object { [string]$_.Path -ceq [string]$relativePath })
+  if ($toolchainMatches.Count -ne 1) {
     throw "Auxiliary movie build evidence is missing exact toolchain file '$relativePath'."
   }
   $toolPath = Join-Path $resolvedVwHudRoot ([string]$relativePath)
-  if ([string]$matches[0].Sha256 -cne (Get-FileSha256 -Path $toolPath)) {
+  if ([string]$toolchainMatches[0].Sha256 -cne (Get-FileSha256 -Path $toolPath)) {
     throw "Auxiliary movie build evidence hash drifted for '$relativePath'."
   }
 }
