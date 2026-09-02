@@ -61,19 +61,20 @@ The project currently uses these workflow states:
 
 | State       | Group       | Current UUID                           |
 | ----------- | ----------- | -------------------------------------- |
-| Backlog     | `backlog`   | `41c224ff-cb7f-41a1-a211-c5df27730e7c` |
-| Todo        | `unstarted` | `fc2ac5b9-51fb-4aeb-a11c-99b070866d09` |
-| In Progress | `started`   | `20fe698c-1900-4dc7-b908-6963736dec7f` |
-| In Review   | `started`   | `99fc980a-166d-49b4-9e53-ae94c2a921dd` |
-| Done        | `completed` | `4060b3bc-24a8-49fc-a779-b9556b0bdc8a` |
-| Cancelled   | `cancelled` | `a9ee79bc-a34c-4beb-8750-6fe12fc212a6` |
+| Backlog     | `backlog`   | `a84b702c-1dfb-4d6e-88f3-9e94ab42e89c` |
+| Todo        | `unstarted` | `0640b042-d786-434c-903f-e7f75c62fa75` |
+| In Progress | `started`   | `39d05f18-40aa-4f8e-ae16-d5351fa36b0b` |
+| In Review   | `started`   | `25f71af5-2c72-46b0-883f-b533515411c9` |
+| Done        | `completed` | `fa43696f-1639-4298-96e5-95ed2914238c` |
+| Cancelled   | `cancelled` | `23f7b516-8fac-480e-8d6e-773991532d14` |
 
 The project currently uses these work-item types:
 
 | Type | Current UUID                           |
 | ---- | -------------------------------------- |
-| Task | `eb7e11ea-e117-448d-b49d-da726fc1336d` |
-| Epic | `f069377a-5d9a-4a27-a963-b1fafe1f6af0` |
+| Epic | `3d646874-a96f-411d-9daf-9bca0c974caf` |
+| Task | `5346ab29-6e58-418c-9b6b-31262fe0670c` |
+| Bug  | `f6f11900-ed26-4cef-a4e0-f9c3483c27a6` |
 
 Refresh the project's states and types before mutations. If a stored UUID no longer resolves to the expected name and group, stop and ask the user how to proceed.
 
