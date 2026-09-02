@@ -10,17 +10,16 @@ package
 
       public function CanvasDiscoveryConsumerA()
       {
-         this.marker = this.createMarker("VWCANVAS-9 CONSUMER A1",16776960);
+         this.marker = this.createMarker("VWCANVAS-9 CONSUMER A",16776960);
       }
 
       public function getCanvasDiscoveryRecord() : Object
       {
          return {
-            "protocol":"VWCANVAS_DISCOVERY_PROBE/1",
-            "slot":"slot-00",
+            "protocol":"VWCANVAS_CONSUMER/1",
             "consumerId":"venworks.canvas.probe.consumer-a",
-            "version":"1.0.0",
-            "marker":"A1"
+            "version":1,
+            "marker":"A"
          };
       }
 

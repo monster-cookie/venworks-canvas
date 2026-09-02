@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<canvasDiscoveryMovieBuild name="consumer-b1"
+<canvasDiscoveryMovieBuild name="consumer-b"
                            role="consumer"
                            outputFile="CanvasDiscoveryConsumerB.swf"
                            documentClass="../actionscript/CanvasDiscoveryConsumerB.as"
@@ -8,11 +8,9 @@
                            stageHeight="1080"
                            frameRate="30">
   <requiredTokens>
-    <token>VWCANVAS_DISCOVERY_PROBE/1</token>
-    <token>slot-01</token>
+    <token>VWCANVAS_CONSUMER/1</token>
     <token>venworks.canvas.probe.consumer-b</token>
-    <token>1.0.0</token>
-    <token>B1</token>
+    <token>"version":1</token>
     <token>getCanvasDiscoveryRecord</token>
     <token>public function dispose</token>
   </requiredTokens>

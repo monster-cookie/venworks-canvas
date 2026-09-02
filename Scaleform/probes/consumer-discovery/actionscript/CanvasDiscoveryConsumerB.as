@@ -16,11 +16,10 @@ package
       public function getCanvasDiscoveryRecord() : Object
       {
          return {
-            "protocol":"VWCANVAS_DISCOVERY_PROBE/1",
-            "slot":"slot-01",
+            "protocol":"VWCANVAS_CONSUMER/1",
             "consumerId":"venworks.canvas.probe.consumer-b",
-            "version":"1.0.0",
-            "marker":"B1"
+            "version":1,
+            "marker":"B"
          };
       }
 

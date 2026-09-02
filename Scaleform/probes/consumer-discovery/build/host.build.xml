@@ -8,21 +8,21 @@
                            stageHeight="1080"
                            frameRate="30">
   <requiredTokens>
-    <token>VWCANVAS_DISCOVERY_PROBE/1</token>
-    <token>VenworksCanvas/Consumers/</token>
+    <token>VWC_EVT/1</token>
+    <token>canvas.registry.snapshot</token>
+    <token>CustomAlertsData</token>
+    <token>Interface/VenworksCanvas/Consumers/</token>
     <token>getCanvasDiscoveryRecord</token>
     <token>public function initialize</token>
     <token>public function reapplyVanillaPlacements</token>
     <token>public function updateVanillaHudModeVisibility</token>
     <token>public function dispose</token>
-    <token>hudmenu_lrg</token>
+    <token>spaceship</token>
     <token>IOErrorEvent.IO_ERROR</token>
     <token>SecurityErrorEvent.SECURITY_ERROR</token>
-    <token>COMPLETE | READY</token>
+    <token>SNAPSHOT REJECTED</token>
   </requiredTokens>
   <forbiddenTokens>
-    <token>Game.ShowCustomWatchAlert</token>
-    <token>CustomAlertsData</token>
     <token>URLLoader</token>
     <token>FileReference</token>
     <token>ExternalInterface</token>

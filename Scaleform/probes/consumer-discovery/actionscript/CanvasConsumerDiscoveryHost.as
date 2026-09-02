@@ -10,53 +10,74 @@ package
    import flash.net.URLRequest;
    import flash.text.TextField;
    import flash.text.TextFormat;
+   import flash.utils.getDefinitionByName;
 
    public final class CanvasConsumerDiscoveryHost extends MovieClip
    {
-      private static const PROTOCOL:String = "VWCANVAS_DISCOVERY_PROBE/1";
-      private static const SLOT_COUNT:int = 4;
-      private static const SLOT_ROOT:String = "VenworksCanvas/Consumers/";
+      private static const ENVELOPE_PREFIX:String = "VWC_EVT/1|";
+
+      private static const SNAPSHOT_TYPE:String = "canvas.registry.snapshot";
+
+      private static const DIAGNOSTIC_TYPE:String = "canvas.registry.diagnostic";
+
+      private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/1";
+
+      private static const PROVIDER:String = "CustomAlertsData";
 
       private var owner:DisplayObjectContainer;
+
+      private var dataManager:Object;
+
+      private var callback:Function;
+
+      private var subscribed:Boolean = false;
+
+      private var disposed:Boolean = false;
+
+      private var displayMode:String = "normal";
+
+      private var ownerLabel:String = "uninitialized";
+
+      private var latestMessageId:int = -1;
+
+      private var loaders:Object = {};
+
+      private var paths:Object = {};
+
+      private var versions:Object = {};
+
       private var diagnostics:TextField;
-      private var diagnosticLines:Array;
-      private var loaders:Array;
-      private var bridges:Array;
-      private var slotStates:Array;
-      private var currentLoader:Loader;
-      private var currentBridge:Object;
-      private var currentSlot:int;
-      private var currentPath:String;
-      private var displayMode:String;
-      private var readyCount:int;
-      private var disposed:Boolean = true;
+
+      private var diagnosticLines:Array = [];
+
+      public function CanvasConsumerDiscoveryHost()
+      {
+         super();
+         this.callback = this.onCustomAlertsData;
+         addEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage,false,0,true);
+      }
 
       public function initialize(param1:DisplayObjectContainer) : void
       {
-         this.dispose();
-         this.disposed = false;
+         if(this.disposed)
+         {
+            return;
+         }
          this.owner = param1;
-         this.diagnosticLines = [];
-         this.loaders = [];
-         this.bridges = [];
-         this.slotStates = [];
-         this.currentSlot = -1;
-         this.currentPath = "";
-         this.readyCount = 0;
-         this.displayMode = this.resolveDisplayMode(param1);
-         addEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage,false,0,true);
+         this.ownerLabel = this.resolveOwnerUrl(param1);
+         this.displayMode = this.ownerLabel.toLowerCase().indexOf("_lrg") >= 0 ? "large" : "normal";
          this.createDiagnostics();
-         this.appendDiagnostic("VWCANVAS-9 FIXED-SLOT PROBE");
-         this.appendDiagnostic("MODE " + this.displayMode.toUpperCase() + " | OWNER " + this.resolveOwnerUrl(param1));
-         this.discoverNextSlot();
+         this.appendDiagnostic("VWCANVAS-9 DYNAMIC REGISTRY");
+         this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
+         this.subscribe();
       }
 
       public function reapplyVanillaPlacements() : void
       {
          if(this.diagnostics != null)
          {
-            this.diagnostics.x = 500;
-            this.diagnostics.y = 150;
+            this.diagnostics.x = 24;
+            this.diagnostics.y = 24;
          }
       }
 
@@ -66,270 +87,360 @@ package
 
       public function dispose() : void
       {
-         var index:int = 0;
-         var bridge:Object = null;
-         var loader:Loader = null;
+         var consumerId:String = null;
+         var consumerIds:Array = null;
          if(this.disposed)
          {
             return;
          }
          this.disposed = true;
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
-         this.removeCurrentLoaderListeners();
-         for(index = 0; index < this.bridges.length; index++)
+         if(this.subscribed && this.dataManager != null && this.callback != null)
          {
-            bridge = this.bridges[index];
-            if(bridge != null && "dispose" in bridge)
-            {
-               try
-               {
-                  bridge["dispose"]();
-               }
-               catch(bridgeDisposeError:Error)
-               {
-               }
-            }
-         }
-         for(index = 0; index < this.loaders.length; index++)
-         {
-            loader = this.loaders[index] as Loader;
-            if(loader == null)
-            {
-               continue;
-            }
-            if(loader.parent === this)
-            {
-               removeChild(loader);
-            }
             try
             {
-               loader.close();
+               this.dataManager.Unsubscribe(PROVIDER,this.callback);
             }
-            catch(loaderCloseError:Error)
-            {
-            }
-            try
-            {
-               loader.unload();
-            }
-            catch(loaderUnloadError:Error)
+            catch(unsubscribeError:Error)
             {
             }
          }
+         this.subscribed = false;
+         consumerIds = this.getLoaderIds();
+         for each(consumerId in consumerIds)
+         {
+            this.unloadConsumer(consumerId);
+         }
+         this.loaders = {};
+         this.paths = {};
+         this.versions = {};
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {
             removeChild(this.diagnostics);
          }
-         this.currentLoader = null;
-         this.currentBridge = null;
-         this.owner = null;
          this.diagnostics = null;
-         this.diagnosticLines = null;
-         this.loaders = null;
-         this.bridges = null;
-         this.slotStates = null;
+         this.owner = null;
+         this.dataManager = null;
+         this.callback = null;
       }
 
-      private function discoverNextSlot() : void
+      private function subscribe() : void
       {
-         if(this.disposed)
-         {
-            return;
-         }
-         this.currentSlot++;
-         if(this.currentSlot >= SLOT_COUNT)
-         {
-            this.appendDiagnostic("COMPLETE | READY " + this.readyCount + "/" + SLOT_COUNT);
-            return;
-         }
-         this.currentPath = SLOT_ROOT + this.displayMode + "/" + this.formatSlot(this.currentSlot) + ".swf";
-         this.slotStates[this.currentSlot] = "requesting";
-         this.appendDiagnostic(this.formatSlot(this.currentSlot).toUpperCase() + " REQUEST " + this.currentPath);
-         this.currentBridge = null;
-         this.currentLoader = new Loader();
-         this.loaders.push(this.currentLoader);
-         this.currentLoader.contentLoaderInfo.addEventListener(Event.INIT,this.onConsumerInit,false,0,true);
-         this.currentLoader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onConsumerComplete,false,0,true);
-         this.currentLoader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onConsumerIoError,false,0,true);
-         this.currentLoader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onConsumerSecurityError,false,0,true);
          try
          {
-            this.currentLoader.load(new URLRequest(this.currentPath));
+            this.dataManager = getDefinitionByName("Shared.AS3.Data.BSUIDataManager");
+            if(this.dataManager == null)
+            {
+               throw new Error("BSUIDataManager definition was null");
+            }
+            this.dataManager.GetDataFromClient(PROVIDER,true);
+            this.dataManager.Subscribe(PROVIDER,this.callback);
+            this.subscribed = true;
+            this.appendDiagnostic("BRIDGE SUBSCRIBED | " + PROVIDER);
+         }
+         catch(subscriptionError:Error)
+         {
+            this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
+         }
+      }
+
+      private function onCustomAlertsData(param1:Object) : void
+      {
+         var data:Object = null;
+         var alerts:Array = null;
+         var alert:Object = null;
+         var text:String = null;
+         if(this.disposed || param1 == null)
+         {
+            return;
+         }
+         data = param1.data == null ? param1 : param1.data;
+         if(data == null || data.aAlerts == null)
+         {
+            return;
+         }
+         alerts = data.aAlerts as Array;
+         if(alerts == null)
+         {
+            return;
+         }
+         for each(alert in alerts)
+         {
+            if(alert == null || alert.sAlertText == null)
+            {
+               continue;
+            }
+            text = String(alert.sAlertText);
+            if(text.indexOf(ENVELOPE_PREFIX) == 0)
+            {
+               this.receiveEnvelope(text);
+            }
+         }
+      }
+
+      private function receiveEnvelope(param1:String) : void
+      {
+         var fields:Array = param1.split("|");
+         if(fields.length < 4 || String(fields[0]) != "VWC_EVT/1")
+         {
+            return;
+         }
+         if(String(fields[1]) == SNAPSHOT_TYPE)
+         {
+            this.receiveSnapshot(fields);
+         }
+         else if(String(fields[1]) == DIAGNOSTIC_TYPE)
+         {
+            this.appendDiagnostic("REGISTRY " + fields.slice(3).join(" | "));
+         }
+      }
+
+      private function receiveSnapshot(param1:Array) : void
+      {
+         var messageId:int = 0;
+         var expectedCount:int = 0;
+         var records:Array = null;
+         var desired:Object = {};
+         var recordText:String = null;
+         var fields:Array = null;
+         var descriptor:Object = null;
+         var consumerId:String = null;
+         if(param1.length != 6)
+         {
+            this.appendDiagnostic("SNAPSHOT REJECTED | FIELD COUNT " + param1.length);
+            return;
+         }
+         messageId = int(param1[2]);
+         if(messageId <= this.latestMessageId)
+         {
+            return;
+         }
+         expectedCount = int(param1[4]);
+         records = String(param1[5]).length == 0 ? [] : String(param1[5]).split(";");
+         if(records.length != expectedCount)
+         {
+            this.appendDiagnostic("SNAPSHOT REJECTED | EXPECTED " + expectedCount + " GOT " + records.length);
+            return;
+         }
+         for each(recordText in records)
+         {
+            fields = recordText.split("~");
+            if(fields.length != 5)
+            {
+               this.appendDiagnostic("DESCRIPTOR REJECTED | FIELD COUNT " + fields.length);
+               return;
+            }
+            descriptor = {
+               "consumerId":this.sanitizeText(fields[0],80),
+               "displayName":this.sanitizeText(fields[1],80),
+               "normalPath":this.sanitizePath(fields[2]),
+               "largePath":this.sanitizePath(fields[3]),
+               "version":int(fields[4])
+            };
+            try
+            {
+               this.validateDescriptor(descriptor);
+            }
+            catch(descriptorError:Error)
+            {
+               this.appendDiagnostic("DESCRIPTOR REJECTED | " + this.sanitizeText(descriptorError,100));
+               return;
+            }
+            if(desired[descriptor.consumerId] != null)
+            {
+               this.appendDiagnostic("DESCRIPTOR REJECTED | DUPLICATE " + descriptor.consumerId);
+               return;
+            }
+            desired[descriptor.consumerId] = descriptor;
+         }
+         this.latestMessageId = messageId;
+         this.appendDiagnostic("SNAPSHOT " + messageId + " | " + this.sanitizeText(param1[3],40) + " | " + expectedCount + " CONSUMER(S)");
+         this.reconcile(desired);
+      }
+
+      private function validateDescriptor(param1:Object) : void
+      {
+         if(param1.consumerId.length == 0 || param1.displayName.length == 0 || param1.version < 1)
+         {
+            throw new Error("incomplete consumer descriptor");
+         }
+         var prefix:String = "Interface/VenworksCanvas/Consumers/" + param1.consumerId + "/";
+         if(param1.normalPath != prefix + "normal.swf" || param1.largePath != prefix + "large.swf")
+         {
+            throw new Error("consumer path is not namespaced to " + param1.consumerId);
+         }
+      }
+
+      private function reconcile(param1:Object) : void
+      {
+         var consumerId:String = null;
+         var consumerIds:Array = this.getLoaderIds();
+         var descriptor:Object = null;
+         var path:String = null;
+         for each(consumerId in consumerIds)
+         {
+            if(param1[consumerId] == null)
+            {
+               this.appendDiagnostic("REMOVE " + consumerId);
+               this.unloadConsumer(consumerId);
+            }
+         }
+         for(consumerId in param1)
+         {
+            descriptor = param1[consumerId];
+            path = this.displayMode == "large" ? descriptor.largePath : descriptor.normalPath;
+            if(this.loaders[consumerId] != null && this.paths[consumerId] == path && this.versions[consumerId] == descriptor.version)
+            {
+               continue;
+            }
+            if(this.loaders[consumerId] != null)
+            {
+               this.unloadConsumer(consumerId);
+            }
+            this.loadConsumer(consumerId,path,descriptor.version);
+         }
+      }
+
+      private function getLoaderIds() : Array
+      {
+         var consumerId:String = null;
+         var consumerIds:Array = [];
+         for(consumerId in this.loaders)
+         {
+            consumerIds.push(consumerId);
+         }
+         return consumerIds;
+      }
+
+      private function loadConsumer(param1:String, param2:String, param3:int) : void
+      {
+         var loader:Loader = new Loader();
+         loader.name = param1;
+         this.loaders[param1] = loader;
+         this.paths[param1] = param2;
+         this.versions[param1] = param3;
+         loader.contentLoaderInfo.addEventListener(Event.INIT,this.onConsumerInit,false,0,true);
+         loader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onConsumerComplete,false,0,true);
+         loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onConsumerError,false,0,true);
+         loader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onConsumerError,false,0,true);
+         this.appendDiagnostic("LOAD " + param1 + " | " + this.displayMode.toUpperCase());
+         try
+         {
+            loader.load(new URLRequest(param2));
          }
          catch(loadError:Error)
          {
-            this.finishCurrentFailure("LOAD",loadError.toString());
+            this.appendDiagnostic("LOAD ERROR " + param1 + " | " + this.sanitizeText(loadError,100));
+            this.unloadConsumer(param1);
          }
       }
 
       private function onConsumerInit(param1:Event) : void
       {
-         var content:DisplayObject = null;
+         var loader:Loader = param1.currentTarget.loader as Loader;
+         var bridge:Object = null;
          var record:Object = null;
-         if(this.disposed || this.currentLoader == null)
+         if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }
          try
          {
-            content = this.currentLoader.content;
-            this.currentBridge = content as Object;
-            if(this.currentBridge == null || !("getCanvasDiscoveryRecord" in this.currentBridge))
+            bridge = loader.content;
+            if(bridge == null || !("getCanvasDiscoveryRecord" in bridge))
             {
                throw new Error("missing getCanvasDiscoveryRecord()");
             }
-            record = this.currentBridge["getCanvasDiscoveryRecord"]();
-            this.validateRecord(record);
+            record = bridge["getCanvasDiscoveryRecord"]();
+            if(record == null || record.protocol != CONSUMER_PROTOCOL || record.consumerId != loader.name || int(record.version) != int(this.versions[loader.name]))
+            {
+               throw new Error("consumer identity did not match its descriptor");
+            }
          }
          catch(validationError:Error)
          {
-            this.finishCurrentFailure("INVALID",validationError.toString());
+            this.appendDiagnostic("INVALID " + loader.name + " | " + this.sanitizeText(validationError,100));
+            this.unloadConsumer(loader.name);
          }
       }
 
       private function onConsumerComplete(param1:Event) : void
       {
-         var record:Object = null;
-         var observedPath:String = null;
-         if(this.disposed || this.currentLoader == null || this.currentBridge == null)
+         var loader:Loader = param1.currentTarget.loader as Loader;
+         if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }
-         try
+         this.removeLoaderListeners(loader);
+         if(loader.parent !== this)
          {
-            record = this.currentBridge["getCanvasDiscoveryRecord"]();
-            this.validateRecord(record);
-            observedPath = this.sanitizeText(this.currentLoader.contentLoaderInfo.url,160);
-            this.removeCurrentLoaderListeners();
-            addChild(this.currentLoader);
-            this.bridges.push(this.currentBridge);
-            this.slotStates[this.currentSlot] = "ready";
-            this.readyCount++;
-            this.appendDiagnostic(this.formatSlot(this.currentSlot).toUpperCase() + " READY | " +
-               this.sanitizeText(record["consumerId"],48) + " | " +
-               this.sanitizeText(record["version"],24) + " | " +
-               this.sanitizeText(record["marker"],24));
-            this.appendDiagnostic("  URL " + observedPath);
-            this.currentLoader = null;
-            this.currentBridge = null;
-            this.discoverNextSlot();
+            addChild(loader);
          }
-         catch(completionError:Error)
-         {
-            this.finishCurrentFailure("COMPLETE",completionError.toString());
-         }
+         this.appendDiagnostic("READY " + loader.name + " | V" + this.versions[loader.name]);
+         this.reapplyVanillaPlacements();
       }
 
-      private function onConsumerIoError(param1:IOErrorEvent) : void
+      private function onConsumerError(param1:Event) : void
       {
-         this.finishCurrentFailure("MISSING",param1.toString());
-      }
-
-      private function onConsumerSecurityError(param1:SecurityErrorEvent) : void
-      {
-         this.finishCurrentFailure("SECURITY",param1.toString());
-      }
-
-      private function finishCurrentFailure(param1:String, param2:String) : void
-      {
-         var failedLoader:Loader = this.currentLoader;
-         if(this.disposed || failedLoader == null)
+         var loader:Loader = param1.currentTarget.loader as Loader;
+         if(loader == null)
          {
             return;
          }
-         this.removeCurrentLoaderListeners();
-         this.slotStates[this.currentSlot] = param1.toLowerCase();
-         this.appendDiagnostic(this.formatSlot(this.currentSlot).toUpperCase() + " " + param1 + " | " + this.sanitizeText(param2,120));
+         this.appendDiagnostic("MISSING " + loader.name + " | " + this.sanitizeText(param1,100));
+         this.unloadConsumer(loader.name);
+      }
+
+      private function unloadConsumer(param1:String) : void
+      {
+         var loader:Loader = this.loaders[param1] as Loader;
+         if(loader == null)
+         {
+            delete this.loaders[param1];
+            delete this.paths[param1];
+            delete this.versions[param1];
+            return;
+         }
+         this.removeLoaderListeners(loader);
+         if(loader.content != null && "dispose" in loader.content)
+         {
+            try
+            {
+               loader.content["dispose"]();
+            }
+            catch(disposeError:Error)
+            {
+            }
+         }
+         if(loader.parent === this)
+         {
+            removeChild(loader);
+         }
          try
          {
-            failedLoader.close();
+            loader.close();
          }
          catch(closeError:Error)
          {
          }
          try
          {
-            failedLoader.unload();
+            loader.unload();
          }
          catch(unloadError:Error)
          {
          }
-         this.currentLoader = null;
-         this.currentBridge = null;
-         this.discoverNextSlot();
+         delete this.loaders[param1];
+         delete this.paths[param1];
+         delete this.versions[param1];
       }
 
-      private function validateRecord(param1:Object) : void
+      private function removeLoaderListeners(param1:Loader) : void
       {
-         var expectedSlot:String = this.formatSlot(this.currentSlot);
-         if(param1 == null)
-         {
-            throw new Error("null registration record");
-         }
-         if(String(param1["protocol"]) != PROTOCOL)
-         {
-            throw new Error("protocol mismatch");
-         }
-         if(String(param1["slot"]) != expectedSlot)
-         {
-            throw new Error("slot mismatch: expected " + expectedSlot);
-         }
-         if(this.sanitizeText(param1["consumerId"],48).length == 0)
-         {
-            throw new Error("empty consumerId");
-         }
-         if(this.sanitizeText(param1["version"],24).length == 0)
-         {
-            throw new Error("empty version");
-         }
-         if(this.sanitizeText(param1["marker"],24).length == 0)
-         {
-            throw new Error("empty marker");
-         }
-      }
-
-      private function removeCurrentLoaderListeners() : void
-      {
-         if(this.currentLoader == null)
-         {
-            return;
-         }
-         this.currentLoader.contentLoaderInfo.removeEventListener(Event.INIT,this.onConsumerInit);
-         this.currentLoader.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onConsumerComplete);
-         this.currentLoader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onConsumerIoError);
-         this.currentLoader.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onConsumerSecurityError);
-      }
-
-      private function resolveDisplayMode(param1:DisplayObjectContainer) : String
-      {
-         var ownerUrl:String = this.resolveOwnerUrl(param1).toLowerCase();
-         if(ownerUrl.indexOf("hudmenu_lrg") >= 0)
-         {
-            return "large";
-         }
-         return "normal";
-      }
-
-      private function resolveOwnerUrl(param1:DisplayObjectContainer) : String
-      {
-         var ownerUrl:String = "owner-url-unavailable";
-         if(param1 == null)
-         {
-            return "owner-null";
-         }
-         try
-         {
-            ownerUrl = this.sanitizeText(param1.loaderInfo.url,160);
-         }
-         catch(ownerUrlError:Error)
-         {
-         }
-         return ownerUrl;
-      }
-
-      private function formatSlot(param1:int) : String
-      {
-         return param1 < 10 ? "slot-0" + param1 : "slot-" + param1;
+         param1.contentLoaderInfo.removeEventListener(Event.INIT,this.onConsumerInit);
+         param1.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onConsumerComplete);
+         param1.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onConsumerError);
+         param1.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onConsumerError);
       }
 
       private function createDiagnostics() : void
@@ -337,8 +448,8 @@ package
          var format:TextFormat = new TextFormat("$MAIN_Font_Bold",18,16777215,false);
          this.diagnostics = new TextField();
          this.diagnostics.name = "CanvasConsumerDiscoveryDiagnostics";
-         this.diagnostics.width = 920;
-         this.diagnostics.height = 560;
+         this.diagnostics.width = 960;
+         this.diagnostics.height = 300;
          this.diagnostics.background = true;
          this.diagnostics.backgroundColor = 1052688;
          this.diagnostics.border = true;
@@ -361,13 +472,39 @@ package
             return;
          }
          this.diagnosticLines.push(this.sanitizeText(param1,220));
-         while(this.diagnosticLines.length > 18)
+         while(this.diagnosticLines.length > 10)
          {
             this.diagnosticLines.shift();
          }
          this.diagnostics.text = this.diagnosticLines.join("\n");
          format = new TextFormat("$MAIN_Font_Bold",18,16777215,false);
          this.diagnostics.setTextFormat(format);
+      }
+
+      private function resolveHostKind() : String
+      {
+         return this.ownerLabel.toLowerCase().indexOf("spaceship") >= 0 ? "SHIP HUD" : "PLAYER HUD";
+      }
+
+      private function resolveOwnerUrl(param1:DisplayObjectContainer) : String
+      {
+         if(param1 == null)
+         {
+            return "owner-null";
+         }
+         try
+         {
+            return this.sanitizeText(param1.loaderInfo.url,180);
+         }
+         catch(ownerUrlError:Error)
+         {
+         }
+         return "owner-url-unavailable";
+      }
+
+      private function sanitizePath(param1:Object) : String
+      {
+         return this.sanitizeText(param1,200).replace(/\\/g,"/");
       }
 
       private function sanitizeText(param1:Object, param2:int) : String

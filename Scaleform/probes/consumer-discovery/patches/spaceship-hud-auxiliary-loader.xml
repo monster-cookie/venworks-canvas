@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actionScriptPatch name="vwcanvas9-spaceship-hud-auxiliary-loader" version="1" script="SpaceshipHudMenu">
+  <validation>
+    <requiredSourceTokens>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this)]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
+      <token><![CDATA[Event.REMOVED_FROM_STAGE]]></token>
+      <token><![CDATA[IOErrorEvent.IO_ERROR]]></token>
+      <token><![CDATA[SecurityErrorEvent.SECURITY_ERROR]]></token>
+    </requiredSourceTokens>
+    <requiredInspectionTokens>
+      <token><![CDATA[venworkscui.swf]]></token>
+      <token><![CDATA[VenworksCanvasRegistryLoader]]></token>
+      <token><![CDATA[initialize]]></token>
+      <token><![CDATA[dispose]]></token>
+    </requiredInspectionTokens>
+  </validation>
+  <insertions>
+    <insertion position="after"><anchor><![CDATA[   import flash.display.MovieClip;]]></anchor><content><![CDATA[
+   import flash.display.DisplayObject;
+   import flash.display.Loader;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[   import flash.events.Event;]]></anchor><content><![CDATA[
+   import flash.events.IOErrorEvent;
+   import flash.events.SecurityErrorEvent;
+   import flash.net.URLRequest;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[      private var _dataSubscriptionKeyword:String = "ShipHudData";]]></anchor><content><![CDATA[
+
+      private var VenworksCanvasRegistryLoader:Loader = null;
+
+      private var VenworksCanvasRegistryBridge:Object = null;
+
+      private var VenworksCanvasRegistryDisposed:Boolean = false;]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         BSUIDataManager.Subscribe("ShipHudData",function(param1:FromClientDataEvent):*]]></anchor><content><![CDATA[         this.startVenworksCanvasRegistry();
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      private function startVenworksCanvasRegistry() : void
+      {
+         if(this.VenworksCanvasRegistryLoader != null || this.VenworksCanvasRegistryDisposed)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryLoader = new Loader();
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(Event.INIT,this.onVenworksCanvasRegistryInit,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onVenworksCanvasRegistryComplete,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasRegistryError,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasRegistryError,false,0,true);
+         addEventListener(Event.REMOVED_FROM_STAGE,this.onVenworksCanvasRegistryRemoved,false,0,true);
+         try
+         {
+            this.VenworksCanvasRegistryLoader.load(new URLRequest("venworkscui.swf"));
+         }
+         catch(venworksCanvasLoadError:Error)
+         {
+            trace("VWCANVAS9-SHIP-AUX-LOAD | " + venworksCanvasLoadError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryInit(param1:Event) : void
+      {
+         if(this.VenworksCanvasRegistryDisposed || this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         try
+         {
+            this.VenworksCanvasRegistryBridge = this.VenworksCanvasRegistryLoader.content;
+            if(this.VenworksCanvasRegistryBridge == null || !("initialize" in this.VenworksCanvasRegistryBridge))
+            {
+               throw new Error("Canvas registry auxiliary does not expose initialize()");
+            }
+            this.VenworksCanvasRegistryBridge["initialize"](this);
+         }
+         catch(venworksCanvasInitError:Error)
+         {
+            trace("VWCANVAS9-SHIP-AUX-INIT | " + venworksCanvasInitError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryComplete(param1:Event) : void
+      {
+         var loadedContent:DisplayObject = null;
+         if(this.VenworksCanvasRegistryDisposed || this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         this.removeVenworksCanvasRegistryListeners();
+         loadedContent = this.VenworksCanvasRegistryLoader.content;
+         if(loadedContent == null || this.VenworksCanvasRegistryBridge !== loadedContent)
+         {
+            trace("VWCANVAS9-SHIP-AUX-COMPLETE | initialized content was not retained");
+            this.disposeVenworksCanvasRegistry();
+            return;
+         }
+         if(loadedContent.parent !== this)
+         {
+            addChild(loadedContent);
+         }
+      }
+
+      private function onVenworksCanvasRegistryError(param1:Event) : void
+      {
+         trace("VWCANVAS9-SHIP-AUX-ERROR | " + param1.toString());
+         this.disposeVenworksCanvasRegistry();
+      }
+
+      private function onVenworksCanvasRegistryRemoved(param1:Event) : void
+      {
+         if(param1.target === this)
+         {
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function removeVenworksCanvasRegistryListeners() : void
+      {
+         if(this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(Event.INIT,this.onVenworksCanvasRegistryInit);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onVenworksCanvasRegistryComplete);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasRegistryError);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasRegistryError);
+      }
+
+      private function disposeVenworksCanvasRegistry() : void
+      {
+         var loadedContent:DisplayObject = null;
+         if(this.VenworksCanvasRegistryDisposed)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryDisposed = true;
+         removeEventListener(Event.REMOVED_FROM_STAGE,this.onVenworksCanvasRegistryRemoved);
+         this.removeVenworksCanvasRegistryListeners();
+         if(this.VenworksCanvasRegistryBridge != null && "dispose" in this.VenworksCanvasRegistryBridge)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryBridge["dispose"]();
+            }
+            catch(venworksCanvasDisposeError:Error)
+            {
+            }
+         }
+         if(this.VenworksCanvasRegistryBridge is DisplayObject)
+         {
+            loadedContent = this.VenworksCanvasRegistryBridge as DisplayObject;
+            if(loadedContent.parent === this)
+            {
+               removeChild(loadedContent);
+            }
+         }
+         this.VenworksCanvasRegistryBridge = null;
+         if(this.VenworksCanvasRegistryLoader != null)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryLoader.unload();
+            }
+            catch(venworksCanvasUnloadError:Error)
+            {
+            }
+         }
+         this.VenworksCanvasRegistryLoader = null;
+      }
+
+]]></content></insertion>
+  </insertions>
+</actionScriptPatch>

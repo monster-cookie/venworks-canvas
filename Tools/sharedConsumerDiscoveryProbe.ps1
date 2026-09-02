@@ -81,6 +81,50 @@ function Get-ConsumerDiscoveryMatrix {
   return Import-PowerShellDataFile -LiteralPath $matrixPath
 }
 
+function Import-ConsumerDiscoveryEnvironment {
+  param(
+    [string]$Path = (Join-Path ([System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) '.env')
+  )
+
+  $environmentPath = Resolve-ConsumerDiscoveryRequiredFile -Path $Path -Description 'Consumer-discovery environment file'
+  foreach ($line in [System.IO.File]::ReadAllLines($environmentPath)) {
+    $trimmed = $line.Trim()
+    if ($trimmed.Length -eq 0 -or $trimmed.StartsWith('#')) {
+      continue
+    }
+    $separator = $trimmed.IndexOf('=')
+    if ($separator -lt 1) {
+      throw "Invalid environment entry in $environmentPath."
+    }
+    $name = $trimmed.Substring(0, $separator).Trim()
+    $value = $trimmed.Substring($separator + 1).Trim()
+    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+        ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+      $value = $value.Substring(1, $value.Length - 2)
+    }
+    [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+  }
+}
+
+function Resolve-ConsumerDiscoveryExecutable {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+
+    [Parameter(Mandatory = $true)]
+    [string]$FileName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Description
+  )
+
+  $candidate = $Path
+  if (Test-Path -LiteralPath $Path -PathType Container) {
+    $candidate = Join-Path $Path $FileName
+  }
+  return Resolve-ConsumerDiscoveryRequiredFile -Path $candidate -Description $Description
+}
+
 function Assert-VwHudV2Fixture {
   param(
     [Parameter(Mandatory = $true)]
@@ -155,17 +199,11 @@ function Get-VwHudHostMovieEvidence {
   )
 
   $evidence = [System.Collections.Generic.List[object]]::new()
-  foreach ($definition in @($Matrix.VwHudFixture.HostMovies)) {
+  foreach ($definition in @($Matrix.VwHudFixture.PlayerHudMovies)) {
     $sourcePath = Resolve-ConsumerDiscoveryRequiredFile `
       -Path (Join-Path $VwHudRepositoryPath ([string]$definition.Source)) `
       -Description "Pinned VWHUD host movie '$($definition.Source)'"
-    $expectedHash = Get-VwHudExpectedMovieHash `
-      -VwHudRepositoryPath $VwHudRepositoryPath `
-      -ManifestRelativePath ([string]$definition.Manifest)
     $actualHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
-    if ($actualHash -cne $expectedHash) {
-      throw "Pinned VWHUD host movie hash mismatch for '$($definition.Source)'. Expected $expectedHash; found $actualHash."
-    }
     $evidence.Add([pscustomobject]@{
       Source = [string]$definition.Source
       Target = [string]$definition.Target

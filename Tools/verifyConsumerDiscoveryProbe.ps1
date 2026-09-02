@@ -6,11 +6,14 @@ param(
 
   [string]$MoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\movies'),
 
-  [string]$LooseDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\loose'),
+  [string]$ShipMoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\ship-movies'),
 
-  [string]$PackagesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\packages')
+  [string]$PluginsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\plugins'),
+
+  [string]$ScriptsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\scripts')
 )
 
+$PSNativeCommandUseErrorActionPreference = $true
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sharedConsumerDiscoveryProbe.ps1')
@@ -27,15 +30,37 @@ function Assert-ExactRelativeFileInventory {
     [string]$Description
   )
 
-  $resolvedRoot = Resolve-ConsumerDiscoveryRequiredDirectory -Path $Root -Description $Description
-  $actual = @(Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
-    $_.FullName.Substring($resolvedRoot.Length + 1).Replace('\', '/')
+  $actual = @(Get-ChildItem -LiteralPath $Root -File -Recurse | ForEach-Object {
+    $_.FullName.Substring($Root.Length + 1).Replace('\', '/')
   } | Sort-Object)
-  $sortedExpected = @($Expected | Sort-Object)
+  $sortedExpected = @($Expected | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
   if ($actual.Count -ne $sortedExpected.Count -or
       [string]::Join("`n", $actual) -cne [string]::Join("`n", $sortedExpected)) {
-    throw "$Description has an unexpected file inventory. Expected '$([string]::Join(', ', $sortedExpected))'; found '$([string]::Join(', ', $actual))'."
+    throw "$Description inventory differs. Expected [$([string]::Join(', ', $sortedExpected))]; found [$([string]::Join(', ', $actual))]."
   }
+}
+
+function Get-Sha256FileValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $line = [System.IO.File]::ReadAllText($Path).Trim()
+  $match = [regex]::Match($line, '^(?<hash>[0-9A-Fa-f]{64})(?:\s{2,}.+)?$')
+  if (!$match.Success) {
+    throw "Invalid SHA-256 sidecar: $Path"
+  }
+  return $match.Groups['hash'].Value.ToUpperInvariant()
+}
+
+function Get-FileSha256 {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
 function Get-BytesSha256 {
@@ -44,9 +69,9 @@ function Get-BytesSha256 {
     [byte[]]$Bytes
   )
 
-  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  $algorithm = [Security.Cryptography.SHA256]::Create()
   try {
-    return ([System.BitConverter]::ToString($algorithm.ComputeHash($Bytes))).Replace('-', '')
+    return [Convert]::ToHexString($algorithm.ComputeHash($Bytes))
   }
   finally {
     $algorithm.Dispose()
@@ -54,209 +79,176 @@ function Get-BytesSha256 {
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$probeRoot = Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery'
-$actionScriptRoot = Join-Path $probeRoot 'actionscript'
-$buildRoot = Join-Path $probeRoot 'build'
+$consumerRoot = Join-Path $repositoryRoot 'Scaleform\probes\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
 
-$expectedActionScriptFiles = @(
-  'CanvasConsumerDiscoveryHost.as'
-  'CanvasDiscoveryConsumerA.as'
-  'CanvasDiscoveryConsumerAUpdate.as'
-  'CanvasDiscoveryConsumerB.as'
-  'CanvasDiscoveryConsumerInvalid.as'
+if ([int]$matrix.Version -ne 2 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/1') {
+  throw 'Consumer-discovery matrix must declare the v2 dynamic registry probe contract.'
+}
+
+$expectedKeys = [string[]]@('Host', 'ConsumerA', 'ConsumerB')
+foreach ($sectionName in @('Movies', 'Plugins', 'Staging')) {
+  $keys = @($matrix[$sectionName].Key)
+  if ($keys.Count -ne 3 -or [string]::Join("`n", @($keys | Sort-Object)) -cne [string]::Join("`n", @($expectedKeys | Sort-Object))) {
+    throw "Matrix section '$sectionName' must contain exactly Host, ConsumerA, and ConsumerB."
+  }
+}
+
+if (@($matrix.VwHudFixture.RequiredPipelineFiles).Count -ne 4 -or
+    @($matrix.VwHudFixture.RequiredPipelineFiles | Where-Object { $_ -notmatch 'V2|sharedScaleformMovies' }).Count -ne 0) {
+  throw 'Consumer discovery must pin only the declared VWHUD v2 pipeline files.'
+}
+if (@($matrix.VwHudFixture.PlayerHudMovies).Count -ne 4) {
+  throw 'Consumer discovery must stage the exact four VWHUD player HUD movie variants.'
+}
+
+$requiredRuntimeCases = @(
+  'pc-archive-host-only'
+  'pc-archive-consumer-a'
+  'pc-archive-two-consumers'
+  'pc-archive-reversed-consumer-order'
+  'pc-archive-save-reload'
+  'pc-archive-normal-large'
+  'pc-archive-ship-hud'
+  'pc-archive-pilot-seat'
 )
-$expectedBuildFiles = @(
-  'consumer-a-update.build.xml'
-  'consumer-a.build.xml'
-  'consumer-b.build.xml'
-  'consumer-invalid.build.xml'
-  'host.build.xml'
-)
-Assert-ExactRelativeFileInventory `
-  -Root $actionScriptRoot `
-  -Expected $expectedActionScriptFiles `
-  -Description 'Consumer-discovery ActionScript source directory'
-Assert-ExactRelativeFileInventory `
-  -Root $buildRoot `
-  -Expected $expectedBuildFiles `
-  -Description 'Consumer-discovery build manifest directory'
-
-if ([int]$matrix.Version -ne 1 -or [string]$matrix.Protocol -cne 'VWCANVAS_DISCOVERY_PROBE/1') {
-  throw 'Consumer-discovery matrix has an unsupported version or protocol.'
-}
-if ([string]$matrix.VwHudFixture.Revision -notmatch '^[0-9a-f]{40}$') {
-  throw 'Consumer-discovery matrix must pin one complete lowercase VWHUD revision.'
-}
-$requiredV2Files = @(
-  'Tools/buildVariantV2.ps1'
-  'Tools/compileScaleformAuxiliaryV2.ps1'
-  'Tools/createPackagesV2.ps1'
-  'Tools/sharedScaleformMovies.ps1'
-) | Sort-Object
-$matrixV2Files = @($matrix.VwHudFixture.RequiredPipelineFiles | Sort-Object)
-if ([string]::Join("`n", $requiredV2Files) -cne [string]::Join("`n", $matrixV2Files)) {
-  throw 'Consumer-discovery matrix does not pin the exact required VWHUD v2 pipeline files.'
-}
-if (@($matrix.VwHudFixture.HostMovies).Count -ne 4) {
-  throw 'Consumer-discovery matrix must pin exactly four normal/large VWHUD PS5DBG host movies.'
-}
-
-$movieKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-$movieOutputs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($movie in @($matrix.Movies)) {
-  if (!$movieKeys.Add([string]$movie.Key)) {
-    throw "Consumer-discovery matrix contains duplicate movie key '$($movie.Key)'."
-  }
-  if (!$movieOutputs.Add([string]$movie.Output)) {
-    throw "Consumer-discovery matrix contains duplicate movie output '$($movie.Output)'."
-  }
-  $definition = Get-ConsumerDiscoveryBuildDefinition `
-    -ManifestPath (Join-Path $probeRoot ([string]$movie.Manifest))
-  if ($definition.OutputFile -cne [string]$movie.Output) {
-    throw "Movie '$($movie.Key)' output does not match its manifest."
-  }
-  $sourceText = [System.IO.File]::ReadAllText($definition.SourcePath)
-  $classMatches = @([regex]::Matches(
-    $sourceText,
-    '(?m)^\s*public\s+final\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\b'
-  ))
-  if ($classMatches.Count -ne 1 -or [string]$classMatches[0].Groups[1].Value -cne $definition.ClassName) {
-    throw "Movie '$($movie.Key)' source does not declare exactly its manifest class '$($definition.ClassName)'."
-  }
-  foreach ($requiredToken in @($definition.RequiredTokens)) {
-    if (!$sourceText.Contains([string]$requiredToken)) {
-      throw "Movie '$($movie.Key)' source is missing required token '$requiredToken'."
-    }
-  }
-  foreach ($forbiddenToken in @($definition.ForbiddenTokens)) {
-    if ($sourceText.Contains([string]$forbiddenToken)) {
-      throw "Movie '$($movie.Key)' source contains forbidden token '$forbiddenToken'."
-    }
-  }
-}
-if ($movieKeys.Count -ne 5) {
-  throw 'Consumer-discovery matrix must define exactly five single-class probe movies.'
-}
-
-$hostSource = [System.IO.File]::ReadAllText((Join-Path $actionScriptRoot 'CanvasConsumerDiscoveryHost.as'))
-foreach ($token in @(
-  'private static const SLOT_COUNT:int = 4;',
-  'this.currentSlot++',
-  'this.discoverNextSlot();',
-  'removeEventListener(Event.REMOVED_FROM_STAGE',
-  'contentLoaderInfo.removeEventListener(Event.INIT',
-  'contentLoaderInfo.removeEventListener(Event.COMPLETE',
-  'contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR',
-  'contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR',
-  'loader.unload()',
-  'bridge["dispose"]()'
-)) {
-  if (!$hostSource.Contains($token)) {
-    throw "Consumer-discovery host is missing bounded discovery or teardown token '$token'."
-  }
-}
-foreach ($forbiddenHostToken in @('URLLoader', 'XML(', 'XMLList', 'getDirectoryListing', 'FileReference', 'Game.ShowCustomWatchAlert', 'CustomAlertsData')) {
-  if ($hostSource.Contains($forbiddenHostToken)) {
-    throw "Consumer-discovery host contains forbidden transport, parser, or enumeration token '$forbiddenHostToken'."
-  }
-}
-
-$slots = @($matrix.Slots | Sort-Object { [int]$_.Index })
-if ($slots.Count -ne 4) {
-  throw 'Consumer-discovery matrix must define exactly four bounded slots.'
-}
-for ($index = 0; $index -lt $slots.Count; $index++) {
-  $expectedName = 'slot-{0:D2}' -f $index
-  if ([int]$slots[$index].Index -ne $index -or [string]$slots[$index].Name -cne $expectedName) {
-    throw "Consumer-discovery slot $index is not the expected fixed slot '$expectedName'."
-  }
-  foreach ($path in @([string]$slots[$index].NormalPath, [string]$slots[$index].LargePath)) {
-    if ($path -notmatch '^Interface/VenworksCanvas/Consumers/(?:normal|large)/slot-[0-9]{2}\.swf$') {
-      throw "Consumer-discovery slot path is outside the fixed Canvas namespace: $path"
-    }
-  }
-}
-
-$packageKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-$packageNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($package in @($matrix.Packages)) {
-  if (!$packageKeys.Add([string]$package.Key) -or !$packageNames.Add([string]$package.BaseName)) {
-    throw 'Consumer-discovery package keys and base names must be unique.'
-  }
-  if (!$movieKeys.Contains([string]$package.MovieKey)) {
-    throw "Package '$($package.Key)' references unknown movie '$($package.MovieKey)'."
-  }
-}
-$expectedPackageKeys = [string[]]@('Host', 'A1', 'A2', 'B1', 'Invalid')
-if ($packageKeys.Count -ne 5 -or !$packageKeys.SetEquals($expectedPackageKeys)) {
-  throw 'Consumer-discovery matrix must define the exact Host, A1, A2, B1, and Invalid package set.'
-}
-
 $runtimeCases = @($matrix.RuntimeCases)
-foreach ($requiredCase in @(
-  'pc-loose-host-only',
-  'pc-archive-collision-a1-wins',
-  'pc-archive-collision-a2-wins',
-  'pc-archive-invalid-then-b1',
-  'pc-archive-normal-large',
-  'pc-archive-teardown',
-  'ps5-vwhud-baseline',
-  'ps5-host-missing',
-  'ps5-collision',
-  'ps5-normal-large',
-  'ps5-teardown'
-)) {
-  if (@($runtimeCases | Where-Object { [string]$_.Id -ceq $requiredCase }).Count -ne 1) {
-    throw "Consumer-discovery runtime matrix is missing exact case '$requiredCase'."
+if ($runtimeCases.Count -ne $requiredRuntimeCases.Count) {
+  throw 'Runtime matrix must contain exactly the eight approved PC archive-only cases.'
+}
+foreach ($caseId in $requiredRuntimeCases) {
+  if (@($runtimeCases | Where-Object { [string]$_.Id -ceq $caseId }).Count -ne 1) {
+    throw "Runtime matrix is missing exact case '$caseId'."
   }
 }
 foreach ($runtimeCase in $runtimeCases) {
-  if ([string]$runtimeCase.Platform -notin @('PC', 'PS5') -or
-      [string]$runtimeCase.Shape -notin @('Loose', 'Archive') -or
-      [string]::IsNullOrWhiteSpace([string]$runtimeCase.Expected)) {
-    throw "Runtime case '$($runtimeCase.Id)' has an invalid platform, shape, or expectation."
+  if ([string]$runtimeCase.Id -match 'ps5|loose' -or [string]::IsNullOrWhiteSpace([string]$runtimeCase.Expected)) {
+    throw "Runtime case '$($runtimeCase.Id)' violates the PC archive-only scope."
   }
   foreach ($packageKey in @($runtimeCase.Packages)) {
-    if (!$packageKeys.Contains([string]$packageKey)) {
+    if ($packageKey -notin $expectedKeys) {
       throw "Runtime case '$($runtimeCase.Id)' references unknown package '$packageKey'."
     }
   }
 }
 
+$requiredFiles = @(
+  'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc'
+  'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'
+  'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerBRegistrar.psc'
+  'Scaleform\probes\consumer-discovery\actionscript\CanvasConsumerDiscoveryHost.as'
+  'Scaleform\probes\consumer-discovery\actionscript\CanvasDiscoveryConsumerA.as'
+  'Scaleform\probes\consumer-discovery\actionscript\CanvasDiscoveryConsumerB.as'
+  'Scaleform\probes\consumer-discovery\patches\spaceship-hud-auxiliary-loader.xml'
+  'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu.build.xml'
+  'Scaleform\probes\consumer-discovery\build\spaceshiphudmenu-lrg.build.xml'
+  'Tools\ConsumerDiscoveryPluginGenerator\Venworks.Canvas.ConsumerDiscovery.PluginGenerator.csproj'
+  'Tools\ConsumerDiscoveryPluginGenerator\packages.lock.json'
+  'Tools\ConsumerDiscoveryPluginGenerator\Program.cs'
+  'Tools\ConsumerDiscoveryPluginGenerator\PluginBuilder.cs'
+  'Tools\ConsumerDiscoveryPluginGenerator\PluginSpecification.cs'
+)
+foreach ($relativePath in $requiredFiles) {
+  [void](Resolve-ConsumerDiscoveryRequiredFile `
+    -Path (Join-Path $repositoryRoot $relativePath) `
+    -Description "Consumer-discovery source '$relativePath'")
+}
+
+$obsoleteFiles = @(
+  'Scaleform\probes\consumer-discovery\actionscript\CanvasDiscoveryConsumerAUpdate.as'
+  'Scaleform\probes\consumer-discovery\actionscript\CanvasDiscoveryConsumerInvalid.as'
+  'Scaleform\probes\consumer-discovery\build\consumer-a-update.build.xml'
+  'Scaleform\probes\consumer-discovery\build\consumer-invalid.build.xml'
+  'Tools\createConsumerDiscoveryProbePackages.ps1'
+)
+foreach ($relativePath in $obsoleteFiles) {
+  if (Test-Path -LiteralPath (Join-Path $repositoryRoot $relativePath)) {
+    throw "Obsolete static-slot probe source still exists: $relativePath"
+  }
+}
+
+$registrySource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot $requiredFiles[0]))
+foreach ($token in @(
+  'ConsumerOwners.Add(owner)'
+  'ConsumerIds.Find(consumerId)'
+  'ConsumerOwners[existingIndex] != owner'
+  'RegisterForMenuOpenCloseEvent("HUDMenu")'
+  'RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")'
+  'Game.ShowCustomWatchAlert("VWC_EVT/1|canvas.registry.snapshot|"'
+)) {
+  if (!$registrySource.Contains($token)) {
+    throw "Dynamic Papyrus registry is missing token '$token'."
+  }
+}
+
+foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc')) {
+  $consumerSource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot "Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\$consumerName"))
+  foreach ($token in @('Property Registry Auto Const Mandatory', 'While (attempt < 20)', 'Utility.Wait(0.5)', 'RegisterConsumer(Self,')) {
+    if (!$consumerSource.Contains($token)) {
+      throw "Papyrus consumer '$consumerName' is missing token '$token'."
+    }
+  }
+}
+
+$hostSource = [System.IO.File]::ReadAllText((Join-Path $consumerRoot 'actionscript\CanvasConsumerDiscoveryHost.as'))
+foreach ($token in @(
+  'CustomAlertsData'
+  'canvas.registry.snapshot'
+  'new Loader()'
+  'Interface/VenworksCanvas/Consumers/'
+  'getCanvasDiscoveryRecord'
+  'DESCRIPTOR REJECTED'
+  'this.getLoaderIds()'
+  'this.dataManager.Unsubscribe(PROVIDER,this.callback)'
+)) {
+  if (!$hostSource.Contains($token)) {
+    throw "Dynamic ActionScript host is missing token '$token'."
+  }
+}
+
+$sourceScope = [string]::Join("`n", @(
+  $requiredFiles | ForEach-Object { [System.IO.File]::ReadAllText((Join-Path $repositoryRoot $_)) }
+  [System.IO.File]::ReadAllText((Join-Path $consumerRoot 'probe-matrix.psd1'))
+))
+if ($sourceScope -match '(?i)slot-[0-9]+') {
+  throw 'Consumer-discovery sources retain a forbidden static slot contract.'
+}
+
+$projectSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'ConsumerDiscoveryPluginGenerator\Venworks.Canvas.ConsumerDiscovery.PluginGenerator.csproj'))
+if (!$projectSource.Contains('<TargetFramework>net10.0</TargetFramework>') -or
+    !$projectSource.Contains('<PackageReference Include="Mutagen.Bethesda" Version="0.54.4" />') -or
+    !$projectSource.Contains('<TreatWarningsAsErrors>true</TreatWarningsAsErrors>')) {
+  throw 'Mutagen generator does not retain its approved .NET 10, pinned dependency, and warnings-as-errors contract.'
+}
+
 $toolPaths = @(
   'Tools\sharedConsumerDiscoveryProbe.ps1'
   'Tools\buildConsumerDiscoveryProbe.ps1'
-  'Tools\createConsumerDiscoveryProbePackages.ps1'
+  'Tools\buildConsumerDiscoveryShipMovies.ps1'
+  'Tools\compileConsumerDiscoveryScripts.ps1'
+  'Tools\generateConsumerDiscoveryPlugins.ps1'
+  'Tools\stageConsumerDiscoveryProbe.ps1'
   'Tools\verifyConsumerDiscoveryProbe.ps1'
 )
-foreach ($toolRelativePath in $toolPaths) {
+foreach ($relativePath in $toolPaths) {
   $toolPath = Resolve-ConsumerDiscoveryRequiredFile `
-    -Path (Join-Path $repositoryRoot $toolRelativePath) `
-    -Description "Consumer-discovery tool '$toolRelativePath'"
+    -Path (Join-Path $repositoryRoot $relativePath) `
+    -Description "Consumer-discovery tool '$relativePath'"
   $tokens = $null
   $parseErrors = $null
-  [void][System.Management.Automation.Language.Parser]::ParseFile(
-    $toolPath,
-    [ref]$tokens,
-    [ref]$parseErrors
-  )
+  [void][Management.Automation.Language.Parser]::ParseFile($toolPath, [ref]$tokens, [ref]$parseErrors)
   if (@($parseErrors).Count -ne 0) {
-    throw "Consumer-discovery tool '$toolRelativePath' has PowerShell parse errors: $([string]::Join('; ', @($parseErrors.Message)))"
+    throw "Consumer-discovery tool '$relativePath' has parse errors: $([string]::Join('; ', @($parseErrors.Message)))"
   }
 }
 $allToolText = [string]::Join("`n", @($toolPaths | ForEach-Object {
   [System.IO.File]::ReadAllText((Join-Path $repositoryRoot $_))
 }))
-if ($allToolText -match '(?<!V2)compileScaleformAuxiliary\.ps1') {
-  throw 'Consumer-discovery tooling references the legacy VWHUD auxiliary compiler.'
-}
-if (!$allToolText.Contains('sharedScaleformMovies.ps1') -or
-    !$allToolText.Contains("'-compression=None'")) {
-  throw 'Consumer-discovery tooling does not retain the required VWHUD v2 movie helper and uncompressed General archive contract.'
+if ($allToolText -match '(?<!V2)compileScaleformAuxiliary\.ps1' -or !$allToolText.Contains("'-compression=None'")) {
+  throw 'Consumer-discovery tooling violates the VWHUD v2 or uncompressed General archive contract.'
 }
 
-Write-Host -ForegroundColor Green 'Verified consumer-discovery source contracts, bounded fixed slots, runtime matrix, and PowerShell syntax.'
+Write-Host -ForegroundColor Green 'Verified dynamic source contracts, three-package matrix, PC archive-only scope, and PowerShell syntax.'
 if ($SourceOnly) {
   return
 }
@@ -265,160 +257,127 @@ if ([string]::IsNullOrWhiteSpace($VwHudRepositoryPath)) {
   throw 'VwHudRepositoryPath is required for full consumer-discovery verification.'
 }
 $resolvedVwHudRoot = Assert-VwHudV2Fixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
-$hostMovieEvidence = @(Get-VwHudHostMovieEvidence -VwHudRepositoryPath $resolvedVwHudRoot -Matrix $matrix)
-$sharedMovieScript = Resolve-ConsumerDiscoveryRequiredFile `
-  -Path (Join-Path $resolvedVwHudRoot 'Tools\sharedScaleformMovies.ps1') `
-  -Description 'VWHUD v2 shared Scaleform movie helper'
-. $sharedMovieScript
+$resolvedMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $MoviesDirectory -Description 'Built auxiliary movie directory'
+$resolvedShipMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ShipMoviesDirectory -Description 'Built Ship HUD movie directory'
+$resolvedPluginsDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $PluginsDirectory -Description 'Generated plugin directory'
+$resolvedScriptsDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ScriptsDirectory -Description 'Compiled script directory'
 
-$resolvedMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory `
-  -Path $MoviesDirectory `
-  -Description 'Built consumer-discovery movie directory'
 $expectedMovieInventory = @('build-evidence.json')
 foreach ($movie in @($matrix.Movies)) {
   $expectedMovieInventory += [string]$movie.Output
   $expectedMovieInventory += "$($movie.Output).sha256"
   $expectedMovieInventory += "$($movie.Output).classes.txt"
 }
-Assert-ExactRelativeFileInventory `
-  -Root $resolvedMoviesDirectory `
-  -Expected $expectedMovieInventory `
-  -Description 'Built consumer-discovery movie directory'
-
-$buildEvidencePath = Resolve-ConsumerDiscoveryRequiredFile `
-  -Path (Join-Path $resolvedMoviesDirectory 'build-evidence.json') `
-  -Description 'Consumer-discovery build evidence'
-$buildEvidence = Get-Content -LiteralPath $buildEvidencePath -Raw | ConvertFrom-Json
-if ([string]$buildEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_BUILD/1' -or
-    [string]$buildEvidence.VwHudRevision -cne [string]$matrix.VwHudFixture.Revision) {
-  throw 'Consumer-discovery build evidence has an unexpected schema or VWHUD revision.'
-}
-
+Assert-ExactRelativeFileInventory -Root $resolvedMoviesDirectory -Expected $expectedMovieInventory -Description 'Auxiliary movie output'
 $movieHashByKey = @{}
 foreach ($movie in @($matrix.Movies)) {
-  $moviePath = Resolve-ConsumerDiscoveryRequiredFile `
-    -Path (Join-Path $resolvedMoviesDirectory ([string]$movie.Output)) `
-    -Description "Built movie '$($movie.Key)'"
-  Assert-ScaleformMovieEncoding `
-    -Path $moviePath `
-    -Context "Built movie '$($movie.Key)'" `
-    -ExpectedSignature CWS
-  $actualHash = (Get-FileHash -LiteralPath $moviePath -Algorithm SHA256).Hash.ToUpperInvariant()
+  $moviePath = Join-Path $resolvedMoviesDirectory ([string]$movie.Output)
+  $actualHash = Get-FileSha256 -Path $moviePath
   $sidecarHash = [System.IO.File]::ReadAllText("$moviePath.sha256").Trim().ToUpperInvariant()
-  $evidenceRecord = @($buildEvidence.Movies | Where-Object { [string]$_.OutputFile -ceq [string]$movie.Output })
-  if ($actualHash -cne $sidecarHash -or
-      $evidenceRecord.Count -ne 1 -or
-      [string]$evidenceRecord[0].Sha256 -cne $actualHash -or
-      [int]$evidenceRecord[0].BuildPasses -ne 2) {
-    throw "Built movie '$($movie.Key)' hash or deterministic-pass evidence does not match."
+  if ($actualHash -cne $sidecarHash) {
+    throw "Auxiliary movie '$($movie.Key)' does not match its deterministic hash sidecar."
   }
   $movieHashByKey[[string]$movie.Key] = $actualHash
 }
 
-$resolvedPackagesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory `
-  -Path $PackagesDirectory `
-  -Description 'Consumer-discovery package directory'
-$resolvedLooseDirectory = Resolve-ConsumerDiscoveryRequiredDirectory `
-  -Path $LooseDirectory `
-  -Description 'Consumer-discovery loose package directory'
-$packageEvidencePath = Resolve-ConsumerDiscoveryRequiredFile `
-  -Path (Join-Path $resolvedPackagesDirectory 'package-evidence.json') `
-  -Description 'Consumer-discovery package evidence'
-$packageEvidence = Get-Content -LiteralPath $packageEvidencePath -Raw | ConvertFrom-Json
-if ([string]$packageEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_PACKAGES/1' -or
-    [string]$packageEvidence.VwHudRevision -cne [string]$matrix.VwHudFixture.Revision) {
-  throw 'Consumer-discovery package evidence has an unexpected schema or VWHUD revision.'
+Assert-ExactRelativeFileInventory `
+  -Root $resolvedShipMoviesDirectory `
+  -Expected @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf') `
+  -Description 'Ship HUD movie output'
+$shipMovieHashes = @{}
+foreach ($definition in @(
+  @{ Output = 'spaceshiphudmenu.swf'; HashFile = 'spaceshiphudmenu.expected.sha256' }
+  @{ Output = 'spaceshiphudmenu_lrg.swf'; HashFile = 'spaceshiphudmenu-lrg.expected.sha256' }
+)) {
+  $outputPath = Join-Path $resolvedShipMoviesDirectory ([string]$definition.Output)
+  $expectedHash = Get-Sha256FileValue -Path (Join-Path $consumerRoot "build\$($definition.HashFile)")
+  $actualHash = Get-FileSha256 -Path $outputPath
+  if ($actualHash -cne $expectedHash) {
+    throw "Patched Ship HUD movie '$($definition.Output)' does not match its pinned expected hash."
+  }
+  $shipMovieHashes[[string]$definition.Output] = $actualHash
 }
 
-$actualPackageDirectories = @(Get-ChildItem -LiteralPath $resolvedPackagesDirectory -Directory | Select-Object -ExpandProperty Name | Sort-Object)
-$actualLooseDirectories = @(Get-ChildItem -LiteralPath $resolvedLooseDirectory -Directory | Select-Object -ExpandProperty Name | Sort-Object)
-$expectedPackageDirectories = @($matrix.Packages.Key | Sort-Object)
-if ([string]::Join("`n", $actualPackageDirectories) -cne [string]::Join("`n", $expectedPackageDirectories)) {
-  throw 'Consumer-discovery package directory contains an unexpected package set.'
-}
-if ([string]::Join("`n", $actualLooseDirectories) -cne [string]::Join("`n", $expectedPackageDirectories)) {
-  throw 'Consumer-discovery loose directory contains an unexpected package set.'
-}
-if (@(Get-ChildItem -LiteralPath $resolvedPackagesDirectory -Directory -Recurse | Where-Object { $_.Name -ceq 'Interface' }).Count -ne 0) {
-  throw 'Consumer-discovery package output contains a loose Interface shadow.'
+Assert-ExactRelativeFileInventory `
+  -Root $resolvedPluginsDirectory `
+  -Expected @($matrix.Plugins.FileName) `
+  -Description 'Generated plugin output'
+foreach ($plugin in @($matrix.Plugins)) {
+  Assert-ConsumerDiscoveryNotGitLfsPointer `
+    -Path (Join-Path $resolvedPluginsDirectory ([string]$plugin.FileName)) `
+    -Description "Generated plugin '$($plugin.Key)'"
 }
 
-$pluginSourcePath = Resolve-ConsumerDiscoveryRequiredFile `
-  -Path (Join-Path $repositoryRoot 'Staging\Venworks-Canvas.esm') `
-  -Description 'Canvas probe plugin source'
-$pluginSourceHash = (Get-FileHash -LiteralPath $pluginSourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
+$expectedScriptInventory = @(
+  'compile-evidence.json'
+  'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex'
+  'Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerARegistrar.pex'
+  'Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerBRegistrar.pex'
+)
+Assert-ExactRelativeFileInventory -Root $resolvedScriptsDirectory -Expected $expectedScriptInventory -Description 'Compiled Papyrus output'
 
-foreach ($package in @($matrix.Packages)) {
-  $packageKey = [string]$package.Key
-  $packagePath = Join-Path $resolvedPackagesDirectory $packageKey
-  $baseName = [string]$package.BaseName
+$payloadHashes = @{
+  Host = @{
+    'interface/venworkscui.swf' = $movieHashByKey.Host
+    'interface/spaceshiphudmenu.swf' = $shipMovieHashes['spaceshiphudmenu.swf']
+    'interface/spaceshiphudmenu_lrg.swf' = $shipMovieHashes['spaceshiphudmenu_lrg.swf']
+    'scripts/venworks/canvas/probes/consumerdiscovery/registry.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\Registry.pex'))
+  }
+  ConsumerA = @{
+    'interface/venworkscanvas/consumers/venworks.canvas.probe.consumer-a/normal.swf' = $movieHashByKey.ConsumerA
+    'interface/venworkscanvas/consumers/venworks.canvas.probe.consumer-a/large.swf' = $movieHashByKey.ConsumerA
+    'scripts/venworks/canvas/probes/consumerdiscovery/consumeraregistrar.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.pex'))
+  }
+  ConsumerB = @{
+    'interface/venworkscanvas/consumers/venworks.canvas.probe.consumer-b/normal.swf' = $movieHashByKey.ConsumerB
+    'interface/venworkscanvas/consumers/venworks.canvas.probe.consumer-b/large.swf' = $movieHashByKey.ConsumerB
+    'scripts/venworks/canvas/probes/consumerdiscovery/consumerbregistrar.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerBRegistrar.pex'))
+  }
+}
+foreach ($playerHudMovie in @($matrix.VwHudFixture.PlayerHudMovies)) {
+  $sourcePath = Resolve-ConsumerDiscoveryRequiredFile `
+    -Path (Join-Path $resolvedVwHudRoot ([string]$playerHudMovie.Source)) `
+    -Description "Pinned VWHUD player HUD movie '$($playerHudMovie.Source)'"
+  $payloadHashes.Host[([string]$playerHudMovie.Target).ToLowerInvariant()] = Get-FileSha256 -Path $sourcePath
+}
+
+if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'Staging')) {
+  throw 'Legacy shared Staging directory must not coexist with the three package-owned staging roots.'
+}
+foreach ($staging in @($matrix.Staging)) {
+  $key = [string]$staging.Key
+  $stagingPath = Resolve-ConsumerDiscoveryRequiredDirectory `
+    -Path (Join-Path $repositoryRoot ([string]$staging.Directory)) `
+    -Description "$key staging root"
   Assert-ExactRelativeFileInventory `
-    -Root $packagePath `
-    -Expected @(
-      "$baseName - Main.ba2"
-      "$baseName - Main_PS.ba2"
-      "$baseName.esm"
-    ) `
-    -Description "Consumer-discovery package '$packageKey'"
-  $pluginPath = Join-Path $packagePath "$baseName.esm"
-  if ((Get-FileHash -LiteralPath $pluginPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $pluginSourceHash) {
-    throw "Consumer-discovery package '$packageKey' plugin copy does not match the Canvas source plugin."
+    -Root $stagingPath `
+    -Expected @([string]$staging.Plugin, [string]$staging.Archive) `
+    -Description "$key staging root"
+
+  $generatedPluginPath = Join-Path $resolvedPluginsDirectory ([string]$staging.Plugin)
+  $stagedPluginPath = Join-Path $stagingPath ([string]$staging.Plugin)
+  if ((Get-FileSha256 -Path $generatedPluginPath) -cne (Get-FileSha256 -Path $stagedPluginPath)) {
+    throw "$key staged plugin differs from the Mutagen-generated plugin."
   }
 
-  $expectedEntryHashes = @{}
-  $expectedLooseHashes = @{}
-  if ([string]$package.Role -ceq 'Host') {
-    foreach ($hostMovie in $hostMovieEvidence) {
-      $target = [string]$hostMovie.Target
-      $expectedEntryHashes[$target.ToLowerInvariant()] = [string]$hostMovie.Sha256
-      $expectedLooseHashes[$target] = [string]$hostMovie.Sha256
-    }
-    $expectedEntryHashes['interface/venworkscui.swf'] = $movieHashByKey['Host']
-    $expectedLooseHashes['Interface/venworkscui.swf'] = $movieHashByKey['Host']
+  $archivePath = Join-Path $stagingPath ([string]$staging.Archive)
+  $entries = @(Get-ConsumerDiscoveryGeneralBa2Entries -Path $archivePath)
+  if (@($entries | Where-Object { [uint32]$_.PackedSize -ne 0 }).Count -ne 0) {
+    throw "$key staged archive contains compressed entries."
   }
-  else {
-    $slot = @($matrix.Slots | Where-Object { [int]$_.Index -eq [int]$package.Slot })
-    if ($slot.Count -ne 1) {
-      throw "Consumer-discovery package '$packageKey' does not resolve exactly one slot."
-    }
-    $expectedEntryHashes[([string]$slot[0].NormalPath).ToLowerInvariant()] = $movieHashByKey[[string]$package.MovieKey]
-    $expectedEntryHashes[([string]$slot[0].LargePath).ToLowerInvariant()] = $movieHashByKey[[string]$package.MovieKey]
-    $expectedLooseHashes[[string]$slot[0].NormalPath] = $movieHashByKey[[string]$package.MovieKey]
-    $expectedLooseHashes[[string]$slot[0].LargePath] = $movieHashByKey[[string]$package.MovieKey]
+  $actualEntryNames = @($entries.Name | ForEach-Object { $_.Replace('\', '/').ToLowerInvariant() } | Sort-Object)
+  $expectedEntryNames = @($payloadHashes[$key].Keys | Sort-Object)
+  if ($actualEntryNames.Count -ne $expectedEntryNames.Count -or
+      [string]::Join("`n", $actualEntryNames) -cne [string]::Join("`n", $expectedEntryNames)) {
+    throw "$key staged archive inventory does not match its exact owner payload."
   }
-
-  $expectedLooseHashes["$baseName.esm"] = $pluginSourceHash
-  $loosePackagePath = Join-Path $resolvedLooseDirectory $packageKey
-  Assert-ExactRelativeFileInventory `
-    -Root $loosePackagePath `
-    -Expected @($expectedLooseHashes.Keys) `
-    -Description "Consumer-discovery loose package '$packageKey'"
-  foreach ($looseRelativePath in $expectedLooseHashes.Keys) {
-    $looseFilePath = Join-Path $loosePackagePath $looseRelativePath
-    $looseHash = (Get-FileHash -LiteralPath $looseFilePath -Algorithm SHA256).Hash.ToUpperInvariant()
-    if ($looseHash -cne [string]$expectedLooseHashes[$looseRelativePath]) {
-      throw "Consumer-discovery loose package '$packageKey' file '$looseRelativePath' does not match its pinned source bytes."
-    }
-  }
-
-  foreach ($archiveTarget in @('Main', 'Main_PS')) {
-    $archivePath = Join-Path $packagePath "$baseName - $archiveTarget.ba2"
-    $entries = @(Get-ConsumerDiscoveryGeneralBa2Entries -Path $archivePath)
-    $actualEntryNames = @($entries.Name | ForEach-Object { $_.Replace('\', '/').ToLowerInvariant() } | Sort-Object)
-    $expectedEntryNames = @($expectedEntryHashes.Keys | Sort-Object)
-    if ($actualEntryNames.Count -ne $expectedEntryNames.Count -or
-        [string]::Join("`n", $actualEntryNames) -cne [string]::Join("`n", $expectedEntryNames)) {
-      throw "Consumer-discovery package '$packageKey' $archiveTarget inventory does not match its exact contract."
-    }
-    foreach ($entry in $entries) {
-      $entryName = ([string]$entry.Name).Replace('\', '/').ToLowerInvariant()
-      $entryBytes = Read-ConsumerDiscoveryGeneralBa2EntryBytes -Entry $entry
-      $entryHash = Get-BytesSha256 -Bytes $entryBytes
-      if ($entryHash -cne [string]$expectedEntryHashes[$entryName]) {
-        throw "Consumer-discovery package '$packageKey' $archiveTarget entry '$entryName' does not match its pinned source bytes."
-      }
+  foreach ($entry in $entries) {
+    $entryName = ([string]$entry.Name).Replace('\', '/').ToLowerInvariant()
+    $entryHash = Get-BytesSha256 -Bytes (Read-ConsumerDiscoveryGeneralBa2EntryBytes -Entry $entry)
+    if ($entryHash -cne [string]$payloadHashes[$key][$entryName]) {
+      throw "$key staged archive entry '$entryName' differs from its verified source artifact."
     }
   }
 }
 
-Write-Host -ForegroundColor Green 'Verified deterministic movies, pinned VWHUD host inputs, loose payloads, archive-only packages, exact BA2 inventories, uncompressed entries, and embedded hashes.'
+Write-Host -ForegroundColor Green 'Verified deterministic movies, Mutagen plugins, compiled scripts, patched Ship HUD movies, and all three exact archive-only staging roots.'

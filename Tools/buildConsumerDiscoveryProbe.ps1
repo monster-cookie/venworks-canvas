@@ -41,6 +41,7 @@ $sharedMovieScript = Resolve-ConsumerDiscoveryRequiredFile `
   -Path (Join-Path $resolvedVwHudRoot 'Tools\sharedScaleformMovies.ps1') `
   -Description 'VWHUD v2 shared Scaleform movie helper'
 . $sharedMovieScript
+$env:APPDATA = Join-Path $repositoryRoot '.work\appdata'
 
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $resolvedWorkDirectory = [System.IO.Path]::GetFullPath($WorkDirectory)
