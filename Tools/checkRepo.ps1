@@ -122,12 +122,12 @@ $expectedDefinitions = @(
 )
 
 foreach ($expectedDefinition in $expectedDefinitions) {
-  $matches = @($moduleVariants | Where-Object { $_.VariantKey -ceq $expectedDefinition.VariantKey })
-  if ($matches.Count -ne 1) {
+  $variantMatches = @($moduleVariants | Where-Object { $_.VariantKey -ceq $expectedDefinition.VariantKey })
+  if ($variantMatches.Count -ne 1) {
     throw "Expected exactly one $($expectedDefinition.VariantKey) module variant."
   }
 
-  $variant = $matches[0]
+  $variant = $variantMatches[0]
   $expectedStagingPath = Join-Path $repositoryRoot $expectedDefinition.StagingFolderName
   if ($variant.VariantName -cne $expectedDefinition.VariantName -or
       $variant.PackageBaseName -cne $expectedDefinition.PackageBaseName -or
