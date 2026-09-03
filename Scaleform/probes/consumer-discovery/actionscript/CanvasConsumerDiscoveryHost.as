@@ -10,7 +10,6 @@ package
    import flash.net.URLRequest;
    import flash.text.TextField;
    import flash.text.TextFormat;
-   import flash.utils.getDefinitionByName;
 
    public final class CanvasConsumerDiscoveryHost extends MovieClip
    {
@@ -95,9 +94,10 @@ package
          this.ownerLabel = this.resolveOwnerUrl(param1);
          this.displayMode = this.ownerLabel.toLowerCase().indexOf("_lrg") >= 0 ? "large" : "normal";
          this.createDiagnostics();
-         this.appendDiagnostic("VWCANVAS-9 DYNAMIC REGISTRY");
+         this.appendDiagnostic("VWCANVAS-9 REGISTRATION LOG TEST");
          this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
-         this.subscribe();
+         this.appendDiagnostic("WATCH BRIDGE DISABLED");
+         this.appendDiagnostic("CHECK PAPYRUS LOGS | CONSUMER MOVIES NOT LOADED");
       }
 
       public function reapplyVanillaPlacements() : void
@@ -151,26 +151,6 @@ package
          this.owner = null;
          this.dataManager = null;
          this.callback = null;
-      }
-
-      private function subscribe() : void
-      {
-         try
-         {
-            this.dataManager = getDefinitionByName("Shared.AS3.Data.BSUIDataManager");
-            if(this.dataManager == null)
-            {
-               throw new Error("BSUIDataManager definition was null");
-            }
-            this.dataManager.Subscribe(PROVIDER,this.callback);
-            this.subscribed = true;
-            this.dataManager.GetDataFromClient(PROVIDER,true);
-            this.appendDiagnostic("BRIDGE SUBSCRIBED | " + PROVIDER);
-         }
-         catch(subscriptionError:Error)
-         {
-            this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
-         }
       }
 
       private function onCustomAlertsData(param1:Object) : void

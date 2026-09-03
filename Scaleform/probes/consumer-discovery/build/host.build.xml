@@ -23,11 +23,15 @@
     <token>IOErrorEvent.IO_ERROR</token>
     <token>SecurityErrorEvent.SECURITY_ERROR</token>
     <token>SNAPSHOT REJECTED</token>
+    <token>REGISTRATION LOG TEST</token>
+    <token>WATCH BRIDGE DISABLED</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>URLLoader</token>
     <token>FileReference</token>
     <token>ExternalInterface</token>
     <token>navigateToURL</token>
+    <token>.Subscribe(</token>
+    <token>.GetDataFromClient(</token>
   </forbiddenTokens>
 </canvasDiscoveryMovieBuild>

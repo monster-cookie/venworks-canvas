@@ -14,6 +14,7 @@ String ActiveDisplayName
 String ActiveNormalMovieUrl
 String ActiveLargeMovieUrl
 Int ActiveDescriptorVersion = 0
+Bool RegistrationAttemptActive = False
 
 ; Registers for both HUD menus and attempts the active descriptor, initially seeded from VMAD, after its configured delay.
 Event OnInit()
@@ -25,7 +26,7 @@ Event OnInit()
   RegisterWithRetry()
 EndEvent
 
-; Re-publishes the persistent active descriptor when either supported HUD menu opens.
+; Reconciles the persistent descriptor when either HUD opens. Overlapping attempts are skipped and no bridge publication occurs.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     If (InitialDelaySeconds > 0.0)
@@ -35,15 +36,25 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   EndIf
 EndEvent
 
-; Attempts the persistent active descriptor with bounded retries and returns whether the expected result was observed.
+; Attempts the persistent descriptor once the registry is available. True means the expected Papyrus result, never UI readiness.
 Bool Function RegisterWithRetry()
+  If (RegistrationAttemptActive)
+    Return False
+  EndIf
+  RegistrationAttemptActive = True
   EnsureActiveDescriptor()
-  Return RegisterDescriptorWithRetry(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)
+  Bool result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)
+  RegistrationAttemptActive = False
+  Return result
 EndFunction
 
 ; Applies an explicit in-save descriptor update through this existing owner quest rather than persisted VMAD defaults.
-; Returns whether the registry accepted and published the updated descriptor during the bounded retry window.
+; Returns whether the registry accepted the update; disabled UI transport does not roll back a successful registration.
 Bool Function ApplyDescriptorUpdate(String updatedDisplayName, String updatedNormalMovieUrl, String updatedLargeMovieUrl, Int updatedDescriptorVersion)
+  If (RegistrationAttemptActive)
+    Return False
+  EndIf
+  RegistrationAttemptActive = True
   EnsureActiveDescriptor()
   String previousDisplayName = ActiveDisplayName
   String previousNormalMovieUrl = ActiveNormalMovieUrl
@@ -54,13 +65,14 @@ Bool Function ApplyDescriptorUpdate(String updatedDisplayName, String updatedNor
   ActiveNormalMovieUrl = updatedNormalMovieUrl
   ActiveLargeMovieUrl = updatedLargeMovieUrl
   ActiveDescriptorVersion = updatedDescriptorVersion
-  Bool applied = RegisterDescriptorWithRetry(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)
+  Bool applied = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)
   If (!applied)
     ActiveDisplayName = previousDisplayName
     ActiveNormalMovieUrl = previousNormalMovieUrl
     ActiveLargeMovieUrl = previousLargeMovieUrl
     ActiveDescriptorVersion = previousDescriptorVersion
   EndIf
+  RegistrationAttemptActive = False
   Return applied
 EndFunction
 
@@ -74,24 +86,45 @@ Function EnsureActiveDescriptor()
   EndIf
 EndFunction
 
-; Calls the registry as this stable owner until the expected outcome is observed or the bounded retry window is exhausted.
+; Compatibility entry point that serializes an explicit descriptor attempt. True acknowledges the expected registration result only.
 Bool Function RegisterDescriptorWithRetry(String requestedDisplayName, String requestedNormalMovieUrl, String requestedLargeMovieUrl, Int requestedDescriptorVersion, Bool expectedResult)
+  If (RegistrationAttemptActive)
+    Return False
+  EndIf
+  RegistrationAttemptActive = True
+  Bool result = AttemptDescriptorRegistration(requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion, expectedResult)
+  RegistrationAttemptActive = False
+  Return result
+EndFunction
+
+; Waits only for a missing registry reference, then treats its first answer as terminal. Caller owns RegistrationAttemptActive.
+; A successful positive case checks RequestUiLoad; an expected rejection never requests a UI load. Disabled transport is not failure.
+Bool Function AttemptDescriptorRegistration(String requestedDisplayName, String requestedNormalMovieUrl, String requestedLargeMovieUrl, Int requestedDescriptorVersion, Bool expectedResult)
   Int attempt = 0
   While (attempt < 20)
     If (Registry != None)
       Bool actualRegistration = Registry.RegisterConsumer(Self, ConsumerId, requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion)
       If (actualRegistration == expectedResult)
-        LogUserInformational(ModuleName, "RegisterDescriptorWithRetry", "Observed the expected registration result for '" + ConsumerId + "'.")
+        If (actualRegistration)
+          String loadResult = Registry.RequestUiLoad(Self, ConsumerId)
+          LogUserInformational(ModuleName, "AttemptDescriptorRegistration", "REGISTRATION_ACK | Consumer=" + ConsumerId + " | LoadUI=" + loadResult)
+        Else
+          LogUserInformational(ModuleName, "AttemptDescriptorRegistration", "EXPECTED_REGISTRATION_REJECTION | No UI load requested.")
+        EndIf
         Return True
       EndIf
       If (actualRegistration && !expectedResult)
         Registry.UnregisterConsumer(Self, ConsumerId)
       EndIf
+      LogUserWarning(ModuleName, "AttemptDescriptorRegistration", "Unexpected terminal registration result; see the Registry diagnostic. No retry or UI load requested.")
+      Return False
     EndIf
     attempt += 1
-    Utility.WaitMenuPause(0.5)
+    If (attempt < 20)
+      Utility.WaitMenuPause(0.5)
+    EndIf
   EndWhile
 
-  LogUserWarning(ModuleName, "RegisterDescriptorWithRetry", "Exhausted the bounded registration retry for '" + ConsumerId + "'.")
+  LogUserWarning(ModuleName, "AttemptDescriptorRegistration", "Registry reference remained unavailable during the bounded retry window.")
   Return False
 EndFunction

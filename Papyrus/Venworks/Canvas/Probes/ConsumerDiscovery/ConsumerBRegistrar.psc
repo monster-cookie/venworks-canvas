@@ -10,6 +10,7 @@ Bool Property ExpectedRegistration Auto Const Mandatory
 Float Property InitialDelaySeconds Auto Const Mandatory
 
 String ModuleName = "Probes:ConsumerDiscovery:ConsumerBRegistrar"
+Bool RegistrationAttemptActive = False
 
 ; Registers for both HUD menus and attempts the VMAD-configured descriptor after its configured delay.
 Event OnInit()
@@ -21,7 +22,7 @@ Event OnInit()
   RegisterWithRetry()
 EndEvent
 
-; Re-publishes the VMAD-configured descriptor when either supported HUD menu opens.
+; Reconciles the VMAD descriptor when either HUD opens. Overlapping attempts are skipped and no bridge publication occurs.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     If (InitialDelaySeconds > 0.0)
@@ -31,24 +32,55 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   EndIf
 EndEvent
 
-; Attempts the VMAD-configured descriptor with bounded retries and returns whether the expected result was observed.
+; Serializes registration attempts; true means the expected Papyrus result, not UI submission or readiness.
 Bool Function RegisterWithRetry()
+  If (RegistrationAttemptActive)
+    Return False
+  EndIf
+  RegistrationAttemptActive = True
+  Bool result = AttemptRegistration()
+  RegistrationAttemptActive = False
+  Return result
+EndFunction
+
+; Explicit console-test helper: checks a requested ID using this quest as owner, without registration or bridge traffic.
+; Returns the host's REJECTED_* or REGISTERED_TRANSPORT_DISABLED result, or REJECTED_REGISTRY_UNAVAILABLE when unbound.
+String Function CheckUiLoadRequest(String requestedConsumerId)
+  If (Registry == None)
+    LogUserWarning(ModuleName, "CheckUiLoadRequest", "REJECTED_REGISTRY_UNAVAILABLE")
+    Return "REJECTED_REGISTRY_UNAVAILABLE"
+  EndIf
+  Return Registry.RequestUiLoad(Self, requestedConsumerId)
+EndFunction
+
+; Waits only for a missing registry reference, then treats its first answer as terminal. Caller owns RegistrationAttemptActive.
+; A positive case checks RequestUiLoad; an expected rejection never requests a UI load. Disabled transport is not failure.
+Bool Function AttemptRegistration()
   Int attempt = 0
   While (attempt < 20)
     If (Registry != None)
       Bool actualRegistration = Registry.RegisterConsumer(Self, ConsumerId, DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
       If (actualRegistration == ExpectedRegistration)
-        LogUserInformational(ModuleName, "RegisterWithRetry", "Observed the expected registration result for '" + ConsumerId + "'.")
+        If (actualRegistration)
+          String loadResult = Registry.RequestUiLoad(Self, ConsumerId)
+          LogUserInformational(ModuleName, "AttemptRegistration", "REGISTRATION_ACK | Consumer=" + ConsumerId + " | LoadUI=" + loadResult)
+        Else
+          LogUserInformational(ModuleName, "AttemptRegistration", "EXPECTED_REGISTRATION_REJECTION | No UI load requested.")
+        EndIf
         Return True
       EndIf
       If (actualRegistration && !ExpectedRegistration)
         Registry.UnregisterConsumer(Self, ConsumerId)
       EndIf
+      LogUserWarning(ModuleName, "AttemptRegistration", "Unexpected terminal registration result; see the Registry diagnostic. No retry or UI load requested.")
+      Return False
     EndIf
     attempt += 1
-    Utility.WaitMenuPause(0.5)
+    If (attempt < 20)
+      Utility.WaitMenuPause(0.5)
+    EndIf
   EndWhile
 
-  LogUserWarning(ModuleName, "RegisterWithRetry", "Exhausted the bounded registration retry for '" + ConsumerId + "'.")
+  LogUserWarning(ModuleName, "AttemptRegistration", "Registry reference remained unavailable during the bounded retry window.")
   Return False
 EndFunction

@@ -59,6 +59,23 @@ function Test-ConsumerDiscoverySamePath {
   )
 }
 
+function Test-ConsumerDiscoveryOverlappingPaths {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Left,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Right
+  )
+
+  $leftPath = [System.IO.Path]::GetFullPath($Left).TrimEnd('\', '/')
+  $rightPath = [System.IO.Path]::GetFullPath($Right).TrimEnd('\', '/')
+  $separator = [System.IO.Path]::DirectorySeparatorChar
+  return [string]::Equals($leftPath, $rightPath, [StringComparison]::OrdinalIgnoreCase) -or
+    $leftPath.StartsWith($rightPath + $separator, [StringComparison]::OrdinalIgnoreCase) -or
+    $rightPath.StartsWith($leftPath + $separator, [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-ConsumerDiscoveryJunctionTarget {
   param(
     [Parameter(Mandatory = $true)]
@@ -427,14 +444,14 @@ foreach ($staging in @($matrix.Staging)) {
       }
       $installPath = [System.IO.Path]::GetFullPath($physicalTargetPath).TrimEnd('\', '/')
       if (@($allowedPhysicalTargetPaths | Where-Object {
-        Test-ConsumerDiscoverySamePath -Left $_ -Right $installPath
+        Test-ConsumerDiscoveryOverlappingPaths -Left $_ -Right $installPath
       }).Count -ne 0) {
-        throw "Physical module folders must be distinct: $installPath"
+        throw "Physical module folders must be disjoint, not identical or nested: $installPath"
       }
       if (@($allowedStagingPaths | Where-Object {
-        Test-ConsumerDiscoverySamePath -Left $_ -Right $installPath
+        Test-ConsumerDiscoveryOverlappingPaths -Left $_ -Right $installPath
       }).Count -ne 0) {
-        throw "A physical module folder cannot also be a repository staging path: $installPath"
+        throw "A physical module folder cannot overlap a repository staging path: $installPath"
       }
       $expectedPhysicalTargetByKey[$key] = $installPath
       $allowedPhysicalTargetPaths.Add($installPath)
@@ -455,9 +472,9 @@ foreach ($staging in @($matrix.Staging)) {
 
   Assert-ConsumerDiscoveryStagingTarget -Path $installPath -AllowedPaths $allowedInstallPaths
   if (@($swapOperations | Where-Object {
-    Test-ConsumerDiscoverySamePath -Left ([string]$_.InstallPath) -Right $installPath
+    Test-ConsumerDiscoveryOverlappingPaths -Left ([string]$_.InstallPath) -Right $installPath
   }).Count -ne 0) {
-    throw "Package installation paths must be distinct: $installPath"
+    throw "Package installation paths must be disjoint, not identical or nested: $installPath"
   }
   $swapOperations.Add([pscustomobject]@{
     Key = $key

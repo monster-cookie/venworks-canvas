@@ -8,7 +8,7 @@ Int Property UpdatedDescriptorVersion Auto Const Mandatory
 
 String ModuleName = "Probes:ConsumerDiscovery:ConsumerAUpdateMigration"
 
-; Runs once on the new UpdatedA quest form and asks the existing registrar owner to publish the replacement descriptor.
+; On initialization of the new UpdatedA quest form, asks the existing owner to register the replacement descriptor without UI publication.
 Event OnInit()
   If (Registrar == None)
     LogUserError(ModuleName, "OnInit", "Cannot apply the Consumer A update because its existing registrar is unavailable.")

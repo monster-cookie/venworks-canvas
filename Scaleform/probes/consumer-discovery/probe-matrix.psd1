@@ -1,6 +1,8 @@
 @{
-  Version = 5
+  Version = 6
   Protocol = 'VWCANVAS_REGISTRY_PROBE/3'
+  TestMode = 'RegistrationOnlyBridgeDisabled'
+  UiLoadResult = 'REGISTERED_TRANSPORT_DISABLED'
   DefaultProfile = 'Baseline'
   Spriggit = @{
     PackageName = 'Spriggit.Yaml'
@@ -113,6 +115,15 @@
     @{ Id = 'inconsistent-page-metadata'; Expected = 'generation-rejected' }
     @{ Id = 'superseded-generation'; Expected = 'new-complete-generation-accepted' }
   )
+  RegistrationRuntimeCases = @(
+    @{ Id = 'pc-registration-host-only'; Packages = @('Host'); Expected = 'Host logs zero consumers and disabled transport; vanilla watch stays responsive.' }
+    @{ Id = 'pc-registration-consumer-a'; Packages = @('Host', 'ConsumerA'); Expected = 'A logs REGISTRATION_ACK and REGISTERED_TRANSPORT_DISABLED; no movie delivery is claimed.' }
+    @{ Id = 'pc-registration-two-consumers'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'A and B each acknowledge registration and validate RequestUiLoad ownership; registry count is two.' }
+    @{ Id = 'pc-registration-reload'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Reload and menu openings preserve valid records, restore callbacks when first invoked, and create no Watch Alert traffic.' }
+    @{ Id = 'pc-registration-rejection'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Invalid descriptors report the exact field once per attempt, terminate without polling, and never request a UI load.' }
+    @{ Id = 'pc-registration-ui-ownership'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Unknown IDs and wrong owners receive REJECTED_* from RequestUiLoad, while valid requests report disabled transport.' }
+  )
+  # Deferred until the Watch Alert transport is explicitly re-enabled; these remain the visual acceptance requirements.
   RuntimeCases = @(
     @{ Id = 'pc-archive-host-only'; Profile = 'Baseline'; Packages = @('Host'); Expected = 'Player HUD visibly reports a current snapshot with zero consumers and remains responsive.' }
     @{ Id = 'pc-archive-consumer-a'; Profile = 'Baseline'; Packages = @('Host', 'ConsumerA'); Expected = 'Player HUD visibly reports Consumer A READY from its namespaced normal movie.' }

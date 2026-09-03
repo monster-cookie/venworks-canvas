@@ -513,8 +513,10 @@ if ($SourceOnly -and $ArtifactsOnly) {
   throw 'SourceOnly and ArtifactsOnly cannot be combined.'
 }
 
-if ([int]$matrix.Version -ne 5 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3') {
-  throw 'Consumer-discovery matrix must declare the v5 paged dynamic registry probe contract.'
+if ([int]$matrix.Version -ne 6 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
+    [string]$matrix.TestMode -cne 'RegistrationOnlyBridgeDisabled' -or
+    [string]$matrix.UiLoadResult -cne 'REGISTERED_TRANSPORT_DISABLED') {
+  throw 'Consumer-discovery matrix must declare the v6 bridge-disabled registration test contract.'
 }
 
 function Assert-ExactOrdinalList {
@@ -681,6 +683,41 @@ function Assert-SpriggitQuestContract {
     -Expected @($ExpectedEditorIds | Sort-Object) `
     -Description "Tracked Spriggit quest inventory for '$FileName'"
 }
+function Assert-TrackedSpriggitPluginContract {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$PluginYamlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$FileName,
+    [Parameter(Mandatory = $true)]
+    [string]$PluginKey,
+    [Parameter(Mandatory = $true)]
+    [string]$ProfileKey
+  )
+
+  $expectedMasters = @('Starfield.esm', 'Venworks-Core.esm')
+  if ($PluginKey -cne 'Host') {
+    $expectedMasters += 'Venworks-Canvas-Host.esm'
+  }
+  Assert-SpriggitPluginHeader -Path (Join-Path $PluginYamlPath 'RecordData.yaml') -FileName $FileName -ExpectedMasters $expectedMasters
+  $expectedQuestEditorIds = switch ($PluginKey) {
+    'Host' { @('VWCANVAS9_ConsumerDiscoveryRegistry') }
+    'ConsumerA' {
+      'VWCANVAS9_ConsumerARegistrar'
+      if ($ProfileKey -ceq 'UpdatedA') { 'VWCANVAS9_ConsumerAUpdateMigration' }
+    }
+    'ConsumerB' {
+      'VWCANVAS9_ConsumerBRegistrar'
+      if ($ProfileKey -ceq 'Faults') {
+        'VWCANVAS9_ConsumerBCollisionProbe'
+        'VWCANVAS9_ConsumerBMissingProbe'
+      }
+    }
+    default { throw "Unknown plugin key '$PluginKey' in the consumer-discovery matrix." }
+  }
+  Assert-SpriggitQuestContract -PluginYamlPath $PluginYamlPath -FileName $FileName -ExpectedEditorIds @($expectedQuestEditorIds)
+}
+
 if ([string]$matrix.Spriggit.PackageName -cne 'Spriggit.Yaml' -or
     [string]$matrix.Spriggit.MetadataPackageName -cne 'Spriggit.Yaml.Starfield' -or
     [string]$matrix.Spriggit.Version -cne '0.40.1' -or
@@ -756,6 +793,18 @@ foreach ($profileDefinition in @($matrix.Profiles)) {
   }
 }
 
+# Committed YAML contracts require no game toolchain and run for every profile even in SourceOnly CI.
+foreach ($profileDefinition in @($matrix.Profiles)) {
+  foreach ($plugin in @($matrix.Plugins)) {
+    $pluginYamlPath = Join-Path $repositoryRoot ([string]$matrix.Spriggit.OutputRoot) ([string]$profileDefinition.Key) ([string]$plugin.FileName)
+    Assert-TrackedSpriggitPluginContract `
+      -PluginYamlPath $pluginYamlPath `
+      -FileName ([string]$plugin.FileName) `
+      -PluginKey ([string]$plugin.Key) `
+      -ProfileKey ([string]$profileDefinition.Key)
+  }
+}
+
 $requiredParserCases = @(
   'delimiter-display-name'
   'maximum-valid-descriptor'
@@ -783,6 +832,12 @@ foreach ($caseId in $requiredParserCases) {
   }
 }
 Assert-ConsumerDiscoveryParserFixtures
+
+$requiredRegistrationCases = @('pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership')
+Assert-ExactOrdinalList `
+  -Actual @($matrix.RegistrationRuntimeCases.Id) `
+  -Expected $requiredRegistrationCases `
+  -Description 'Bridge-disabled PC registration cases'
 
 $requiredRuntimeCases = @(
   'pc-archive-host-only'
@@ -884,23 +939,26 @@ foreach ($token in @(
   'Consumers[index].Owner == None'
   'If (!EnsureStorage())'
   'Consumers = new ConsumerRegistration[0]'
-  'PublishDiagnostic("registry-storage-initialized")'
-  'PublishDiagnostic("registry-storage-seed-pruned")'
-  'PublishDiagnostic("registration-pruned:"'
-  'PublishSnapshot("refresh")'
+  'String Function RequestUiLoad(Quest owner, String consumerId)'
+  'Return "REGISTERED_TRANSPORT_DISABLED"'
+  'Return "REJECTED_NOT_REGISTERED"'
+  'Return "REJECTED_OWNER_MISMATCH"'
+  'Consumers[index].Owner != owner'
+  'GetDescriptorRejectionReason('
+  'GetConsumerIdRejectionReason('
+  'GetPrintableAsciiRejectionReason('
+  'REGISTRATION_REJECTED'
+  'REGISTRATION_UNCHANGED'
+  'EnsureMenuSubscriptions()'
+  'MenuSubscriptionsInitialized = True'
+  'Consumers[index] == None'
+  'WATCH BRIDGE DISABLED'
   'RegisterForMenuOpenCloseEvent("HUDMenu")'
   'RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")'
-  'Utility.WaitMenuPause(0.25)'
   'Utility.SplitStringChars'
   'MaxConsumerMovieUrlCharacters'
-  'MaxSnapshotPagePayloadCharacters'
-  'String[] pagePayloads = new String[0]'
-  'Int[] pageRecordCounts = new Int[0]'
-  'EncodeField(pagePayloads.Length as String)'
-  'Game.ShowCustomWatchAlert("VWC_EVT/1|canvas.registry.snapshot|"'
   'LogUserInformational('
   'LogUserWarning('
-  'LogUserError('
 )) {
   if (!$registrySource.Contains($token)) {
     throw "Dynamic Papyrus registry is missing token '$token'."
@@ -909,13 +967,33 @@ foreach ($token in @(
 if ([regex]::Matches($registrySource, [regex]::Escape('Consumers = new ConsumerRegistration[0]')).Count -ne 1 -or
     ![regex]::IsMatch(
       $registrySource,
-      'If\s+\(Consumers == None\)\s+Consumers = new ConsumerRegistration\[0\].*?PublishDiagnostic\("registry-storage-initialized"\).*?EndIf',
+      'If\s+\(Consumers == None\)\s+Consumers = new ConsumerRegistration\[0\].*?EndIf',
       [Text.RegularExpressions.RegexOptions]::Singleline)) {
   throw 'Dynamic Papyrus registry must initialize missing Consumers storage exactly once inside its None guard.'
 }
-foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'ConsumerRegistration[] Property Consumers Auto Const', 'registry-storage-missing', 'MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace')) {
+foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'ConsumerRegistration[] Property Consumers Auto Const', 'registry-storage-missing', 'MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace', 'Utility.Wait')) {
   if ($registrySource.Contains($forbiddenToken)) {
     throw "Dynamic Papyrus registry retained forbidden parallel-storage, fixed-capacity, or direct-log token '$forbiddenToken'."
+  }
+}
+
+if (![regex]::IsMatch($registrySource, '(?s)Bool Function EnsureStorage\(\)\s+EnsureMenuSubscriptions\(\)\s+If \(Consumers == None\)') -or
+    ![regex]::IsMatch($registrySource, '(?s)Bool Function PublishSnapshot\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+Return False\s+EndFunction') -or
+    ![regex]::IsMatch($registrySource, '(?s)Function PublishDiagnostic\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+EndFunction') -or
+    [regex]::IsMatch($registrySource, '(?im)^\s*(?:PublishSnapshot|PublishDiagnostic)\(')) {
+  throw 'Registry recovery must restore subscriptions, and legacy publishers must remain inert with no internal callers.'
+}
+foreach ($functionContract in @(
+  @{ Type = 'Bool'; Name = 'EnsureStorage'; Return = 'True' },
+  @{ Type = 'String'; Name = 'GetDescriptorRejectionReason'; Return = '""' },
+  @{ Type = 'String'; Name = 'GetConsumerIdRejectionReason'; Return = '""' },
+  @{ Type = 'String'; Name = 'GetPrintableAsciiRejectionReason'; Return = '""' }
+)) {
+  $functionPattern = '(?ims)^' + $functionContract.Type + ' Function ' + $functionContract.Name + '\([^\r\n]*\)\s*(?<body>.*?)^EndFunction'
+  $functionMatch = [regex]::Match($registrySource, $functionPattern)
+  if (!$functionMatch.Success -or
+      $functionMatch.Groups['body'].Value.TrimEnd() -cnotmatch ('Return ' + [regex]::Escape($functionContract.Return) + '$')) {
+    throw "Registry '$($functionContract.Name)' must return $($functionContract.Return) after its successful path; implicit Papyrus casts are not acceptable."
   }
 }
 
@@ -931,6 +1009,11 @@ foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc'))
     'Float Property InitialDelaySeconds Auto Const Mandatory'
     'While (attempt < 20)'
     'Utility.WaitMenuPause(0.5)'
+    'If (RegistrationAttemptActive)'
+    'RegistrationAttemptActive = True'
+    'RegistrationAttemptActive = False'
+    'Registry.RequestUiLoad(Self, ConsumerId)'
+    'EXPECTED_REGISTRATION_REJECTION'
     'LogUserInformational('
     'LogUserWarning('
   )) {
@@ -944,6 +1027,10 @@ foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc'))
   if ($consumerSource.Contains('Debug.Trace')) {
     throw "Papyrus consumer '$consumerName' retained direct Debug.Trace logging."
   }
+  if (![regex]::IsMatch($consumerSource, '(?s)If \(actualRegistration\)\s+String loadResult = Registry.RequestUiLoad\(Self, ConsumerId\)') -or
+      ![regex]::IsMatch($consumerSource, '(?s)Unexpected terminal registration result[^\r\n]*\s+Return False\s+EndIf\s+attempt \+= 1')) {
+    throw "Consumer '$consumerName' must request a UI load only after actual success and stop polling once the registry answers."
+  }
 }
 
 $consumerASource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'))
@@ -951,10 +1038,10 @@ foreach ($token in @(
   'String ActiveDisplayName'
   'Int ActiveDescriptorVersion = 0'
   'EnsureActiveDescriptor()'
-  'Return RegisterDescriptorWithRetry(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)'
+  'Bool result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)'
   'Function ApplyDescriptorUpdate('
   'ActiveDisplayName = updatedDisplayName'
-  'Bool applied = RegisterDescriptorWithRetry(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)'
+  'Bool applied = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)'
   'ActiveDisplayName = previousDisplayName'
   'Registry.RegisterConsumer(Self, ConsumerId, requestedDisplayName'
 )) {
@@ -1013,6 +1100,9 @@ foreach ($token in @(
   'inconsistent snapshot generation metadata'
   'this.getLoaderIds()'
   'this.dataManager.Unsubscribe(PROVIDER,this.callback)'
+  'REGISTRATION LOG TEST'
+  'WATCH BRIDGE DISABLED'
+  'CONSUMER MOVIES NOT LOADED'
 )) {
   if (!$hostSource.Contains($token)) {
     throw "Dynamic ActionScript host is missing token '$token'."
@@ -1044,10 +1134,13 @@ $loaderIdentityGuard = 'if(loader == null || this.loaders[loader.name] !== loade
 if ([regex]::Matches($hostSource, [regex]::Escape($loaderIdentityGuard)).Count -ne 3) {
   throw 'Dynamic ActionScript host must reject stale init, completion, and error events from replaced loaders.'
 }
-$subscribeIndex = $hostSource.IndexOf('this.dataManager.Subscribe(PROVIDER,this.callback);', [StringComparison]::Ordinal)
-$requestIndex = $hostSource.IndexOf('this.dataManager.GetDataFromClient(PROVIDER,true);', [StringComparison]::Ordinal)
-if ($subscribeIndex -lt 0 -or $requestIndex -le $subscribeIndex) {
-  throw 'Dynamic ActionScript host must subscribe before requesting current provider data.'
+if ($hostSource.Contains('.Subscribe(') -or $hostSource.Contains('.GetDataFromClient(') -or $hostSource.Contains('BRIDGE SUBSCRIBED')) {
+  throw 'Bridge-disabled ActionScript must not subscribe, request provider data, or report an active bridge.'
+}
+foreach ($papyrusFile in @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas') -Recurse -File -Filter '*.psc')) {
+  if ([IO.File]::ReadAllText($papyrusFile.FullName) -match '(?i)ShowCustomWatchAlert') {
+    throw "Bridge-disabled Canvas source contains a Watch Alert reference: $($papyrusFile.FullName)"
+  }
 }
 
 $sourceScope = [string]::Join("`n", @(
@@ -1128,7 +1221,7 @@ foreach ($expectedKnownMaster in @(
   }
 }
 
-Write-Host -ForegroundColor Green "Verified resilient dynamic source contracts, profile '$($resolvedProfile.Key)', parser fixtures, PC archive-only matrix, and PowerShell syntax."
+Write-Host -ForegroundColor Green "Verified bridge-disabled registration sources, all three tracked YAML contracts, profile '$($resolvedProfile.Key)', deferred parser fixtures, PC matrices, and PowerShell syntax."
 if ($SourceOnly) {
   return
 }
@@ -1349,41 +1442,11 @@ foreach ($plugin in @($matrix.Plugins)) {
     }
   }
 
-  $expectedMasters = if ([string]$plugin.Key -ceq 'Host') {
-    @('Starfield.esm', 'Venworks-Core.esm')
-  }
-  else {
-    @('Starfield.esm', 'Venworks-Core.esm', 'Venworks-Canvas-Host.esm')
-  }
-  Assert-SpriggitPluginHeader `
-    -Path $recordDataPath `
-    -FileName $fileName `
-    -ExpectedMasters $expectedMasters
-
-  $expectedQuestEditorIds = switch ([string]$plugin.Key) {
-    'Host' { @('VWCANVAS9_ConsumerDiscoveryRegistry') }
-    'ConsumerA' {
-      if ([string]$resolvedProfile.Key -ceq 'UpdatedA') {
-        @('VWCANVAS9_ConsumerARegistrar', 'VWCANVAS9_ConsumerAUpdateMigration')
-      }
-      else {
-        @('VWCANVAS9_ConsumerARegistrar')
-      }
-    }
-    'ConsumerB' {
-      if ([string]$resolvedProfile.Key -ceq 'Faults') {
-        @('VWCANVAS9_ConsumerBRegistrar', 'VWCANVAS9_ConsumerBCollisionProbe', 'VWCANVAS9_ConsumerBMissingProbe')
-      }
-      else {
-        @('VWCANVAS9_ConsumerBRegistrar')
-      }
-    }
-    default { throw "Unknown plugin key '$($plugin.Key)' in the consumer-discovery matrix." }
-  }
-  Assert-SpriggitQuestContract `
+  Assert-TrackedSpriggitPluginContract `
     -PluginYamlPath $pluginYamlPath `
     -FileName $fileName `
-    -ExpectedEditorIds @($expectedQuestEditorIds)
+    -PluginKey ([string]$plugin.Key) `
+    -ProfileKey ([string]$resolvedProfile.Key)
 }
 
 $expectedScriptOutputs = @($matrix.Plugins | ForEach-Object { @($_.Scripts) })
@@ -1401,6 +1464,11 @@ if ([string]$compileEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_SCRIPTS/1
 }
 foreach ($output in $expectedScriptOutputs) {
   $source = [System.IO.Path]::ChangeExtension([string]$output, '.psc')
+  # PEX function names are serialized strings; fail closed even when a native call is hidden in an inactive branch.
+  $compiledText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $resolvedScriptsDirectory ([string]$output))))
+  if ($compiledText -match '(?i)ShowCustomWatchAlert') {
+    throw "Bridge-disabled Canvas PEX contains a Watch Alert reference: $output"
+  }
   $scriptEvidenceMatches = @($compileEvidence.Scripts | Where-Object {
     [string]$_.Source -ceq $source -and [string]$_.Output -ceq [string]$output
   })
