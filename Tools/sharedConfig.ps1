@@ -90,7 +90,7 @@ $Global:ModuleVariants = @(
   [CanvasModuleVariant]::new(
     "HOST",
     "Venworks Canvas Host",
-    "VWCANVAS9-Host",
+    "Venworks-Canvas-Host",
     (Join-Path $repositoryRoot "Staging-Host"),
     "MODULE_VARIANT_HOST_PATH",
     "$ENV:MODULE_VARIANT_HOST_PATH"
@@ -99,7 +99,7 @@ $Global:ModuleVariants = @(
   [CanvasModuleVariant]::new(
     "CONSUMERA",
     "Venworks Canvas Demo Consumer A",
-    "VWCANVAS9-ConsumerA",
+    "Venworks-Canvas-ConsumerA",
     (Join-Path $repositoryRoot "Staging-ConsumerA"),
     "MODULE_VARIANT_CONSUMER_A_PATH",
     "$ENV:MODULE_VARIANT_CONSUMER_A_PATH"
@@ -108,7 +108,7 @@ $Global:ModuleVariants = @(
   [CanvasModuleVariant]::new(
     "CONSUMERB",
     "Venworks Canvas Demo Consumer B",
-    "VWCANVAS9-ConsumerB",
+    "Venworks-Canvas-ConsumerB",
     (Join-Path $repositoryRoot "Staging-ConsumerB"),
     "MODULE_VARIANT_CONSUMER_B_PATH",
     "$ENV:MODULE_VARIANT_CONSUMER_B_PATH"

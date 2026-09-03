@@ -101,21 +101,21 @@ $expectedDefinitions = @(
   [pscustomobject]@{
     VariantKey = "HOST"
     VariantName = "Venworks Canvas Host"
-    PackageBaseName = "VWCANVAS9-Host"
+    PackageBaseName = "Venworks-Canvas-Host"
     StagingFolderName = "Staging-Host"
     EnvironmentVariableName = "MODULE_VARIANT_HOST_PATH"
   }
   [pscustomobject]@{
     VariantKey = "CONSUMERA"
     VariantName = "Venworks Canvas Demo Consumer A"
-    PackageBaseName = "VWCANVAS9-ConsumerA"
+    PackageBaseName = "Venworks-Canvas-ConsumerA"
     StagingFolderName = "Staging-ConsumerA"
     EnvironmentVariableName = "MODULE_VARIANT_CONSUMER_A_PATH"
   }
   [pscustomobject]@{
     VariantKey = "CONSUMERB"
     VariantName = "Venworks Canvas Demo Consumer B"
-    PackageBaseName = "VWCANVAS9-ConsumerB"
+    PackageBaseName = "Venworks-Canvas-ConsumerB"
     StagingFolderName = "Staging-ConsumerB"
     EnvironmentVariableName = "MODULE_VARIANT_CONSUMER_B_PATH"
   }

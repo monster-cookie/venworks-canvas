@@ -49,14 +49,14 @@
     @{ Key = 'ConsumerB'; Manifest = 'build/consumer-b.build.xml'; Output = 'CanvasDiscoveryConsumerB.swf' }
   )
   Plugins = @(
-    @{ Key = 'Host'; FileName = 'VWCANVAS9-Host.esm'; Scripts = @('Venworks/Canvas/GlobalConfig.pex', 'Venworks/Canvas/Base/BaseQuest.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex') }
-    @{ Key = 'ConsumerA'; FileName = 'VWCANVAS9-ConsumerA.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerARegistrar.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerAUpdateMigration.pex') }
-    @{ Key = 'ConsumerB'; FileName = 'VWCANVAS9-ConsumerB.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerBRegistrar.pex') }
+    @{ Key = 'Host'; FileName = 'Venworks-Canvas-Host.esm'; Scripts = @('Venworks/Canvas/GlobalConfig.pex', 'Venworks/Canvas/Base/BaseQuest.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex') }
+    @{ Key = 'ConsumerA'; FileName = 'Venworks-Canvas-ConsumerA.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerARegistrar.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerAUpdateMigration.pex') }
+    @{ Key = 'ConsumerB'; FileName = 'Venworks-Canvas-ConsumerB.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerBRegistrar.pex') }
   )
   Staging = @(
-    @{ Key = 'Host'; Directory = 'Staging-Host'; Plugin = 'VWCANVAS9-Host.esm'; Archive = 'VWCANVAS9-Host - Main.ba2' }
-    @{ Key = 'ConsumerA'; Directory = 'Staging-ConsumerA'; Plugin = 'VWCANVAS9-ConsumerA.esm'; Archive = 'VWCANVAS9-ConsumerA - Main.ba2' }
-    @{ Key = 'ConsumerB'; Directory = 'Staging-ConsumerB'; Plugin = 'VWCANVAS9-ConsumerB.esm'; Archive = 'VWCANVAS9-ConsumerB - Main.ba2' }
+    @{ Key = 'Host'; Directory = 'Staging-Host'; Plugin = 'Venworks-Canvas-Host.esm'; Archive = 'Venworks-Canvas-Host - Main.ba2' }
+    @{ Key = 'ConsumerA'; Directory = 'Staging-ConsumerA'; Plugin = 'Venworks-Canvas-ConsumerA.esm'; Archive = 'Venworks-Canvas-ConsumerA - Main.ba2' }
+    @{ Key = 'ConsumerB'; Directory = 'Staging-ConsumerB'; Plugin = 'Venworks-Canvas-ConsumerB.esm'; Archive = 'Venworks-Canvas-ConsumerB - Main.ba2' }
   )
   Profiles = @(
     @{
@@ -66,9 +66,9 @@
       ConsumerADisplayName = 'VWCANVAS-9 Consumer A'
       ConsumerBFaults = $false
       PluginSha256 = @{
-        Host = '3116B07CCBCA0E9783D4181B00FD89BAB899F9386DA253AAEC33FB9D4BB760DE'
-        ConsumerA = 'B4764B2CC82BFC3101200C3BCE15EB0F36B4E26F5F27CCB2B40B4F5B4CD56699'
-        ConsumerB = '7150876C736C83A61141EFC2B336E9C141631546431F5FA5D6B97CF1A7A7151E'
+        Host = '7FBEF628617CA16E4528F8922B724203C9DBDFD07785FAD3A1974ED5911BAEB3'
+        ConsumerA = 'DF184B76AE23C43A392F1B7742BB370D4BDE848725433B96D4F8868726F05922'
+        ConsumerB = 'D477274C4AD5A6D3372A817E028E94757D6D6CCFB42F16B67A8D189DA92C0D65'
       }
     }
     @{
@@ -78,9 +78,9 @@
       ConsumerADisplayName = 'VWCANVAS-9 Consumer A'
       ConsumerBFaults = $true
       PluginSha256 = @{
-        Host = '3116B07CCBCA0E9783D4181B00FD89BAB899F9386DA253AAEC33FB9D4BB760DE'
-        ConsumerA = 'B4764B2CC82BFC3101200C3BCE15EB0F36B4E26F5F27CCB2B40B4F5B4CD56699'
-        ConsumerB = 'AFFB5621DF4DBADF76F3F64F475221116460BAD1419B196761042C00A00AD8D5'
+        Host = '7FBEF628617CA16E4528F8922B724203C9DBDFD07785FAD3A1974ED5911BAEB3'
+        ConsumerA = 'DF184B76AE23C43A392F1B7742BB370D4BDE848725433B96D4F8868726F05922'
+        ConsumerB = 'F968481F6D2ED658C182E49CA1A5D305F8C09BA845EBD9476C8718458C5E5296'
       }
     }
     @{
@@ -90,9 +90,9 @@
       ConsumerADisplayName = 'VWCANVAS-9 Consumer A UPDATED'
       ConsumerBFaults = $false
       PluginSha256 = @{
-        Host = '3116B07CCBCA0E9783D4181B00FD89BAB899F9386DA253AAEC33FB9D4BB760DE'
-        ConsumerA = 'B445D7654901A0EA75AB68AB04A5F22905F74064F5E3779328FEBA5E944E8713'
-        ConsumerB = '7150876C736C83A61141EFC2B336E9C141631546431F5FA5D6B97CF1A7A7151E'
+        Host = '7FBEF628617CA16E4528F8922B724203C9DBDFD07785FAD3A1974ED5911BAEB3'
+        ConsumerA = 'FDA91452EE02CCBD2297A903B993B81E9AC2D88E75C4C679F6A1A44ADBB5BF03'
+        ConsumerB = 'D477274C4AD5A6D3372A817E028E94757D6D6CCFB42F16B67A8D189DA92C0D65'
       }
     }
   )

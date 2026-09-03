@@ -1,0 +1,44 @@
+FormKey: 000800:Venworks-Canvas-ConsumerA.esm
+EditorID: VWCANVAS9_ConsumerARegistrar
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerARegistrar
+    Properties:
+    - MutagenObjectType: ScriptStringProperty
+      Name: ConsumerId
+      Data: venworks.canvas.probe.consumer-a
+    - MutagenObjectType: ScriptIntProperty
+      Name: DescriptorVersion
+      Data: 2
+    - MutagenObjectType: ScriptStringProperty
+      Name: DisplayName
+      Data: VWCANVAS-9 Consumer A UPDATED
+    - MutagenObjectType: ScriptBoolProperty
+      Name: ExpectedRegistration
+      Data: True
+    - MutagenObjectType: ScriptFloatProperty
+      Name: InitialDelaySeconds
+    - MutagenObjectType: ScriptStringProperty
+      Name: LargeMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/large.swf
+    - MutagenObjectType: ScriptStringProperty
+      Name: NormalMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/normal.swf
+    - MutagenObjectType: ScriptObjectProperty
+      Name: Registry
+      Object: 000800:Venworks-Canvas-Host.esm
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS-9 Consumer A Registrar
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  - RunOnce
+  Unused: 0x000000
