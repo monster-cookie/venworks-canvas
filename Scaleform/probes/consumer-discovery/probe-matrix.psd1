@@ -6,6 +6,8 @@
     PackageName = 'Spriggit.Yaml'
     MetadataPackageName = 'Spriggit.Yaml.Starfield'
     Version = '0.40.1'
+    CliSha256 = '01E71FC882061F7387A5DC25022940A9A79892B81292C6B47F4DA2437649DCA5'
+    TranslatorSha256 = 'E4358BFFA6E79723824764A5255A1ECA3A4FC14F10478FA42BA81ED58D7F1036'
     OutputRoot = 'Spriggit/ConsumerDiscovery'
   }
   VenworksCoreFixture = @{

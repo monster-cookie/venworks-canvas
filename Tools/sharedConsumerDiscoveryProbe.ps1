@@ -56,6 +56,24 @@ function Get-ConsumerDiscoveryFileSha256 {
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
+function Get-ConsumerDiscoveryReviewFileSha256 {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+  if ($extension -notin @('.json', '.yaml', '.yml')) {
+    return Get-ConsumerDiscoveryFileSha256 -Path $Path
+  }
+
+  $strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
+  $text = $strictUtf8.GetString([System.IO.File]::ReadAllBytes($Path))
+  $canonicalText = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+  $canonicalBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($canonicalText)
+  return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($canonicalBytes))
+}
+
 function Get-ConsumerDiscoveryDirectoryDigest {
   param(
     [Parameter(Mandatory = $true)]
@@ -66,7 +84,7 @@ function Get-ConsumerDiscoveryDirectoryDigest {
   $digestRows = @(
     Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
       $relativePath = [System.IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
-      "$relativePath`:$((Get-ConsumerDiscoveryFileSha256 -Path $_.FullName))"
+      "$relativePath`:$((Get-ConsumerDiscoveryReviewFileSha256 -Path $_.FullName))"
     } | Sort-Object
   )
   $digestText = [string]::Join("`n", $digestRows) + "`n"

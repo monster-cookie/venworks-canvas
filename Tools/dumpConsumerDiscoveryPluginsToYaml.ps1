@@ -43,6 +43,14 @@ $spriggitTranslatorPath = Resolve-ConsumerDiscoveryExecutable `
   -Path (Join-Path $env:LOCALAPPDATA "Temp\Spriggit\Translations\$spriggitTranslatorName\$($matrix.Spriggit.Version)") `
   -FileName "$spriggitTranslatorName.exe" `
   -Description 'Pinned Spriggit Starfield translator executable'
+$spriggitCliSha256 = Get-ConsumerDiscoveryFileSha256 -Path $spriggitPath
+$spriggitTranslatorSha256 = Get-ConsumerDiscoveryFileSha256 -Path $spriggitTranslatorPath
+if ($spriggitCliSha256 -cne [string]$matrix.Spriggit.CliSha256) {
+  throw "Spriggit CLI executable hash drifted. Expected $($matrix.Spriggit.CliSha256); found $spriggitCliSha256."
+}
+if ($spriggitTranslatorSha256 -cne [string]$matrix.Spriggit.TranslatorSha256) {
+  throw "Spriggit translator executable hash drifted. Expected $($matrix.Spriggit.TranslatorSha256); found $spriggitTranslatorSha256."
+}
 $dataFolder = $resolvedPluginsDirectory
 $generationEvidencePath = Resolve-ConsumerDiscoveryRequiredFile `
   -Path (Join-Path $resolvedPluginsDirectory 'generation-evidence.json') `
@@ -126,13 +134,24 @@ foreach ($plugin in @($matrix.Plugins)) {
   })
 }
 
+$spriggitCliSha256After = Get-ConsumerDiscoveryFileSha256 -Path $spriggitPath
+$spriggitTranslatorSha256After = Get-ConsumerDiscoveryFileSha256 -Path $spriggitTranslatorPath
+if ($spriggitCliSha256After -cne $spriggitCliSha256 -or
+    $spriggitCliSha256After -cne [string]$matrix.Spriggit.CliSha256) {
+  throw 'Spriggit CLI executable changed during Spriggit serialization.'
+}
+if ($spriggitTranslatorSha256After -cne $spriggitTranslatorSha256 -or
+    $spriggitTranslatorSha256After -cne [string]$matrix.Spriggit.TranslatorSha256) {
+  throw 'Spriggit translator executable changed during Spriggit serialization.'
+}
+
 $evidence = [ordered]@{
   Schema = 'VWCANVAS9_CONSUMER_DISCOVERY_SPRIGGIT/2'
   Profile = [string]$resolvedProfile.Key
   PackageName = [string]$matrix.Spriggit.MetadataPackageName
   SpriggitVersion = [string]$matrix.Spriggit.Version
-  SpriggitCliSha256 = (Get-ConsumerDiscoveryFileSha256 -Path $spriggitPath)
-  SpriggitTranslatorSha256 = (Get-ConsumerDiscoveryFileSha256 -Path $spriggitTranslatorPath)
+  SpriggitCliSha256 = $spriggitCliSha256
+  SpriggitTranslatorSha256 = $spriggitTranslatorSha256
   PluginGenerationEvidenceSha256 = (Get-ConsumerDiscoveryFileSha256 -Path $generationEvidencePath)
   Plugins = @($dumpEvidence)
 }

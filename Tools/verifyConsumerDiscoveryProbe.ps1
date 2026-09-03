@@ -519,6 +519,8 @@ if ([int]$matrix.Version -ne 5 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGIS
 if ([string]$matrix.Spriggit.PackageName -cne 'Spriggit.Yaml' -or
     [string]$matrix.Spriggit.MetadataPackageName -cne 'Spriggit.Yaml.Starfield' -or
     [string]$matrix.Spriggit.Version -cne '0.40.1' -or
+    [string]$matrix.Spriggit.CliSha256 -cne '01E71FC882061F7387A5DC25022940A9A79892B81292C6B47F4DA2437649DCA5' -or
+    [string]$matrix.Spriggit.TranslatorSha256 -cne 'E4358BFFA6E79723824764A5255A1ECA3A4FC14F10478FA42BA81ED58D7F1036' -or
     [string]$matrix.Spriggit.OutputRoot -cne 'Spriggit/ConsumerDiscovery') {
   throw 'Consumer discovery must pin the approved Spriggit YAML-only review contract.'
 }
@@ -925,6 +927,9 @@ if (!$allToolText.Contains('VWCANVAS-owned, VWHUD-v2-derived') -or !$allToolText
 if (!$allToolText.Contains('Spriggit.CLI.exe') -or
     !$allToolText.Contains('$spriggitTranslatorPath serialize') -or
     !$allToolText.Contains('Temp\Spriggit\Translations') -or
+    !$allToolText.Contains('Spriggit.CliSha256') -or
+    !$allToolText.Contains('Spriggit.TranslatorSha256') -or
+    !$allToolText.Contains('changed during Spriggit serialization') -or
     !$allToolText.Contains('dumpConsumerDiscoveryPluginsToYaml.ps1') -or
     $allToolText.Contains('--Check') -or
     $allToolText.Contains(' deserialize ')) {
@@ -1116,8 +1121,8 @@ if ([string]$spriggitEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_SPRIGGIT
     [string]$spriggitEvidence.Profile -cne [string]$resolvedProfile.Key -or
     [string]$spriggitEvidence.PackageName -cne [string]$matrix.Spriggit.MetadataPackageName -or
     [string]$spriggitEvidence.SpriggitVersion -cne [string]$matrix.Spriggit.Version -or
-    [string]$spriggitEvidence.SpriggitCliSha256 -notmatch '^[0-9A-F]{64}$' -or
-    [string]$spriggitEvidence.SpriggitTranslatorSha256 -notmatch '^[0-9A-F]{64}$' -or
+    [string]$spriggitEvidence.SpriggitCliSha256 -cne [string]$matrix.Spriggit.CliSha256 -or
+    [string]$spriggitEvidence.SpriggitTranslatorSha256 -cne [string]$matrix.Spriggit.TranslatorSha256 -or
     [string]$spriggitEvidence.PluginGenerationEvidenceSha256 -cne (Get-FileSha256 -Path $pluginGenerationEvidencePath) -or
     @($spriggitEvidence.Plugins).Count -ne @($matrix.Plugins).Count) {
   throw "Tracked Spriggit evidence does not match selected profile '$($resolvedProfile.Key)'."
