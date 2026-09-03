@@ -18,6 +18,6 @@ Event OnInit()
   If (Registrar.ApplyDescriptorUpdate(UpdatedDisplayName, UpdatedNormalMoviePath, UpdatedLargeMoviePath, UpdatedDescriptorVersion))
     LogUserInformational(ModuleName, "OnInit", "Applied the explicit Consumer A descriptor update.")
   Else
-    LogUserError(ModuleName, "OnInit", "The existing Consumer A registrar did not accept the explicit descriptor update.")
+    LogUserWarning(ModuleName, "OnInit", "Update not applied yet; registrar logs distinguish retained pending work from terminal rejection.")
   EndIf
 EndEvent

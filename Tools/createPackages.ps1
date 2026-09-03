@@ -1,27 +1,14 @@
-# Abort on first error
-$PSNativeCommandUseErrorActionPreference = $true
-$ErrorActionPreference = "Stop"
-
-# If not loaded already pull in the shared config
-if (!$Global:SharedConfigurationLoaded) {
-  Write-Host -ForegroundColor Green "Importing Shared Configuration"
-  . "$PSScriptRoot/sharedConfig.ps1"
-}
-
-# Creating the Windows Archives and placing then in the Dist folder
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Main.ba2" -format="General" -compression="Default" -maxSizeMB=2048 -excludeFilters=".*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2"
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Textures.ba2" -format="DDS" -compression="Default" -maxSizeMB=2048 -includeFilters=".*\\.*\.dds"
-
-# Creating the XBox Archives and placing then in the Dist folder
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Main_XBox.ba2" -format="General" -compression="XBox" -maxSizeMB=2048 -excludeFilters=".*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2"
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Textures_XBox.ba2" -format="XBoxDDS" -compression="XBox" -maxSizeMB=2048 -includeFilters=".*\\.*\.dds"
-
-# Creating the PS Archives and placing then in the Dist folder (Currently Archiver2 has not been updated for PS support)
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Main_PS.ba2" -format="General" -compression="Default" -maxSizeMB=2048 -excludeFilters=".*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2"
-& "$ENV:TOOL_PATH_ARCHIVER\Archive2.exe" ".\Staging\" -root="$PWD\Staging\" -create="$ENV:MODULE_DATABASE_PATH\$Global:ScriptingNamespaceModuleCompany-$Global:ScriptingNamespaceModuleName - Textures_PS.ba2" -format="DDS" -compression="Default" -maxSizeMB=2048 -includeFilters=".*\\.*\.dds"
-
-Write-Host -ForegroundColor Cyan "`n`n"
-Write-Host -ForegroundColor Cyan "**************************************************"
-Write-Host -ForegroundColor Cyan "**     BA2 Windows and XBox Archives Created    **"
-Write-Host -ForegroundColor Cyan "**************************************************"
-Write-Host -ForegroundColor Cyan "`n`n"
+<#
+.SYNOPSIS
+Builds the three profile-bound diagnostic packages using the existing validated staging pipeline.
+#>
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory = $true)][string]$VwHudRepositoryPath,
+  [Parameter(Mandatory = $true)][string]$VenworksCoreRepositoryPath,
+  [Parameter(Mandatory = $true)][string]$PluginsDirectory,
+  [Alias('Profile')][ValidateSet('Baseline','Faults','UpdatedA')][string]$ProbeProfile = 'Baseline',
+  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '../.env')
+)
+$ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'stageConsumerDiscoveryProbe.ps1') @PSBoundParameters

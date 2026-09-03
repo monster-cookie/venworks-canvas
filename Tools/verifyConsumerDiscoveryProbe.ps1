@@ -133,10 +133,10 @@ function Read-ConsumerDiscoveryFrame {
 
 function New-ConsumerDiscoveryDescriptorRecord {
   param(
-    [string]$ConsumerId = 'venworks.canvas.probe.consumer-a',
+    [string]$ConsumerId = 'a8098c1a-f86e-4b1e-9d7c-5a102bf38460',
     [string]$DisplayName = 'VWCANVAS-9 Consumer A',
-    [string]$NormalMoviePath = "VenworksCanvas/Consumers/$ConsumerId/normal.swf",
-    [string]$LargeMoviePath = "VenworksCanvas/Consumers/$ConsumerId/large.swf",
+    [string]$NormalMoviePath = "VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/normal.swf",
+    [string]$LargeMoviePath = "VenworksCanvas/Consumers/venworks.canvas.probe.consumer-a/large.swf",
     [int]$DescriptorVersion = 1
   )
 
@@ -197,17 +197,16 @@ function ConvertFrom-ConsumerDiscoveryDescriptorRecord {
   }
 
   [int]$descriptorVersion = 0
-  $consumerId = $values[0]
+  $consumerId = ConvertTo-ConsumerDiscoveryUuid -Value $values[0]
   $displayName = $values[1]
-  $expectedPrefix = "VenworksCanvas/Consumers/$consumerId/"
-  $metadataValid = $consumerId -cmatch '^[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]$' -and
-    $consumerId.IndexOf('.', [StringComparison]::Ordinal) -gt 0 -and
-    !$consumerId.Contains('..') -and
-    $displayName -cmatch '^[\x20-\x7E]{1,80}$' -and
+  $normalMatch = [regex]::Match($values[2], '\AVenworksCanvas/Consumers/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])/normal\.swf\z', 'IgnoreCase')
+  $largeMatch = [regex]::Match($values[3], '\AVenworksCanvas/Consumers/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])/large\.swf\z', 'IgnoreCase')
+  $metadataValid = $displayName -cmatch '^[\x20-\x7E]{1,80}$' -and
     [int]::TryParse($values[4], [Globalization.NumberStyles]::None, [Globalization.CultureInfo]::InvariantCulture, [ref]$descriptorVersion) -and
     $descriptorVersion -ge 1 -and $descriptorVersion -le 9999 -and
-    $values[2] -ceq ($expectedPrefix + 'normal.swf') -and
-    $values[3] -ceq ($expectedPrefix + 'large.swf')
+    $normalMatch.Success -and $largeMatch.Success -and
+    !$normalMatch.Groups[1].Value.Contains('..') -and
+    $normalMatch.Groups[1].Value -ieq $largeMatch.Groups[1].Value
   if (!$metadataValid) {
     throw 'Descriptor metadata is invalid.'
   }
@@ -365,13 +364,14 @@ function ConvertFrom-ConsumerDiscoverySnapshotGeneration {
 function Assert-ConsumerDiscoveryParserFixtures {
   $delimiterRecord = New-ConsumerDiscoveryDescriptorRecord -DisplayName 'A | B ; C ~ D'
   $delimiterResult = ConvertFrom-ConsumerDiscoverySnapshotBody -Body (New-ConsumerDiscoverySnapshotBody -Records @($delimiterRecord))
-  if ($delimiterResult.Count -ne 1 -or $delimiterResult['venworks.canvas.probe.consumer-a'].DisplayName -cne 'A | B ; C ~ D') {
+  if ($delimiterResult.Count -ne 1 -or $delimiterResult['a8098c1a-f86e-4b1e-9d7c-5a102bf38460'].DisplayName -cne 'A | B ; C ~ D') {
     throw 'Length-prefixed parser fixture did not preserve delimiter-like display-name characters.'
   }
 
-  $maximumConsumerId = 'a.' + ('b' * 62)
-  $maximumNormalMoviePath = "VenworksCanvas/Consumers/$maximumConsumerId/normal.swf"
-  $maximumLargeMoviePath = "VenworksCanvas/Consumers/$maximumConsumerId/large.swf"
+  $maximumConsumerId = '{A8098C1A-F86E-4B1E-9D7C-5A102BF38460}'
+  $maximumAssetNamespace = 'a.' + ('b' * 62)
+  $maximumNormalMoviePath = "VenworksCanvas/Consumers/$maximumAssetNamespace/normal.swf"
+  $maximumLargeMoviePath = "VenworksCanvas/Consumers/$maximumAssetNamespace/large.swf"
   $maximumRecord = New-ConsumerDiscoveryDescriptorRecord `
     -ConsumerId $maximumConsumerId `
     -DisplayName ('D' * 80) `
@@ -379,7 +379,7 @@ function Assert-ConsumerDiscoveryParserFixtures {
     -LargeMoviePath $maximumLargeMoviePath `
     -DescriptorVersion 9999
   $maximumResult = ConvertFrom-ConsumerDiscoverySnapshotBody -Body (New-ConsumerDiscoverySnapshotBody -Records @($maximumRecord))
-  if ($maximumRecord.Length -ne 362 -or $maximumResult.Count -ne 1 -or !$maximumResult.Contains($maximumConsumerId)) {
+  if ($maximumRecord.Length -ne 336 -or $maximumResult.Count -ne 1 -or !$maximumResult.Contains((ConvertTo-ConsumerDiscoveryUuid -Value $maximumConsumerId))) {
     throw 'Parser fixture rejected the maximum valid canonical descriptor.'
   }
 
@@ -396,7 +396,7 @@ function Assert-ConsumerDiscoveryParserFixtures {
   $first = New-ConsumerDiscoveryDescriptorRecord -DisplayName 'FIRST'
   $second = New-ConsumerDiscoveryDescriptorRecord -DisplayName 'SECOND'
   $duplicateResult = ConvertFrom-ConsumerDiscoverySnapshotBody -Body (New-ConsumerDiscoverySnapshotBody -Records @($first, $second))
-  if ($duplicateResult.Count -ne 1 -or $duplicateResult['venworks.canvas.probe.consumer-a'].DisplayName -cne 'FIRST') {
+  if ($duplicateResult.Count -ne 1 -or $duplicateResult['a8098c1a-f86e-4b1e-9d7c-5a102bf38460'].DisplayName -cne 'FIRST') {
     throw 'Parser fixture did not retain the first valid duplicate consumer descriptor.'
   }
 
@@ -429,17 +429,17 @@ function Assert-ConsumerDiscoveryParserFixtures {
   }
 
   $invalidThenValid = ConvertFrom-ConsumerDiscoverySnapshotBody -Body (New-ConsumerDiscoverySnapshotBody -Records @($invalidId, $first))
-  if ($invalidThenValid.Count -ne 1 -or !$invalidThenValid.Contains('venworks.canvas.probe.consumer-a')) {
+  if ($invalidThenValid.Count -ne 1 -or !$invalidThenValid.Contains('a8098c1a-f86e-4b1e-9d7c-5a102bf38460')) {
     throw 'Parser fixture allowed one invalid descriptor to poison a later valid descriptor.'
   }
 
   $consumerB = New-ConsumerDiscoveryDescriptorRecord `
-    -ConsumerId 'venworks.canvas.probe.consumer-b' `
+    -ConsumerId 'beef70b2-024e-4e9b-a8d5-70a0c882c431' `
     -DisplayName 'VWCANVAS-9 Consumer B'
   $page0 = New-ConsumerDiscoverySnapshotBody -Records @($first) -GenerationId 10 -PageIndex 0 -PageCount 2 -TotalRecordCount 2
   $page1 = New-ConsumerDiscoverySnapshotBody -Records @($consumerB) -GenerationId 10 -PageIndex 1 -PageCount 2 -TotalRecordCount 2
   $multiPageResult = ConvertFrom-ConsumerDiscoverySnapshotGeneration -Bodies @($page1, $page0)
-  if ($multiPageResult.Count -ne 2 -or !$multiPageResult.Contains('venworks.canvas.probe.consumer-a') -or !$multiPageResult.Contains('venworks.canvas.probe.consumer-b')) {
+  if ($multiPageResult.Count -ne 2 -or !$multiPageResult.Contains('a8098c1a-f86e-4b1e-9d7c-5a102bf38460') -or !$multiPageResult.Contains('beef70b2-024e-4e9b-a8d5-70a0c882c431')) {
     throw 'Parser fixture did not atomically assemble a complete out-of-order multipage generation.'
   }
 
@@ -454,12 +454,12 @@ function Assert-ConsumerDiscoveryParserFixtures {
   if (!$missingPageRejected) {
     throw 'Parser fixture accepted a generation with a missing page.'
   }
-  if ($lastComplete.Count -ne 1 -or !$lastComplete.Contains('venworks.canvas.probe.consumer-a')) {
+  if ($lastComplete.Count -ne 1 -or !$lastComplete.Contains('a8098c1a-f86e-4b1e-9d7c-5a102bf38460')) {
     throw 'A missing page mutated the previously complete generation fixture.'
   }
 
   $duplicatePageResult = ConvertFrom-ConsumerDiscoverySnapshotGeneration -Bodies @($page0, $page0, $page1)
-  if ($duplicatePageResult.Count -ne 2 -or !$duplicatePageResult.Contains('venworks.canvas.probe.consumer-a') -or !$duplicatePageResult.Contains('venworks.canvas.probe.consumer-b')) {
+  if ($duplicatePageResult.Count -ne 2 -or !$duplicatePageResult.Contains('a8098c1a-f86e-4b1e-9d7c-5a102bf38460') -or !$duplicatePageResult.Contains('beef70b2-024e-4e9b-a8d5-70a0c882c431')) {
     throw 'Parser fixture did not treat identical duplicate-page delivery idempotently.'
   }
 
@@ -500,7 +500,7 @@ function Assert-ConsumerDiscoveryParserFixtures {
   $supersedingResult = ConvertFrom-ConsumerDiscoverySnapshotGeneration -Bodies @(
     (New-ConsumerDiscoverySnapshotBody -Records @($consumerB) -GenerationId 11)
   )
-  if ($supersedingResult.Count -ne 1 -or !$supersedingResult.Contains('venworks.canvas.probe.consumer-b')) {
+  if ($supersedingResult.Count -ne 1 -or !$supersedingResult.Contains('beef70b2-024e-4e9b-a8d5-70a0c882c431')) {
     throw 'A newer complete generation did not supersede an incomplete generation fixture.'
   }
 }
@@ -513,7 +513,7 @@ if ($SourceOnly -and $ArtifactsOnly) {
   throw 'SourceOnly and ArtifactsOnly cannot be combined.'
 }
 
-if ([int]$matrix.Version -ne 6 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
+if ([int]$matrix.Version -ne 7 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
     [string]$matrix.TestMode -cne 'RegistrationOnlyBridgeDisabled' -or
     [string]$matrix.UiLoadResult -cne 'REGISTERED_TRANSPORT_DISABLED') {
   throw 'Consumer-discovery matrix must declare the v6 bridge-disabled registration test contract.'
@@ -770,9 +770,9 @@ if (@($matrix.VwHudFixture.PlayerHudMovies).Count -ne 4) {
 }
 $coreSources = @($matrix.VenworksCoreFixture.SourceFiles)
 $coreRuntimeScripts = @($matrix.VenworksCoreFixture.RuntimeScripts)
-if ($coreSources.Count -ne 4 -or $coreRuntimeScripts.Count -ne 4 -or
+if ($coreSources.Count -ne 6 -or $coreRuntimeScripts.Count -ne 6 -or
     [string]::IsNullOrWhiteSpace([string]$matrix.VenworksCoreFixture.Revision)) {
-  throw 'Consumer discovery must pin the four required Venworks Core sources and four matching runtime scripts.'
+  throw 'Consumer discovery must pin six required Venworks Core sources and matching runtime scripts, including UUID utilities/tests.'
 }
 
 $profileKeys = @($matrix.Profiles.Key)
@@ -833,7 +833,7 @@ foreach ($caseId in $requiredParserCases) {
 }
 Assert-ConsumerDiscoveryParserFixtures
 
-$requiredRegistrationCases = @('pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership')
+$requiredRegistrationCases = @('pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership', 'pc-registration-uuid-case', 'pc-registration-legacy-migration', 'pc-registration-concurrent-owners', 'pc-registration-pending-update')
 Assert-ExactOrdinalList `
   -Actual @($matrix.RegistrationRuntimeCases.Id) `
   -Expected $requiredRegistrationCases `
@@ -932,12 +932,18 @@ $registrySource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papy
 foreach ($token in @(
   'Extends Venworks:Canvas:Base:BaseQuest'
   'Struct ConsumerRegistration'
+  'Guard RegistryGuard ProtectsFunctionLogic'
+  'LockGuard RegistryGuard'
+  'Venworks:Core:Utilities:UUID.AreEqual'
+  'Venworks:Core:Utilities:UUID.Normalize'
+  'MigrateConsumerIdentityLocked'
+  'IsMoviePairValid'
   'ConsumerRegistration[] Property Consumers Auto Mandatory'
   'Quest Owner'
   'Consumers.Add(registration)'
   'Consumers[existingIndex].Owner != owner'
   'Consumers[index].Owner == None'
-  'If (!EnsureStorage())'
+  'If (!EnsureStorageLocked())'
   'Consumers = new ConsumerRegistration[0]'
   'String Function RequestUiLoad(Quest owner, String consumerId)'
   'Return "REGISTERED_TRANSPORT_DISABLED"'
@@ -949,7 +955,7 @@ foreach ($token in @(
   'GetPrintableAsciiRejectionReason('
   'REGISTRATION_REJECTED'
   'REGISTRATION_UNCHANGED'
-  'EnsureMenuSubscriptions()'
+  'EnsureMenuSubscriptionsLocked()'
   'MenuSubscriptionsInitialized = True'
   'Consumers[index] == None'
   'WATCH BRIDGE DISABLED'
@@ -977,14 +983,14 @@ foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'ConsumerRegis
   }
 }
 
-if (![regex]::IsMatch($registrySource, '(?s)Bool Function EnsureStorage\(\)\s+EnsureMenuSubscriptions\(\)\s+If \(Consumers == None\)') -or
+if (![regex]::IsMatch($registrySource, '(?s)Bool Function EnsureStorageLocked\(\)\s+EnsureMenuSubscriptionsLocked\(\)\s+If \(Consumers == None\)') -or
     ![regex]::IsMatch($registrySource, '(?s)Bool Function PublishSnapshot\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+Return False\s+EndFunction') -or
     ![regex]::IsMatch($registrySource, '(?s)Function PublishDiagnostic\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+EndFunction') -or
     [regex]::IsMatch($registrySource, '(?im)^\s*(?:PublishSnapshot|PublishDiagnostic)\(')) {
   throw 'Registry recovery must restore subscriptions, and legacy publishers must remain inert with no internal callers.'
 }
 foreach ($functionContract in @(
-  @{ Type = 'Bool'; Name = 'EnsureStorage'; Return = 'True' },
+  @{ Type = 'Bool'; Name = 'EnsureStorageLocked'; Return = 'True' },
   @{ Type = 'String'; Name = 'GetDescriptorRejectionReason'; Return = '""' },
   @{ Type = 'String'; Name = 'GetConsumerIdRejectionReason'; Return = '""' },
   @{ Type = 'String'; Name = 'GetPrintableAsciiRejectionReason'; Return = '""' }
@@ -1009,10 +1015,11 @@ foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc'))
     'Float Property InitialDelaySeconds Auto Const Mandatory'
     'While (attempt < 20)'
     'Utility.WaitMenuPause(0.5)'
-    'If (RegistrationAttemptActive)'
+    'Guard AttemptGuard ProtectsFunctionLogic'
+    'LockGuard AttemptGuard'
     'RegistrationAttemptActive = True'
     'RegistrationAttemptActive = False'
-    'Registry.RequestUiLoad(Self, ConsumerId)'
+    'Registry.RequestUiLoad(Self, registrationId)'
     'EXPECTED_REGISTRATION_REJECTION'
     'LogUserInformational('
     'LogUserWarning('
@@ -1027,7 +1034,7 @@ foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc'))
   if ($consumerSource.Contains('Debug.Trace')) {
     throw "Papyrus consumer '$consumerName' retained direct Debug.Trace logging."
   }
-  if (![regex]::IsMatch($consumerSource, '(?s)If \(actualRegistration\)\s+String loadResult = Registry.RequestUiLoad\(Self, ConsumerId\)') -or
+  if (![regex]::IsMatch($consumerSource, '(?s)If \(actualRegistration\)\s+String loadResult = Registry.RequestUiLoad\(Self, registrationId\)') -or
       ![regex]::IsMatch($consumerSource, '(?s)Unexpected terminal registration result[^\r\n]*\s+Return False\s+EndIf\s+attempt \+= 1')) {
     throw "Consumer '$consumerName' must request a UI load only after actual success and stop polling once the registry answers."
   }
@@ -1038,12 +1045,14 @@ foreach ($token in @(
   'String ActiveDisplayName'
   'Int ActiveDescriptorVersion = 0'
   'EnsureActiveDescriptor()'
-  'Bool result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)'
+  'result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)'
   'Function ApplyDescriptorUpdate('
-  'ActiveDisplayName = updatedDisplayName'
-  'Bool applied = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)'
-  'ActiveDisplayName = previousDisplayName'
-  'Registry.RegisterConsumer(Self, ConsumerId, requestedDisplayName'
+  'PendingDisplayName = updatedDisplayName'
+  'PendingUpdate = True'
+  'ActiveDisplayName = PendingDisplayName'
+  'Bool applied = AttemptDescriptorRegistration(PendingDisplayName, PendingNormalMovieUrl, PendingLargeMovieUrl, PendingDescriptorVersion, True)'
+  'DESCRIPTOR_UPDATE_PENDING'
+  'Registry.RegisterConsumer(Self, registrationId, requestedDisplayName'
 )) {
   if (!$consumerASource.Contains($token)) {
     throw "Consumer A registrar is missing explicit update-owner token '$token'."
@@ -1222,6 +1231,9 @@ foreach ($expectedKnownMaster in @(
 }
 
 Write-Host -ForegroundColor Green "Verified bridge-disabled registration sources, all three tracked YAML contracts, profile '$($resolvedProfile.Key)', deferred parser fixtures, PC matrices, and PowerShell syntax."
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryUuid.ps1')
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryPackaging.ps1')
+
 if ($SourceOnly) {
   return
 }

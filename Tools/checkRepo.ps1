@@ -21,6 +21,7 @@ param(
 $PSNativeCommandUseErrorActionPreference = $true
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'sharedConsumerDiscoveryProbe.ps1')
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $loadedConfigurationRoot = Get-Variable -Name SharedConfigurationRepositoryRoot -Scope Global -ErrorAction SilentlyContinue
@@ -193,9 +194,7 @@ foreach ($variant in $variants) {
     if (!(Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
       throw "$($variant.VariantName) is missing expected artifact: $artifactPath"
     }
-    if ((Get-Item -LiteralPath $artifactPath).Length -le 0) {
-      throw "$($variant.VariantName) artifact is empty: $artifactPath"
-    }
+    Assert-ConsumerDiscoveryArtifactHeader -Path $artifactPath
   }
 
   Write-Host -ForegroundColor Green "$($variant.VariantName) staging and artifacts are valid."

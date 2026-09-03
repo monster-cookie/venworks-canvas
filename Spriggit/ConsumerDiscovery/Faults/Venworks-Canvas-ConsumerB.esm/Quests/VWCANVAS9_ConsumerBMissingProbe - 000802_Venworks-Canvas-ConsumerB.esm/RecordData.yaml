@@ -7,7 +7,7 @@ VirtualMachineAdapter:
     Properties:
     - MutagenObjectType: ScriptStringProperty
       Name: ConsumerId
-      Data: venworks.canvas.probe.missing
+      Data: cad7cd56-217a-4e62-a98d-42c3adad07b5
     - MutagenObjectType: ScriptIntProperty
       Name: DescriptorVersion
       Data: 1

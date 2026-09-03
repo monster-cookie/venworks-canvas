@@ -17,7 +17,8 @@ package
       {
          return {
             "protocol":"VWCANVAS_CONSUMER/1",
-            "consumerId":"venworks.canvas.probe.consumer-b",
+            "consumerId":"beef70b2-024e-4e9b-a8d5-70a0c882c431",
+            "assetNamespace":"venworks.canvas.probe.consumer-b",
             "version":1,
             "marker":"B"
          };

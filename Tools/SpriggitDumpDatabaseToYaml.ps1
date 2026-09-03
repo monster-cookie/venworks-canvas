@@ -1,27 +1,12 @@
-# Abort on first error
-$PSNativeCommandUseErrorActionPreference = $true
-$ErrorActionPreference = "Stop"
-
-# If not loaded already pull in the shared config
-if (!$Global:SharedConfigurationLoaded) {
-  Write-Host -ForegroundColor Green "Importing Shared Configuration"
-  . "$PSScriptRoot/sharedConfig.ps1"
-}
-
-# Export Data File to YAML
-foreach ($database in $Global:Databases) {
-  if (![System.IO.File]::Exists("./Staging/$database")) {
-    Write-Host -ForegroundColor DarkRed "No database file named '$database' found in Staging. Skipping."
-    continue
-  }
-
-  Write-Host -ForegroundColor Green "Disassembling in data file $database to YAML in ./Staging/$database"
-
-  & "$ENV:TOOL_PATH_SPRIGGIT/Spriggit.CLI.exe" serialize --InputPath "./Staging/$database" --PackageVersion $ENV:SPRIGGIT_VERSION --OutputPath "./Spriggit/$database" --Check --GameRelease Starfield --PackageName Spriggit.Yaml --DataFolder "$ENV:STEAM_DATA_FOLDER"
-}
-
-Write-Host -ForegroundColor Cyan "`n`n"
-Write-Host -ForegroundColor Cyan "**************************************************"
-Write-Host -ForegroundColor Cyan "**   Spriggit Datafile Dump Workflow Complete   **"
-Write-Host -ForegroundColor Cyan "**************************************************"
-Write-Host -ForegroundColor Cyan "`n`n"
+<#
+.SYNOPSIS
+Serializes the selected Canvas profile for code review. Never assembles a plugin from YAML.
+#>
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory = $true)][string]$PluginsDirectory,
+  [Alias('Profile')][ValidateSet('Baseline','Faults','UpdatedA')][string]$ProbeProfile = 'Baseline',
+  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '../.env')
+)
+$ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'dumpConsumerDiscoveryPluginsToYaml.ps1') @PSBoundParameters

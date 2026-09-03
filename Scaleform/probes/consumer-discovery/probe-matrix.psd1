@@ -1,5 +1,5 @@
 @{
-  Version = 6
+  Version = 7
   Protocol = 'VWCANVAS_REGISTRY_PROBE/3'
   TestMode = 'RegistrationOnlyBridgeDisabled'
   UiLoadResult = 'REGISTERED_TRANSPORT_DISABLED'
@@ -13,14 +13,18 @@
     OutputRoot = 'Spriggit/ConsumerDiscovery'
   }
   VenworksCoreFixture = @{
-    Revision = '23de60ba837c62ba4c07396059e242a0d54cc629'
+    Revision = 'bc1066574ba4ec2fe02f4ad10e4da8b9882c9beb'
     SourceFiles = @(
+      @{ Path = 'Papyrus/Venworks/Core/Utilities/UUID.psc'; Sha256 = '5BEC2410485E13E3925CA3E58E3EACC218F25FBF0FC49E8AAFC24D98FDF5EB24' }
+      @{ Path = 'Papyrus/Venworks/Core/Tests/UUIDTests.psc'; Sha256 = '076639D852BE419BC791C262C692B100161AC5E2FC4D65F0A554BE5933C8F931' }
       @{ Path = 'Papyrus/Venworks/Core/Base/BaseQuest.psc'; Sha256 = 'F6949CA9871039FA68B697676C3095A320A06983459C9472DFC73C5D5B02626A' }
       @{ Path = 'Papyrus/Venworks/Core/Logging.psc'; Sha256 = '2DB449958CFF801155B7B8044818EA5E9514AC85F5BF50E7AC27AC469924E6E5' }
       @{ Path = 'Papyrus/Venworks/Core/Enumerations.psc'; Sha256 = '48D37F52FB226F5E90E4DA4A49EFE62E1B03EE8B571BBDF36BEDBCE91A1A67C9' }
       @{ Path = 'Papyrus/Venworks/Core/GlobalConfig.psc'; Sha256 = 'D1BA0153344316AD0CE9A989BC235C3218BBCD9F3EE5D4F8BF11AC4F250A9E80' }
     )
     RuntimeScripts = @(
+      @{ Source = 'Staging/Scripts/Venworks/Core/Utilities/UUID.pex'; Target = 'Scripts/Venworks/Core/Utilities/UUID.pex'; Sha256 = '611C0777CA4BCBCAA5CB5748FB70759E884DECBA89DD8174A781814798FCF03E' }
+      @{ Source = 'Staging/Scripts/Venworks/Core/Tests/UUIDTests.pex'; Target = 'Scripts/Venworks/Core/Tests/UUIDTests.pex'; Sha256 = '12AE2847A0C7E398C56F594F10C2497B7F8EC828508F71C9D1D34A1CCAD88AC2' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Base/BaseQuest.pex'; Target = 'Scripts/Venworks/Core/Base/BaseQuest.pex'; Sha256 = 'BF118F1918605CD1DF374C54C0D741B3FB98F8D1CBBA9FECA707CE105011F917' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Logging.pex'; Target = 'Scripts/Venworks/Core/Logging.pex'; Sha256 = '16F393D15F10EEAC273D6B40C951AA3F2EC3DB8CDAF2C9E086BDFDEA31B154D5' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Enumerations.pex'; Target = 'Scripts/Venworks/Core/Enumerations.pex'; Sha256 = 'AE84C6618ACC629B827C64DF7C597CB8F0A1B2492338632D4D3A78F53ADF17E4' }
@@ -69,8 +73,8 @@
       ConsumerBFaults = $false
       PluginSha256 = @{
         Host = '4265E0F9B3B63E6B8E1EEFAAC01781D5F2FB7D650050D30DFAEEC7BEC5E794EE'
-        ConsumerA = 'B3CB1D88B82B72A7B269D3AE747D256D8C706C782BB4455F82B9F1C8B01227E2'
-        ConsumerB = 'CB80AB25744FE05E511D7C997D8D1DB17811663062A4347FC9B070BB7AE8A04E'
+        ConsumerA = '279AC14F54E0348C41A5E1AF5D8961EA34E41B3D50D6DB7E8B160059C8FAD34F'
+        ConsumerB = '6E235B2DF75DA2FEEAE44B39E8F447AE79F6564525E0D0A1AFEE3C4B3BDEAD4C'
       }
     }
     @{
@@ -81,8 +85,8 @@
       ConsumerBFaults = $true
       PluginSha256 = @{
         Host = '4265E0F9B3B63E6B8E1EEFAAC01781D5F2FB7D650050D30DFAEEC7BEC5E794EE'
-        ConsumerA = 'B3CB1D88B82B72A7B269D3AE747D256D8C706C782BB4455F82B9F1C8B01227E2'
-        ConsumerB = '0533E8355CDD9952D8E1AFAEA71ECA9ACDB7CB098CEE68A51257D9E0D0387535'
+        ConsumerA = '279AC14F54E0348C41A5E1AF5D8961EA34E41B3D50D6DB7E8B160059C8FAD34F'
+        ConsumerB = '101A676F75EF47903B41CE3D264CB433F7CFA2E1CF9CD468D096FD96810B0423'
       }
     }
     @{
@@ -93,8 +97,8 @@
       ConsumerBFaults = $false
       PluginSha256 = @{
         Host = '4265E0F9B3B63E6B8E1EEFAAC01781D5F2FB7D650050D30DFAEEC7BEC5E794EE'
-        ConsumerA = '0D6B32A2F62F94A1497314A130FB16831D71420B5F188A9565347A7865514AB4'
-        ConsumerB = 'CB80AB25744FE05E511D7C997D8D1DB17811663062A4347FC9B070BB7AE8A04E'
+        ConsumerA = '8E4C81957D728E07CC461380B26290FBC541061F2B63AC1444F167B6C95DF110'
+        ConsumerB = '6E235B2DF75DA2FEEAE44B39E8F447AE79F6564525E0D0A1AFEE3C4B3BDEAD4C'
       }
     }
   )
@@ -122,6 +126,10 @@
     @{ Id = 'pc-registration-reload'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Reload and menu openings preserve valid records, restore callbacks when first invoked, and create no Watch Alert traffic.' }
     @{ Id = 'pc-registration-rejection'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Invalid descriptors report the exact field once per attempt, terminate without polling, and never request a UI load.' }
     @{ Id = 'pc-registration-ui-ownership'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Unknown IDs and wrong owners receive REJECTED_* from RequestUiLoad, while valid requests report disabled transport.' }
+    @{ Id = 'pc-registration-uuid-case'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'D, braced D and compact UUID inputs in mixed case identify the same record; nil, malformed and whitespace inputs are rejected.' }
+    @{ Id = 'pc-registration-legacy-migration'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Known demo keys rekey to fixed UUIDs only for their existing owner, whether saved quest properties retain legacy text or now supply UUIDs; descriptors survive reload without duplicate rows.' }
+    @{ Id = 'pc-registration-concurrent-owners'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Simultaneous different-owner claims for the same UUID leave exactly one owner; mixed-case collision and reconciliation cannot duplicate or remove that record.' }
+    @{ Id = 'pc-registration-pending-update'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'UpdatedA arriving during registration waits for the native guard and applies version 2; unavailable-registry updates remain pending and reconcile without reverting after save/reload.' }
   )
   # Deferred until the Watch Alert transport is explicitly re-enabled; these remain the visual acceptance requirements.
   RuntimeCases = @(

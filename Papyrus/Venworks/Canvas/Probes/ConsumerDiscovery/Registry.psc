@@ -13,6 +13,7 @@ ConsumerRegistration[] Property Consumers Auto Mandatory
 Int MessageId = 0
 Bool MenuSubscriptionsInitialized = False
 Bool DisabledPublicationLogged = False
+Guard RegistryGuard ProtectsFunctionLogic
 
 String ModuleName = "Probes:ConsumerDiscovery:Registry"
 Int MaxConsumerIdCharacters = 64
@@ -26,20 +27,20 @@ Event OnInit()
   If (!EnsureStorage())
     Return
   EndIf
-  LogUserInformational(ModuleName, "OnInit", "REGISTRATION LOG TEST | WATCH BRIDGE DISABLED | Consumers=" + Consumers.Length)
+  LogUserInformational(ModuleName, "OnInit", "REGISTRATION LOG TEST | WATCH BRIDGE DISABLED | Consumers=" + GetConsumerCount())
 EndEvent
 
 ; Reconciles saved storage and reports its current count once per supported HUD opening; never publishes UI data.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening && EnsureStorage())
-    LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "WATCH BRIDGE DISABLED | Menu=" + menuName + " | Consumers=" + Consumers.Length)
+    LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "WATCH BRIDGE DISABLED | Menu=" + menuName + " | Consumers=" + GetConsumerCount())
   EndIf
 EndEvent
 
 ; Validates and stores one complete descriptor owned by the supplied quest; identical registration is a successful no-op.
 ; True acknowledges Papyrus registry state only, not UI submission or loading. False is a terminal descriptor/ownership rejection.
-Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
-  If (!EnsureStorage())
+Bool Function RegisterConsumerLocked(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
+  If (!EnsureStorageLocked())
     Return False
   EndIf
   String rejection = GetDescriptorRejectionReason(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
@@ -48,7 +49,8 @@ Bool Function RegisterConsumer(Quest owner, String consumerId, String displayNam
     Return False
   EndIf
 
-  Int existingIndex = FindConsumerIndex(consumerId)
+  consumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+  Int existingIndex = FindConsumerIndexLocked(consumerId)
   If (existingIndex >= 0)
     If (Consumers[existingIndex].Owner != owner)
       LogUserWarning(ModuleName, "RegisterConsumer", "Rejected duplicate consumer ID '" + consumerId + "' from a different owner.")
@@ -83,11 +85,14 @@ EndFunction
 
 ; Removes one consumer when the supplied quest owns its ID, without publishing UI data.
 ; Returns true when the consumer is absent or removed, and false when another quest owns the ID.
-Bool Function UnregisterConsumer(Quest owner, String consumerId)
-  If (!EnsureStorage())
+Bool Function UnregisterConsumerLocked(Quest owner, String consumerId)
+  If (!EnsureStorageLocked())
     Return False
   EndIf
-  Int existingIndex = FindConsumerIndex(consumerId)
+  If (owner == None || !IsConsumerIdValid(consumerId))
+    Return False
+  EndIf
+  Int existingIndex = FindConsumerIndexLocked(consumerId)
   If (existingIndex < 0)
     Return True
   EndIf
@@ -103,8 +108,8 @@ EndFunction
 
 ; Checks the registered owner/ID pair without accepting replacement paths. No request is queued or submitted and no movie is loaded.
 ; Returns REGISTERED_TRANSPORT_DISABLED for a valid request, or a REJECTED_* reason for an unavailable owner, invalid ID, or ownership mismatch.
-String Function RequestUiLoad(Quest owner, String consumerId)
-  If (!EnsureStorage() || owner == None)
+String Function RequestUiLoadLocked(Quest owner, String consumerId)
+  If (!EnsureStorageLocked() || owner == None)
     LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_OWNER_UNAVAILABLE")
     Return "REJECTED_OWNER_UNAVAILABLE"
   EndIf
@@ -112,7 +117,7 @@ String Function RequestUiLoad(Quest owner, String consumerId)
     LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_CONSUMER_ID")
     Return "REJECTED_CONSUMER_ID"
   EndIf
-  Int index = FindConsumerIndex(consumerId)
+  Int index = FindConsumerIndexLocked(consumerId)
   If (index < 0)
     LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_NOT_REGISTERED | Consumer=" + consumerId)
     Return "REJECTED_NOT_REGISTERED"
@@ -168,17 +173,8 @@ String Function GetDescriptorRejectionReason(Quest owner, String consumerId, Str
   If (rejection != "")
     Return rejection
   EndIf
-  If (normalMovieUrl != "VenworksCanvas/Consumers/" + consumerId + "/normal.swf")
-    If (GetCharacterCount(normalMovieUrl) > 180 || GetCharacterCount(consumerId) > 64)
-      Return "normalMovieUrl noncanonical | length=" + GetCharacterCount(normalMovieUrl) + " | consumerIdLength=" + GetCharacterCount(consumerId)
-    EndIf
-    Return "normalMovieUrl='" + normalMovieUrl + "' | expected='VenworksCanvas/Consumers/" + consumerId + "/normal.swf'"
-  EndIf
-  If (largeMovieUrl != "VenworksCanvas/Consumers/" + consumerId + "/large.swf")
-    If (GetCharacterCount(largeMovieUrl) > 180 || GetCharacterCount(consumerId) > 64)
-      Return "largeMovieUrl noncanonical | length=" + GetCharacterCount(largeMovieUrl) + " | consumerIdLength=" + GetCharacterCount(consumerId)
-    EndIf
-    Return "largeMovieUrl='" + largeMovieUrl + "' | expected='VenworksCanvas/Consumers/" + consumerId + "/large.swf'"
+  If (!IsMoviePairValid(normalMovieUrl, largeMovieUrl))
+    Return "movie paths must share one safe local asset namespace"
   EndIf
   Return ""
 EndFunction
@@ -188,48 +184,25 @@ Bool Function IsDescriptorValid(Quest owner, String consumerId, String displayNa
   Return GetDescriptorRejectionReason(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion) == ""
 EndFunction
 
-; Returns whether a consumer ID is bounded lowercase ASCII, namespaced, and safe for use in canonical loader URLs.
+; Returns whether the supplied UUID is structurally valid and non-nil, regardless of accepted text shape or case.
 Bool Function IsConsumerIdValid(String consumerId)
   Return GetConsumerIdRejectionReason(consumerId) == ""
 EndFunction
 
-; Returns an empty string for a canonical ID or its first length, character, or namespace rejection; never echoes an unbounded ID.
+; Returns an empty string for a non-nil UUID, or a bounded reason. Never generates an identity.
 String Function GetConsumerIdRejectionReason(String consumerId)
-  Int[] characters = Utility.SplitStringChars(consumerId)
-  If (characters == None)
-    Return "consumerId split=None | maximum=" + MaxConsumerIdCharacters
+  If (!Venworks:Core:Utilities:UUID.IsValid(consumerId))
+    Return "consumerId invalid UUID"
   EndIf
-  If (characters.Length < 3 || characters.Length > MaxConsumerIdCharacters)
-    Return "consumerId length=" + characters.Length + " | range=3.." + MaxConsumerIdCharacters
-  EndIf
-  If (!IsAsciiLetterOrDigit(characters[0]) || !IsAsciiLetterOrDigit(characters[characters.Length - 1]))
-    Return "consumerId boundary | firstCode=" + characters[0] + " | lastCode=" + characters[characters.Length - 1]
-  EndIf
-
-  Int index = 0
-  Int previous = -1
-  Bool foundNamespaceSeparator = False
-  While (index < characters.Length)
-    Int current = characters[index]
-    Bool allowed = IsAsciiLetterOrDigit(current) || current == 45 || current == 46
-    If (!allowed || (current == 46 && previous == 46))
-      Return "consumerId character | index=" + index + " | code=" + current + " | previousCode=" + previous
-    EndIf
-    If (current == 46)
-      foundNamespaceSeparator = True
-    EndIf
-    previous = current
-    index += 1
-  EndWhile
-  If (!foundNamespaceSeparator)
-    Return "consumerId missing namespace separator"
+  If (Venworks:Core:Utilities:UUID.IsNil(consumerId))
+    Return "consumerId nil UUID"
   EndIf
   Return ""
 EndFunction
 
-; Returns whether one character code is a lowercase ASCII letter or decimal digit.
+; Returns whether one character code is an ASCII letter in either case or a decimal digit.
 Bool Function IsAsciiLetterOrDigit(Int character)
-  Return (character >= 97 && character <= 122) || (character >= 48 && character <= 57)
+  Return (character >= 97 && character <= 122) || (character >= 65 && character <= 90) || (character >= 48 && character <= 57)
 EndFunction
 
 ; Returns whether a value has a character count inside the supplied bounds and contains only printable ASCII.
@@ -272,8 +245,8 @@ EndFunction
 
 ; Initializes missing persistent storage without replacing a valid saved array, then prunes records whose owning quest is unavailable.
 ; Returns true after storage is available for registry operations.
-Bool Function EnsureStorage()
-  EnsureMenuSubscriptions()
+Bool Function EnsureStorageLocked()
+  EnsureMenuSubscriptionsLocked()
   If (Consumers == None)
     Consumers = new ConsumerRegistration[0]
     LogUserWarning(ModuleName, "EnsureStorage", "Initialized missing consumer registry storage; consumer quests may register again when a supported HUD menu opens.")
@@ -300,7 +273,7 @@ EndFunction
 
 ; Restores both host callbacks on first use of this revision, including saved quests whose old OnInit exited early.
 ; The saved flag is set only after both native registrations complete. No UI transport is involved.
-Function EnsureMenuSubscriptions()
+Function EnsureMenuSubscriptionsLocked()
   If (!MenuSubscriptionsInitialized)
     RegisterForMenuOpenCloseEvent("HUDMenu")
     RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
@@ -310,13 +283,208 @@ Function EnsureMenuSubscriptions()
 EndFunction
 
 ; Returns the index of a registered consumer ID or negative one when no complete record has that ID.
-Int Function FindConsumerIndex(String consumerId)
+Int Function FindConsumerIndexLocked(String consumerId)
   Int index = 0
   While (index < Consumers.Length)
-    If (Consumers[index].ConsumerId == consumerId)
+    If (Venworks:Core:Utilities:UUID.AreEqual(Consumers[index].ConsumerId, consumerId))
       Return index
     EndIf
     index += 1
   EndWhile
   Return -1
+EndFunction
+
+; Guarded public entry point. Serializes RegisterConsumer with all registry state operations; no waits or consumer callbacks occur under the guard.
+Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
+  Bool result
+  LockGuard RegistryGuard
+    result = RegisterConsumerLocked(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
+  EndLockGuard
+  Return result
+EndFunction
+
+; Guarded public entry point. Serializes UnregisterConsumer with all registry state operations; no waits or consumer callbacks occur under the guard.
+Bool Function UnregisterConsumer(Quest owner, String consumerId)
+  Bool result
+  LockGuard RegistryGuard
+    result = UnregisterConsumerLocked(owner, consumerId)
+  EndLockGuard
+  Return result
+EndFunction
+
+; Guarded public entry point. Serializes RequestUiLoad with all registry state operations; no waits or consumer callbacks occur under the guard.
+String Function RequestUiLoad(Quest owner, String consumerId)
+  String result
+  LockGuard RegistryGuard
+    result = RequestUiLoadLocked(owner, consumerId)
+  EndLockGuard
+  Return result
+EndFunction
+
+; Guarded public entry point. Serializes EnsureStorage with all registry state operations; no waits or consumer callbacks occur under the guard.
+Bool Function EnsureStorage()
+  Bool result
+  LockGuard RegistryGuard
+    result = EnsureStorageLocked()
+  EndLockGuard
+  Return result
+EndFunction
+
+; Guarded public entry point. Serializes FindConsumerIndex with all registry state operations; no waits or consumer callbacks occur under the guard.
+Int Function FindConsumerIndex(String consumerId)
+  Int result
+  LockGuard RegistryGuard
+    EnsureStorageLocked()
+    result = FindConsumerIndexLocked(consumerId)
+  EndLockGuard
+  Return result
+EndFunction
+
+; Guarded public entry point. Serializes EnsureMenuSubscriptions with all registry state operations; no waits or consumer callbacks occur under the guard.
+Function EnsureMenuSubscriptions()
+  LockGuard RegistryGuard
+    EnsureMenuSubscriptionsLocked()
+  EndLockGuard
+EndFunction
+
+; Returns the current repaired registry count while holding the registry guard.
+Int Function GetConsumerCount()
+  Int count = 0
+  LockGuard RegistryGuard
+    EnsureStorageLocked()
+    count = Consumers.Length
+  EndLockGuard
+  Return count
+EndFunction
+
+; Explicit owner-checked legacy rekey. Absent legacy records are a successful no-op; conflicting ownership fails without mutation.
+; Consumers, FormIDs and descriptors are preserved. This method does not infer or generate the new UUID.
+Bool Function MigrateConsumerIdentity(Quest owner, String legacyId, String newId)
+  Bool migrated = False
+  LockGuard RegistryGuard
+    migrated = MigrateConsumerIdentityLocked(owner, legacyId, newId)
+  EndLockGuard
+  Return migrated
+EndFunction
+
+; Internal rekey transaction; caller holds RegistryGuard. Only non-UUID legacy text can be rekeyed.
+Bool Function MigrateConsumerIdentityLocked(Quest owner, String legacyId, String newId)
+  EnsureStorageLocked()
+  If (owner == None || !IsConsumerIdValid(newId) || legacyId == "" || Venworks:Core:Utilities:UUID.IsValid(legacyId))
+    Return False
+  EndIf
+  Int current = FindConsumerIndexLocked(newId)
+  If (current >= 0)
+    If (Consumers[current].Owner != owner)
+      Return False
+    EndIf
+  EndIf
+  Int index = Consumers.Length - 1
+  While (index >= 0)
+    If (SameAsciiText(Consumers[index].ConsumerId, legacyId) && Consumers[index].Owner == owner)
+      If (current >= 0)
+        Consumers.Remove(index)
+        If (index < current)
+          current -= 1
+        EndIf
+      Else
+        Consumers[index].ConsumerId = Venworks:Core:Utilities:UUID.Normalize(newId)
+        current = index
+      EndIf
+      LogUserInformational(ModuleName, "MigrateConsumerIdentity", "LEGACY_ID_MIGRATED | Consumer=" + newId)
+    EndIf
+    index -= 1
+  EndWhile
+  Return True
+EndFunction
+
+; Compares ASCII text numerically, ignoring only A-Z case. Used for legacy fixture names and archive URLs, never display labels.
+Bool Function SameAsciiText(String first, String second)
+  Int[] left = Utility.SplitStringChars(first)
+  Int[] right = Utility.SplitStringChars(second)
+  If (left == None || right == None)
+    Return False
+  EndIf
+  If (left.Length != right.Length)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < left.Length)
+    If (FoldAscii(left[index]) != FoldAscii(right[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  Return True
+EndFunction
+
+; Folds one ASCII capital to lowercase without relying on Papyrus string identity.
+Int Function FoldAscii(Int character)
+  If (character >= 65 && character <= 90)
+    Return character + 32
+  EndIf
+  Return character
+EndFunction
+
+; Validates both local loader paths independently of the UUID, and requires one identical asset namespace.
+Bool Function IsMoviePairValid(String normalPath, String largePath)
+  If (!IsMoviePathValid(normalPath, "/normal.swf") || !IsMoviePathValid(largePath, "/large.swf"))
+    Return False
+  EndIf
+  Int[] normal = Utility.SplitStringChars(normalPath)
+  Int[] large = Utility.SplitStringChars(largePath)
+  ; /normal.swf has 11 characters; /large.swf has 10.
+  If (normal.Length - 11 != large.Length - 10)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < normal.Length - 11)
+    If (FoldAscii(normal[index]) != FoldAscii(large[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  Return True
+EndFunction
+
+; Allows only VenworksCanvas/Consumers/<ASCII-namespace>/<selected-movie>. No protocol, traversal, drives or extra segments.
+Bool Function IsMoviePathValid(String path, String suffix)
+  Int[] chars = Utility.SplitStringChars(path)
+  Int[] prefix = Utility.SplitStringChars("VenworksCanvas/Consumers/")
+  Int[] ending = Utility.SplitStringChars(suffix)
+  If (chars == None || prefix == None || ending == None)
+    Return False
+  EndIf
+  Int namespaceEnd = chars.Length - ending.Length
+  Int namespaceLength = namespaceEnd - prefix.Length
+  If (namespaceLength < 3 || namespaceLength > 64 || chars.Length > MaxConsumerMovieUrlCharacters)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < prefix.Length)
+    If (FoldAscii(chars[index]) != FoldAscii(prefix[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  If (!IsAsciiLetterOrDigit(chars[index]) || !IsAsciiLetterOrDigit(chars[namespaceEnd - 1]))
+    Return False
+  EndIf
+  Int previous = -1
+  While (index < namespaceEnd)
+    Int current = chars[index]
+    If ((!IsAsciiLetterOrDigit(current) && current != 45 && current != 46) || (current == 46 && previous == 46))
+      Return False
+    EndIf
+    previous = current
+    index += 1
+  EndWhile
+  index = 0
+  While (index < ending.Length)
+    If (FoldAscii(chars[namespaceEnd + index]) != FoldAscii(ending[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  Return True
 EndFunction

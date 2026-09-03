@@ -15,6 +15,12 @@ String ActiveNormalMovieUrl
 String ActiveLargeMovieUrl
 Int ActiveDescriptorVersion = 0
 Bool RegistrationAttemptActive = False
+Guard AttemptGuard ProtectsFunctionLogic
+Bool PendingUpdate = False
+String PendingDisplayName
+String PendingNormalMovieUrl
+String PendingLargeMovieUrl
+Int PendingDescriptorVersion = 0
 
 ; Registers for both HUD menus and attempts the active descriptor, initially seeded from VMAD, after its configured delay.
 Event OnInit()
@@ -26,7 +32,7 @@ Event OnInit()
   RegisterWithRetry()
 EndEvent
 
-; Reconciles the persistent descriptor when either HUD opens. Overlapping attempts are skipped and no bridge publication occurs.
+; Reconciles the persistent descriptor when either HUD opens. Overlapping attempts serialize and no bridge publication occurs.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     If (InitialDelaySeconds > 0.0)
@@ -38,41 +44,49 @@ EndEvent
 
 ; Attempts the persistent descriptor once the registry is available. True means the expected Papyrus result, never UI readiness.
 Bool Function RegisterWithRetry()
-  If (RegistrationAttemptActive)
-    Return False
-  EndIf
-  RegistrationAttemptActive = True
-  EnsureActiveDescriptor()
-  Bool result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)
-  RegistrationAttemptActive = False
+  Bool result = False
+  LockGuard AttemptGuard
+    RegistrationAttemptActive = True
+    EnsureActiveDescriptor()
+    If (PendingUpdate)
+      result = ApplyPendingUpdate()
+    Else
+      result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)
+    EndIf
+    RegistrationAttemptActive = False
+  EndLockGuard
   Return result
 EndFunction
 
-; Applies an explicit in-save descriptor update through this existing owner quest rather than persisted VMAD defaults.
-; Returns whether the registry accepted the update; disabled UI transport does not roll back a successful registration.
+; Persists one pending update before attempting it. Concurrent callers serialize behind the active attempt rather than dropping the update.
+; True means accepted by the registry; False leaves unavailable-registry work pending, or records terminal invalid input.
 Bool Function ApplyDescriptorUpdate(String updatedDisplayName, String updatedNormalMovieUrl, String updatedLargeMovieUrl, Int updatedDescriptorVersion)
-  If (RegistrationAttemptActive)
-    Return False
-  EndIf
-  RegistrationAttemptActive = True
-  EnsureActiveDescriptor()
-  String previousDisplayName = ActiveDisplayName
-  String previousNormalMovieUrl = ActiveNormalMovieUrl
-  String previousLargeMovieUrl = ActiveLargeMovieUrl
-  Int previousDescriptorVersion = ActiveDescriptorVersion
+  LockGuard AttemptGuard
+    PendingDisplayName = updatedDisplayName
+    PendingNormalMovieUrl = updatedNormalMovieUrl
+    PendingLargeMovieUrl = updatedLargeMovieUrl
+    PendingDescriptorVersion = updatedDescriptorVersion
+    PendingUpdate = True
+  EndLockGuard
+  Return RegisterWithRetry()
+EndFunction
 
-  ActiveDisplayName = updatedDisplayName
-  ActiveNormalMovieUrl = updatedNormalMovieUrl
-  ActiveLargeMovieUrl = updatedLargeMovieUrl
-  ActiveDescriptorVersion = updatedDescriptorVersion
-  Bool applied = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, True)
-  If (!applied)
-    ActiveDisplayName = previousDisplayName
-    ActiveNormalMovieUrl = previousNormalMovieUrl
-    ActiveLargeMovieUrl = previousLargeMovieUrl
-    ActiveDescriptorVersion = previousDescriptorVersion
+; Internal worker under AttemptGuard. Commits active fields only after registry success; missing registry leaves pending data for reconciliation.
+Bool Function ApplyPendingUpdate()
+  Bool applied = AttemptDescriptorRegistration(PendingDisplayName, PendingNormalMovieUrl, PendingLargeMovieUrl, PendingDescriptorVersion, True)
+  If (applied)
+    ActiveDisplayName = PendingDisplayName
+    ActiveNormalMovieUrl = PendingNormalMovieUrl
+    ActiveLargeMovieUrl = PendingLargeMovieUrl
+    ActiveDescriptorVersion = PendingDescriptorVersion
+    PendingUpdate = False
+    LogUserInformational(ModuleName, "ApplyPendingUpdate", "DESCRIPTOR_UPDATE_APPLIED | Version=" + ActiveDescriptorVersion)
+  ElseIf (Registry != None)
+    PendingUpdate = False
+    LogUserWarning(ModuleName, "ApplyPendingUpdate", "DESCRIPTOR_UPDATE_REJECTED | Terminal host rejection.")
+  Else
+    LogUserWarning(ModuleName, "ApplyPendingUpdate", "DESCRIPTOR_UPDATE_PENDING | Registry unavailable; retained for next reconciliation.")
   EndIf
-  RegistrationAttemptActive = False
   Return applied
 EndFunction
 
@@ -88,12 +102,12 @@ EndFunction
 
 ; Compatibility entry point that serializes an explicit descriptor attempt. True acknowledges the expected registration result only.
 Bool Function RegisterDescriptorWithRetry(String requestedDisplayName, String requestedNormalMovieUrl, String requestedLargeMovieUrl, Int requestedDescriptorVersion, Bool expectedResult)
-  If (RegistrationAttemptActive)
-    Return False
-  EndIf
-  RegistrationAttemptActive = True
-  Bool result = AttemptDescriptorRegistration(requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion, expectedResult)
-  RegistrationAttemptActive = False
+  Bool result = False
+  LockGuard AttemptGuard
+    RegistrationAttemptActive = True
+    result = AttemptDescriptorRegistration(requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion, expectedResult)
+    RegistrationAttemptActive = False
+  EndLockGuard
   Return result
 EndFunction
 
@@ -103,18 +117,19 @@ Bool Function AttemptDescriptorRegistration(String requestedDisplayName, String 
   Int attempt = 0
   While (attempt < 20)
     If (Registry != None)
-      Bool actualRegistration = Registry.RegisterConsumer(Self, ConsumerId, requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion)
+      String registrationId = ResolveRegistrationId()
+      Bool actualRegistration = Registry.RegisterConsumer(Self, registrationId, requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion)
       If (actualRegistration == expectedResult)
         If (actualRegistration)
-          String loadResult = Registry.RequestUiLoad(Self, ConsumerId)
-          LogUserInformational(ModuleName, "AttemptDescriptorRegistration", "REGISTRATION_ACK | Consumer=" + ConsumerId + " | LoadUI=" + loadResult)
+          String loadResult = Registry.RequestUiLoad(Self, registrationId)
+          LogUserInformational(ModuleName, "AttemptDescriptorRegistration", "REGISTRATION_ACK | Consumer=" + registrationId + " | LoadUI=" + loadResult)
         Else
           LogUserInformational(ModuleName, "AttemptDescriptorRegistration", "EXPECTED_REGISTRATION_REJECTION | No UI load requested.")
         EndIf
         Return True
       EndIf
       If (actualRegistration && !expectedResult)
-        Registry.UnregisterConsumer(Self, ConsumerId)
+        Registry.UnregisterConsumer(Self, registrationId)
       EndIf
       LogUserWarning(ModuleName, "AttemptDescriptorRegistration", "Unexpected terminal registration result; see the Registry diagnostic. No retry or UI load requested.")
       Return False
@@ -127,4 +142,33 @@ Bool Function AttemptDescriptorRegistration(String requestedDisplayName, String 
 
   LogUserWarning(ModuleName, "AttemptDescriptorRegistration", "Registry reference remained unavailable during the bounded retry window.")
   Return False
+EndFunction
+
+; Returns the supplied UUID or performs only the explicit legacy demonstration mapping. Never generates an ID.
+; The owner-checked rekey preserves a saved descriptor. Unknown legacy IDs fail closed at the registry.
+String Function ResolveRegistrationId()
+  If (Venworks:Core:Utilities:UUID.IsValid(ConsumerId))
+    ; Updated VMAD may supply a UUID while the saved registry still contains its old demo key.
+    ; Rekey only this owner's known demo row. A conflict remains a terminal RegisterConsumer rejection.
+    If (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.consumer-a", ConsumerId)
+    ElseIf (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "beef70b2-024e-4e9b-a8d5-70a0c882c431"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.consumer-b", ConsumerId)
+    ElseIf (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "cad7cd56-217a-4e62-a98d-42c3adad07b5"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.missing", ConsumerId)
+    EndIf
+    Return Venworks:Core:Utilities:UUID.Normalize(ConsumerId)
+  EndIf
+  String migratedId = ""
+  If (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.consumer-a"))
+    migratedId = "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"
+  ElseIf (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.consumer-b"))
+    migratedId = "beef70b2-024e-4e9b-a8d5-70a0c882c431"
+  ElseIf (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.missing"))
+    migratedId = "cad7cd56-217a-4e62-a98d-42c3adad07b5"
+  EndIf
+  If (migratedId != "" && Registry.MigrateConsumerIdentity(Self, ConsumerId, migratedId))
+    Return migratedId
+  EndIf
+  Return ""
 EndFunction

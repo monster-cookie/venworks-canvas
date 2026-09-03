@@ -47,6 +47,61 @@ function Write-ConsumerDiscoveryUtf8WithoutBom {
   [System.IO.File]::WriteAllText($Path, $canonicalText, [System.Text.UTF8Encoding]::new($false))
 }
 
+function ConvertTo-ConsumerDiscoveryUuid {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+
+  $hex = '[0-9a-fA-F]'
+  $dashed = "$hex{8}-$hex{4}-$hex{4}-$hex{4}-$hex{12}"
+  $format = if ($Value -cmatch "\A$dashed\z") { 'D' }
+    elseif ($Value -cmatch "\A\{$dashed\}\z") { 'B' }
+    elseif ($Value -cmatch "\A$hex{32}\z") { 'N' }
+    else { throw 'Invalid consumer UUID shape.' }
+  $parsed = [guid]::Empty
+  if (![guid]::TryParseExact($Value, $format, [ref]$parsed) -or $parsed -eq [guid]::Empty) {
+    throw 'Invalid or nil consumer UUID.'
+  }
+  return $parsed.ToString('D').ToLowerInvariant()
+}
+
+function Assert-ConsumerDiscoveryArtifactHeader {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    $header = [byte[]]::new(24)
+    $read = $stream.Read($header, 0, $header.Length)
+    $prefix = [Text.Encoding]::ASCII.GetString($header, 0, $read)
+    if ($prefix.StartsWith('version https://git-lfs', [StringComparison]::Ordinal)) {
+      throw "Artifact is a Git LFS pointer, not a deployed binary: $Path"
+    }
+    if ($read -ne 24) { throw "Artifact header is truncated: $Path" }
+    $magic = [Text.Encoding]::ASCII.GetString($header, 0, 4)
+    switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+      '.esm' {
+        $recordBytes = [BitConverter]::ToUInt32($header, 4)
+        if ($magic -cne 'TES4' -or $recordBytes -lt 18 -or [long]$recordBytes + 24 -gt $stream.Length) {
+          throw "Invalid or truncated ESM header: $Path"
+        }
+      }
+      '.ba2' {
+        $version = [BitConverter]::ToUInt32($header, 4)
+        $archiveType = [Text.Encoding]::ASCII.GetString($header, 8, 4)
+        $fileCount = [BitConverter]::ToUInt32($header, 12)
+        $nameOffset = [BitConverter]::ToUInt64($header, 16)
+        if ($magic -cne 'BTDX' -or $version -ne 2 -or $archiveType -cne 'GNRL' -or $fileCount -eq 0 -or
+            $nameOffset -lt 32L + (36L * $fileCount) -or $nameOffset -ge [uint64]$stream.Length -or
+            $nameOffset + (2L * $fileCount) -gt [uint64]$stream.Length) {
+          throw "Invalid or truncated BA2 header: $Path"
+        }
+      }
+      default { throw "Unsupported artifact extension: $Path" }
+    }
+  }
+  finally { $stream.Dispose() }
+}
+
 function Get-ConsumerDiscoveryFileSha256 {
   param(
     [Parameter(Mandatory = $true)]

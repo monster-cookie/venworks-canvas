@@ -11,6 +11,7 @@ Float Property InitialDelaySeconds Auto Const Mandatory
 
 String ModuleName = "Probes:ConsumerDiscovery:ConsumerBRegistrar"
 Bool RegistrationAttemptActive = False
+Guard AttemptGuard ProtectsFunctionLogic
 
 ; Registers for both HUD menus and attempts the VMAD-configured descriptor after its configured delay.
 Event OnInit()
@@ -22,7 +23,7 @@ Event OnInit()
   RegisterWithRetry()
 EndEvent
 
-; Reconciles the VMAD descriptor when either HUD opens. Overlapping attempts are skipped and no bridge publication occurs.
+; Reconciles the VMAD descriptor when either HUD opens. Overlapping attempts serialize and no bridge publication occurs.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     If (InitialDelaySeconds > 0.0)
@@ -34,12 +35,12 @@ EndEvent
 
 ; Serializes registration attempts; true means the expected Papyrus result, not UI submission or readiness.
 Bool Function RegisterWithRetry()
-  If (RegistrationAttemptActive)
-    Return False
-  EndIf
-  RegistrationAttemptActive = True
-  Bool result = AttemptRegistration()
-  RegistrationAttemptActive = False
+  Bool result = False
+  LockGuard AttemptGuard
+    RegistrationAttemptActive = True
+    result = AttemptRegistration()
+    RegistrationAttemptActive = False
+  EndLockGuard
   Return result
 EndFunction
 
@@ -59,18 +60,19 @@ Bool Function AttemptRegistration()
   Int attempt = 0
   While (attempt < 20)
     If (Registry != None)
-      Bool actualRegistration = Registry.RegisterConsumer(Self, ConsumerId, DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
+      String registrationId = ResolveRegistrationId()
+      Bool actualRegistration = Registry.RegisterConsumer(Self, registrationId, DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
       If (actualRegistration == ExpectedRegistration)
         If (actualRegistration)
-          String loadResult = Registry.RequestUiLoad(Self, ConsumerId)
-          LogUserInformational(ModuleName, "AttemptRegistration", "REGISTRATION_ACK | Consumer=" + ConsumerId + " | LoadUI=" + loadResult)
+          String loadResult = Registry.RequestUiLoad(Self, registrationId)
+          LogUserInformational(ModuleName, "AttemptRegistration", "REGISTRATION_ACK | Consumer=" + registrationId + " | LoadUI=" + loadResult)
         Else
           LogUserInformational(ModuleName, "AttemptRegistration", "EXPECTED_REGISTRATION_REJECTION | No UI load requested.")
         EndIf
         Return True
       EndIf
       If (actualRegistration && !ExpectedRegistration)
-        Registry.UnregisterConsumer(Self, ConsumerId)
+        Registry.UnregisterConsumer(Self, registrationId)
       EndIf
       LogUserWarning(ModuleName, "AttemptRegistration", "Unexpected terminal registration result; see the Registry diagnostic. No retry or UI load requested.")
       Return False
@@ -83,4 +85,33 @@ Bool Function AttemptRegistration()
 
   LogUserWarning(ModuleName, "AttemptRegistration", "Registry reference remained unavailable during the bounded retry window.")
   Return False
+EndFunction
+
+; Returns the supplied UUID or performs only the explicit legacy demonstration mapping. Never generates an ID.
+; The owner-checked rekey preserves a saved descriptor. Unknown legacy IDs fail closed at the registry.
+String Function ResolveRegistrationId()
+  If (Venworks:Core:Utilities:UUID.IsValid(ConsumerId))
+    ; Updated VMAD may supply a UUID while the saved registry still contains its old demo key.
+    ; Rekey only this owner's known demo row. A conflict remains a terminal RegisterConsumer rejection.
+    If (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.consumer-a", ConsumerId)
+    ElseIf (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "beef70b2-024e-4e9b-a8d5-70a0c882c431"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.consumer-b", ConsumerId)
+    ElseIf (Venworks:Core:Utilities:UUID.AreEqual(ConsumerId, "cad7cd56-217a-4e62-a98d-42c3adad07b5"))
+      Registry.MigrateConsumerIdentity(Self, "venworks.canvas.probe.missing", ConsumerId)
+    EndIf
+    Return Venworks:Core:Utilities:UUID.Normalize(ConsumerId)
+  EndIf
+  String migratedId = ""
+  If (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.consumer-a"))
+    migratedId = "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"
+  ElseIf (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.consumer-b"))
+    migratedId = "beef70b2-024e-4e9b-a8d5-70a0c882c431"
+  ElseIf (Registry.SameAsciiText(ConsumerId, "venworks.canvas.probe.missing"))
+    migratedId = "cad7cd56-217a-4e62-a98d-42c3adad07b5"
+  EndIf
+  If (migratedId != "" && Registry.MigrateConsumerIdentity(Self, ConsumerId, migratedId))
+    Return migratedId
+  EndIf
+  Return ""
 EndFunction

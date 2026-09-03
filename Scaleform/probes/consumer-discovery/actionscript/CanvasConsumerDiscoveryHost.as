@@ -418,7 +418,7 @@ package
             throw new Error("trailing descriptor data");
          }
          var descriptor:Object = {
-            "consumerId":String(consumerIdFrame.value),
+            "consumerId":this.normalizeUuid(String(consumerIdFrame.value)),
             "displayName":String(displayNameFrame.value),
             "normalPath":String(normalPathFrame.value),
             "largePath":String(largePathFrame.value),
@@ -432,19 +432,47 @@ package
       {
          var consumerId:String = String(param1.consumerId);
          var displayName:String = String(param1.displayName);
-         if(!/^[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]$/.test(consumerId) || consumerId.indexOf(".") <= 0 || consumerId.indexOf("..") >= 0)
-         {
-            throw new Error("invalid consumer ID");
-         }
+         param1.consumerId = this.normalizeUuid(consumerId);
          if(displayName.length == 0 || !/^[\x20-\x7E]+$/.test(displayName) || param1.version < 1)
          {
             throw new Error("invalid consumer metadata");
          }
-         var prefix:String = "VenworksCanvas/Consumers/" + consumerId + "/";
-         if(param1.normalPath != prefix + "normal.swf" || param1.largePath != prefix + "large.swf")
+         var normal:Array = /^VenworksCanvas\/Consumers\/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])\/normal\.swf$/i.exec(String(param1.normalPath));
+         var large:Array = /^VenworksCanvas\/Consumers\/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])\/large\.swf$/i.exec(String(param1.largePath));
+         if(normal == null || large == null || String(normal[0]).length != String(param1.normalPath).length || String(large[0]).length != String(param1.largePath).length || String(normal[1]).indexOf("..") >= 0 || String(normal[1]).toLowerCase() != String(large[1]).toLowerCase())
          {
-            throw new Error("consumer path is not namespaced to " + consumerId);
+            throw new Error("consumer paths must share one safe asset namespace");
          }
+         var prefix:String = "VenworksCanvas/Consumers/" + String(normal[1]).toLowerCase() + "/";
+         param1.normalPath = prefix + "normal.swf";
+         param1.largePath = prefix + "large.swf";
+      }
+
+      // Canonical value key at every external identity intake. No repair, generation, or display-name coupling.
+      private function normalizeUuid(value:String) : String
+      {
+         if(value == null || value.length > 38)
+         {
+            throw new Error("invalid UUID");
+         }
+         if(/^\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}$/i.test(value))
+         {
+            value = value.substring(1,37);
+         }
+         else if(value.length == 32 && /^[0-9a-f]{32}$/i.test(value))
+         {
+            value = value.substr(0,8) + "-" + value.substr(8,4) + "-" + value.substr(12,4) + "-" + value.substr(16,4) + "-" + value.substr(20,12);
+         }
+         if(value.length != 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
+         {
+            throw new Error("invalid UUID");
+         }
+         value = value.toLowerCase();
+         if(value == "00000000-0000-0000-0000-000000000000")
+         {
+            throw new Error("nil UUID");
+         }
+         return value;
       }
 
       private function readFrame(param1:String, param2:int, param3:int) : Object
@@ -532,6 +560,7 @@ package
 
       private function loadConsumer(param1:String, param2:String, param3:int) : void
       {
+         param1 = this.normalizeUuid(param1);
          var loader:Loader = new Loader();
          loader.name = param1;
          this.loaders[param1] = loader;
@@ -570,7 +599,7 @@ package
                throw new Error("missing getCanvasDiscoveryRecord()");
             }
             record = bridge["getCanvasDiscoveryRecord"]();
-            if(record == null || record.protocol != CONSUMER_PROTOCOL || record.consumerId != loader.name || int(record.version) != int(this.versions[loader.name]))
+            if(record == null || record.protocol != CONSUMER_PROTOCOL || this.normalizeUuid(String(record.consumerId)) != loader.name || int(record.version) != int(this.versions[loader.name]))
             {
                throw new Error("consumer identity did not match its descriptor");
             }
@@ -611,6 +640,7 @@ package
 
       private function unloadConsumer(param1:String) : void
       {
+         param1 = this.normalizeUuid(param1);
          var loader:Loader = this.loaders[param1] as Loader;
          if(loader == null)
          {
