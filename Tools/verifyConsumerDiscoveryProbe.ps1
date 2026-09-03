@@ -614,7 +614,48 @@ function Assert-SpriggitQuestContract {
     if ($editorIdLines.Count -ne 1) {
       throw "Tracked Spriggit quest '$($questFile.FullName)' must contain exactly one EditorID."
     }
-    $actualEditorIds.Add($editorIdLines[0].Substring('EditorID: '.Length))
+    $editorId = $editorIdLines[0].Substring('EditorID: '.Length)
+    $actualEditorIds.Add($editorId)
+
+    if ($FileName -ceq 'Venworks-Canvas-Host.esm' -and $editorId -ceq 'VWCANVAS9_ConsumerDiscoveryRegistry') {
+      $vmAdapterIndex = [Array]::IndexOf($lines, 'VirtualMachineAdapter:')
+      $versioningIndex = [Array]::IndexOf($lines, '  Versioning:')
+      if ($vmAdapterIndex -lt 0 -or $versioningIndex -le $vmAdapterIndex) {
+        throw "Tracked Spriggit Host quest '$($questFile.FullName)' is missing its VM adapter boundaries."
+      }
+      $actualVmAdapter = [string[]]$lines[$vmAdapterIndex..$versioningIndex]
+      $expectedVmAdapter = [string[]]@(
+        'VirtualMachineAdapter:'
+        '  Scripts:'
+        '  - Name: Venworks:Canvas:Probes:ConsumerDiscovery:Registry'
+        '    Properties:'
+        '    - MutagenObjectType: ScriptStructListProperty'
+        '      Name: Consumers'
+        '      Structs:'
+        '      - Members:'
+        '        - MutagenObjectType: ScriptObjectProperty'
+        '          Name: Owner'
+        '        - MutagenObjectType: ScriptStringProperty'
+        '          Name: ConsumerId'
+        "          Data: ''"
+        '        - MutagenObjectType: ScriptStringProperty'
+        '          Name: DisplayName'
+        "          Data: ''"
+        '        - MutagenObjectType: ScriptStringProperty'
+        '          Name: NormalMovieUrl'
+        "          Data: ''"
+        '        - MutagenObjectType: ScriptStringProperty'
+        '          Name: LargeMovieUrl'
+        "          Data: ''"
+        '        - MutagenObjectType: ScriptIntProperty'
+        '          Name: DescriptorVersion'
+        '  Versioning:'
+      )
+      Assert-ExactOrdinalList `
+        -Actual $actualVmAdapter `
+        -Expected $expectedVmAdapter `
+        -Description "Tracked Spriggit Host Consumers typed default seed for '$($questFile.FullName)'"
+    }
 
     $formVersionLines = @($lines | Where-Object { $_ -ceq 'FormVersion: 582' })
     if ($formVersionLines.Count -ne 1) {
@@ -836,13 +877,15 @@ $registrySource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papy
 foreach ($token in @(
   'Extends Venworks:Canvas:Base:BaseQuest'
   'Struct ConsumerRegistration'
-  'ConsumerRegistration[] Property Consumers Auto Const Mandatory'
+  'ConsumerRegistration[] Property Consumers Auto Mandatory'
   'Quest Owner'
   'Consumers.Add(registration)'
   'Consumers[existingIndex].Owner != owner'
   'Consumers[index].Owner == None'
   'If (!EnsureStorage())'
-  'PublishDiagnostic("registry-storage-missing")'
+  'Consumers = new ConsumerRegistration[0]'
+  'PublishDiagnostic("registry-storage-initialized")'
+  'PublishDiagnostic("registry-storage-seed-pruned")'
   'PublishDiagnostic("registration-pruned:"'
   'PublishSnapshot("refresh")'
   'RegisterForMenuOpenCloseEvent("HUDMenu")'
@@ -863,7 +906,14 @@ foreach ($token in @(
     throw "Dynamic Papyrus registry is missing token '$token'."
   }
 }
-foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'Consumers = new ConsumerRegistration', 'MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace')) {
+if ([regex]::Matches($registrySource, [regex]::Escape('Consumers = new ConsumerRegistration[0]')).Count -ne 1 -or
+    ![regex]::IsMatch(
+      $registrySource,
+      'If\s+\(Consumers == None\)\s+Consumers = new ConsumerRegistration\[0\].*?PublishDiagnostic\("registry-storage-initialized"\).*?EndIf',
+      [Text.RegularExpressions.RegexOptions]::Singleline)) {
+  throw 'Dynamic Papyrus registry must initialize missing Consumers storage exactly once inside its None guard.'
+}
+foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'ConsumerRegistration[] Property Consumers Auto Const', 'registry-storage-missing', 'MaxConsumers', 'ConsumerOwners', 'ConsumerIds', 'DisplayNames', 'NormalMoviePaths', 'LargeMoviePaths', 'DescriptorVersions', 'Debug.Trace')) {
   if ($registrySource.Contains($forbiddenToken)) {
     throw "Dynamic Papyrus registry retained forbidden parallel-storage, fixed-capacity, or direct-log token '$forbiddenToken'."
   }

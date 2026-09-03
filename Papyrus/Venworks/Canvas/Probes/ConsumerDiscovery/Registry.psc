@@ -9,7 +9,7 @@ Struct ConsumerRegistration
   Int DescriptorVersion
 EndStruct
 
-ConsumerRegistration[] Property Consumers Auto Const Mandatory
+ConsumerRegistration[] Property Consumers Auto Mandatory
 Int MessageId = 0
 
 String ModuleName = "Probes:ConsumerDiscovery:Registry"
@@ -266,13 +266,13 @@ Int Function GetCharacterCount(String value)
   Return characters.Length
 EndFunction
 
-; Validates the quest-bound persistent registration array and prunes records whose owning quest is no longer available.
-; Returns false when the mandatory quest property was not bound and no registry operation can proceed safely.
+; Initializes missing persistent storage without replacing a valid saved array, then prunes records whose owning quest is unavailable.
+; Returns true after storage is available for registry operations.
 Bool Function EnsureStorage()
   If (Consumers == None)
-    LogUserCritical(ModuleName, "EnsureStorage", "The mandatory Consumers quest property is not bound.")
-    PublishDiagnostic("registry-storage-missing")
-    Return False
+    Consumers = new ConsumerRegistration[0]
+    LogUserWarning(ModuleName, "EnsureStorage", "Initialized missing consumer registry storage; consumer quests may register again when a supported HUD menu opens.")
+    PublishDiagnostic("registry-storage-initialized")
   EndIf
 
   Int index = Consumers.Length - 1
@@ -280,8 +280,13 @@ Bool Function EnsureStorage()
     If (Consumers[index].Owner == None)
       String staleConsumerId = Consumers[index].ConsumerId
       Consumers.Remove(index)
-      LogUserWarning(ModuleName, "EnsureStorage", "Pruned unavailable consumer owner '" + staleConsumerId + "'.")
-      PublishDiagnostic("registration-pruned:" + staleConsumerId)
+      If (staleConsumerId == "")
+        LogUserInformational(ModuleName, "EnsureStorage", "Pruned the typed consumer registry storage seed.")
+        PublishDiagnostic("registry-storage-seed-pruned")
+      Else
+        LogUserWarning(ModuleName, "EnsureStorage", "Pruned unavailable consumer owner '" + staleConsumerId + "'.")
+        PublishDiagnostic("registration-pruned:" + staleConsumerId)
+      EndIf
     EndIf
     index -= 1
   EndWhile

@@ -7,6 +7,24 @@ VirtualMachineAdapter:
     Properties:
     - MutagenObjectType: ScriptStructListProperty
       Name: Consumers
+      Structs:
+      - Members:
+        - MutagenObjectType: ScriptObjectProperty
+          Name: Owner
+        - MutagenObjectType: ScriptStringProperty
+          Name: ConsumerId
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: DisplayName
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: NormalMovieUrl
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: LargeMovieUrl
+          Data: ''
+        - MutagenObjectType: ScriptIntProperty
+          Name: DescriptorVersion
   Versioning:
   - Break0
   ExtraBindDataVersion: 0
