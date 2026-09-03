@@ -6,6 +6,7 @@ GameRelease: Starfield
 ModHeader:
   Flags:
   - Master
+  - Light
   FormVersion: 582
   MasterReferences:
   - Master: Starfield.esm

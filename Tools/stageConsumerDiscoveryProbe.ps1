@@ -39,7 +39,56 @@ function Assert-ConsumerDiscoveryStagingTarget {
   $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
   $allowed = @($AllowedPaths | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\', '/') })
   if ($fullPath -notin $allowed) {
-    throw "Refusing to replace unexpected staging directory: $fullPath"
+    throw "Refusing to replace unexpected package directory: $fullPath"
+  }
+}
+
+function Test-ConsumerDiscoverySamePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Left,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Right
+  )
+
+  return [string]::Equals(
+    [System.IO.Path]::GetFullPath($Left).TrimEnd('\', '/'),
+    [System.IO.Path]::GetFullPath($Right).TrimEnd('\', '/'),
+    [System.StringComparison]::OrdinalIgnoreCase
+  )
+}
+
+function Get-ConsumerDiscoveryJunctionTarget {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.IO.DirectoryInfo]$Item
+  )
+
+  $targets = @($Item.Target)
+  if ($targets.Count -ne 1) {
+    return $null
+  }
+  return [System.IO.Path]::GetFullPath([string]$targets[0]).TrimEnd('\', '/')
+}
+
+function Assert-ConsumerDiscoveryJunctionTarget {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$StagingPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ExpectedTargetPath
+  )
+
+  $stagingItem = Get-Item -LiteralPath $StagingPath -Force
+  if ($stagingItem.LinkType -cne 'Junction') {
+    throw "Staging path is not a Junction: $StagingPath"
+  }
+  $actualTargetPath = Get-ConsumerDiscoveryJunctionTarget -Item $stagingItem
+  if ($null -eq $actualTargetPath -or
+      !(Test-ConsumerDiscoverySamePath -Left $actualTargetPath -Right $ExpectedTargetPath)) {
+    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
   }
 }
 
@@ -136,6 +185,11 @@ $expectedStagingByKey = @{
   ConsumerA = @{ Directory = 'Staging-ConsumerA'; Plugin = 'Venworks-Canvas-ConsumerA.esm'; Archive = 'Venworks-Canvas-ConsumerA - Main.ba2' }
   ConsumerB = @{ Directory = 'Staging-ConsumerB'; Plugin = 'Venworks-Canvas-ConsumerB.esm'; Archive = 'Venworks-Canvas-ConsumerB - Main.ba2' }
 }
+$expectedPhysicalTargetByKey = @{
+  Host = [string]$env:MODULE_VARIANT_HOST_PATH
+  ConsumerA = [string]$env:MODULE_VARIANT_CONSUMER_A_PATH
+  ConsumerB = [string]$env:MODULE_VARIANT_CONSUMER_B_PATH
+}
 if (@($matrix.Staging).Count -ne $expectedStagingByKey.Count) {
   throw 'Staging matrix must contain exactly the three canonical package contracts.'
 }
@@ -154,6 +208,7 @@ foreach ($expected in @($expectedStagingByKey.Values)) {
   $stagingPath = Join-Path $repositoryRoot ([string]$expected.Directory)
   Assert-ConsumerDiscoveryStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
 }
+$allowedPhysicalTargetPaths = [System.Collections.Generic.List[string]]::new()
 
 $consumerAMovieDefinitions = @($matrix.Movies | Where-Object {
   [string]$_.Key -ceq [string]$resolvedProfile.ConsumerAMovie
@@ -344,40 +399,135 @@ foreach ($candidateInput in @($candidateInputs)) {
   }
 }
 
-New-Item -ItemType Directory -Path $resolvedStagingBackupDirectory | Out-Null
-$backedUpDirectories = [System.Collections.Generic.List[string]]::new()
-$installedDirectories = [System.Collections.Generic.List[string]]::new()
-try {
-  foreach ($staging in @($matrix.Staging)) {
-    $directoryName = [string]$staging.Directory
-    $stagingPath = Join-Path $repositoryRoot $directoryName
-    $candidateStagingPath = Join-Path $resolvedCandidateStagingDirectory $directoryName
-    $backupStagingPath = Join-Path $resolvedStagingBackupDirectory $directoryName
-    if (Test-Path -LiteralPath $stagingPath -PathType Container) {
-      Move-Item -LiteralPath $stagingPath -Destination $backupStagingPath
-      $backedUpDirectories.Add($directoryName)
+$allowedInstallPaths = @($allowedStagingPaths)
+$swapOperations = [System.Collections.Generic.List[object]]::new()
+foreach ($staging in @($matrix.Staging)) {
+  $key = [string]$staging.Key
+  $directoryName = [string]$staging.Directory
+  $stagingPath = Join-Path $repositoryRoot $directoryName
+  $candidateStagingPath = Join-Path $resolvedCandidateStagingDirectory $directoryName
+  $backupStagingPath = Join-Path $resolvedStagingBackupDirectory $directoryName
+  Assert-ConsumerDiscoveryStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
+  Assert-ConsumerDiscoveryRemovalPath -Path $candidateStagingPath -AllowedRoot $workRoot
+  Assert-ConsumerDiscoveryRemovalPath -Path $backupStagingPath -AllowedRoot $workRoot
+  [void](Resolve-ConsumerDiscoveryRequiredDirectory -Path $candidateStagingPath -Description "$key candidate staging directory")
+
+  $mode = 'Directory'
+  $installPath = $stagingPath
+  $stagingItem = Get-Item -LiteralPath $stagingPath -Force -ErrorAction SilentlyContinue
+  if ($null -ne $stagingItem) {
+    if (!$stagingItem.PSIsContainer) {
+      throw "$key staging path is not a directory: $stagingPath"
     }
-    Move-Item -LiteralPath $candidateStagingPath -Destination $stagingPath
-    $installedDirectories.Add($directoryName)
+    if ($stagingItem.LinkType -eq 'Junction') {
+      $mode = 'Junction'
+      $physicalTargetPath = [string]$expectedPhysicalTargetByKey[$key]
+      if ([string]::IsNullOrWhiteSpace($physicalTargetPath)) {
+        throw "The physical module folder for '$key' is not configured in $EnvironmentPath."
+      }
+      $installPath = [System.IO.Path]::GetFullPath($physicalTargetPath).TrimEnd('\', '/')
+      if (@($allowedPhysicalTargetPaths | Where-Object {
+        Test-ConsumerDiscoverySamePath -Left $_ -Right $installPath
+      }).Count -ne 0) {
+        throw "Physical module folders must be distinct: $installPath"
+      }
+      if (@($allowedStagingPaths | Where-Object {
+        Test-ConsumerDiscoverySamePath -Left $_ -Right $installPath
+      }).Count -ne 0) {
+        throw "A physical module folder cannot also be a repository staging path: $installPath"
+      }
+      $expectedPhysicalTargetByKey[$key] = $installPath
+      $allowedPhysicalTargetPaths.Add($installPath)
+      $allowedInstallPaths += $installPath
+      Assert-ConsumerDiscoveryJunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $installPath
+      if (!(Test-Path -LiteralPath $installPath -PathType Container)) {
+        throw "$key physical module target is not a directory: $installPath"
+      }
+      $installItem = Get-Item -LiteralPath $installPath -Force
+      if ($null -ne $installItem.LinkType) {
+        throw "$key physical module target must be a real directory: $installPath"
+      }
+    }
+    elseif ($null -ne $stagingItem.LinkType) {
+      throw "$key staging path uses an unsupported link type '$($stagingItem.LinkType)': $stagingPath"
+    }
+  }
+
+  Assert-ConsumerDiscoveryStagingTarget -Path $installPath -AllowedPaths $allowedInstallPaths
+  if (@($swapOperations | Where-Object {
+    Test-ConsumerDiscoverySamePath -Left ([string]$_.InstallPath) -Right $installPath
+  }).Count -ne 0) {
+    throw "Package installation paths must be distinct: $installPath"
+  }
+  $swapOperations.Add([pscustomobject]@{
+    Key = $key
+    Mode = $mode
+    StagingPath = $stagingPath
+    InstallPath = $installPath
+    CandidatePath = $candidateStagingPath
+    BackupPath = $backupStagingPath
+  })
+}
+
+New-Item -ItemType Directory -Path $resolvedStagingBackupDirectory | Out-Null
+$backedUpOperations = [System.Collections.Generic.List[object]]::new()
+$installedOperations = [System.Collections.Generic.List[object]]::new()
+try {
+  foreach ($operation in @($swapOperations)) {
+    if (Test-Path -LiteralPath $operation.InstallPath -PathType Container) {
+      Move-Item -LiteralPath $operation.InstallPath -Destination $operation.BackupPath
+      $backedUpOperations.Add($operation)
+    }
+    Move-Item -LiteralPath $operation.CandidatePath -Destination $operation.InstallPath
+    $installedOperations.Add($operation)
+    if ($operation.Mode -ceq 'Junction') {
+      Assert-ConsumerDiscoveryJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+    }
   }
 }
 catch {
   $swapError = $_
-  foreach ($directoryName in @($installedDirectories)) {
-    $stagingPath = Join-Path $repositoryRoot $directoryName
-    if (Test-Path -LiteralPath $stagingPath -PathType Container) {
-      Assert-ConsumerDiscoveryStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
-      Remove-Item -LiteralPath $stagingPath -Recurse -Force
+  $rollbackErrors = [System.Collections.Generic.List[string]]::new()
+  for ($index = $installedOperations.Count - 1; $index -ge 0; $index--) {
+    $operation = $installedOperations[$index]
+    try {
+      if ($operation.Mode -ceq 'Junction') {
+        Assert-ConsumerDiscoveryJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+      }
+      if (Test-Path -LiteralPath $operation.InstallPath -PathType Container) {
+        Assert-ConsumerDiscoveryStagingTarget -Path $operation.InstallPath -AllowedPaths $allowedInstallPaths
+        $installedItem = Get-Item -LiteralPath $operation.InstallPath -Force
+        if ($null -ne $installedItem.LinkType) {
+          throw "Refusing to remove a linked package installation directory: $($operation.InstallPath)"
+        }
+        Remove-Item -LiteralPath $operation.InstallPath -Recurse -Force
+      }
+    }
+    catch {
+      $rollbackErrors.Add("Unable to remove '$($operation.InstallPath)': $($_.Exception.Message)")
     }
   }
-  foreach ($directoryName in @($backedUpDirectories)) {
-    $stagingPath = Join-Path $repositoryRoot $directoryName
-    $backupStagingPath = Join-Path $resolvedStagingBackupDirectory $directoryName
-    if (Test-Path -LiteralPath $backupStagingPath -PathType Container) {
-      Move-Item -LiteralPath $backupStagingPath -Destination $stagingPath
+  for ($index = $backedUpOperations.Count - 1; $index -ge 0; $index--) {
+    $operation = $backedUpOperations[$index]
+    try {
+      if (Test-Path -LiteralPath $operation.BackupPath -PathType Container) {
+        if (Test-Path -LiteralPath $operation.InstallPath) {
+          throw "Cannot restore over an existing package installation path: $($operation.InstallPath)"
+        }
+        Move-Item -LiteralPath $operation.BackupPath -Destination $operation.InstallPath
+      }
+      if ($operation.Mode -ceq 'Junction') {
+        Assert-ConsumerDiscoveryJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+      }
+    }
+    catch {
+      $rollbackErrors.Add("Unable to restore '$($operation.InstallPath)': $($_.Exception.Message)")
     }
   }
-  throw "Unable to install all three staged packages; prior staging roots were restored. $($swapError.Exception.Message)"
+  if ($rollbackErrors.Count -ne 0) {
+    throw "Unable to install all three staged packages, and automatic restoration was incomplete. $($swapError.Exception.Message) Rollback errors: $([string]::Join(' | ', $rollbackErrors))"
+  }
+  throw "Unable to install all three staged packages; prior package directories were restored. $($swapError.Exception.Message)"
 }
 
 foreach ($generatedDirectory in @($resolvedCandidateStagingDirectory, $resolvedStagingBackupDirectory)) {

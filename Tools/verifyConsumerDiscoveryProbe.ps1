@@ -516,6 +516,130 @@ if ($SourceOnly -and $ArtifactsOnly) {
 if ([int]$matrix.Version -ne 5 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3') {
   throw 'Consumer-discovery matrix must declare the v5 paged dynamic registry probe contract.'
 }
+
+function Assert-ExactOrdinalList {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Actual,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$Expected,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Description
+  )
+
+  if ($Actual.Count -ne $Expected.Count -or
+      [string]::Join("`n", $Actual) -cne [string]::Join("`n", $Expected)) {
+    throw "$Description differs. Expected [$([string]::Join(', ', $Expected))]; found [$([string]::Join(', ', $Actual))]."
+  }
+}
+
+function Get-SpriggitYamlListValues {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Lines,
+
+    [Parameter(Mandatory = $true)]
+    [int]$HeaderIndex,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Prefix
+  )
+
+  $values = [Collections.Generic.List[string]]::new()
+  for ($index = $HeaderIndex + 1; $index -lt $Lines.Count; $index++) {
+    $line = $Lines[$index]
+    if (!$line.StartsWith($Prefix, [StringComparison]::Ordinal)) {
+      break
+    }
+    $values.Add($line.Substring($Prefix.Length))
+  }
+  return @($values)
+}
+
+function Assert-SpriggitPluginHeader {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+
+    [Parameter(Mandatory = $true)]
+    [string]$FileName,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$ExpectedMasters
+  )
+
+  [string[]]$lines = Get-Content -LiteralPath $Path
+  $flagsHeaderIndex = [Array]::IndexOf($lines, '  Flags:')
+  if ($flagsHeaderIndex -lt 0) {
+    throw "Tracked Spriggit header for '$FileName' is missing its Flags list."
+  }
+  $flags = @(Get-SpriggitYamlListValues -Lines $lines -HeaderIndex $flagsHeaderIndex -Prefix '  - ')
+  Assert-ExactOrdinalList -Actual $flags -Expected @('Master', 'Light') -Description "Tracked Spriggit header flags for '$FileName'"
+
+  $formVersionLines = @($lines | Where-Object { $_ -ceq '  FormVersion: 582' })
+  if ($formVersionLines.Count -ne 1) {
+    throw "Tracked Spriggit header for '$FileName' must contain exactly one FormVersion 582 declaration."
+  }
+
+  $masterHeaderIndex = [Array]::IndexOf($lines, '  MasterReferences:')
+  if ($masterHeaderIndex -lt 0) {
+    throw "Tracked Spriggit header for '$FileName' is missing its MasterReferences list."
+  }
+  $masters = @(Get-SpriggitYamlListValues -Lines $lines -HeaderIndex $masterHeaderIndex -Prefix '  - Master: ')
+  Assert-ExactOrdinalList -Actual $masters -Expected $ExpectedMasters -Description "Tracked Spriggit master list for '$FileName'"
+}
+
+function Assert-SpriggitQuestContract {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$PluginYamlPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$FileName,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$ExpectedEditorIds
+  )
+
+  $questRoot = Resolve-ConsumerDiscoveryRequiredDirectory `
+    -Path (Join-Path $PluginYamlPath 'Quests') `
+    -Description "Tracked Spriggit quest root for '$FileName'"
+  $questFiles = @(Get-ChildItem -LiteralPath $questRoot -File -Recurse -Filter 'RecordData.yaml')
+  $actualEditorIds = [Collections.Generic.List[string]]::new()
+  foreach ($questFile in $questFiles) {
+    [string[]]$lines = Get-Content -LiteralPath $questFile.FullName
+    $editorIdLines = @($lines | Where-Object { $_.StartsWith('EditorID: ', [StringComparison]::Ordinal) })
+    if ($editorIdLines.Count -ne 1) {
+      throw "Tracked Spriggit quest '$($questFile.FullName)' must contain exactly one EditorID."
+    }
+    $actualEditorIds.Add($editorIdLines[0].Substring('EditorID: '.Length))
+
+    $formVersionLines = @($lines | Where-Object { $_ -ceq 'FormVersion: 582' })
+    if ($formVersionLines.Count -ne 1) {
+      throw "Tracked Spriggit quest '$($questFile.FullName)' must contain exactly one FormVersion 582 declaration."
+    }
+
+    $dataIndex = [Array]::IndexOf($lines, 'Data:')
+    if ($dataIndex -lt 0 -or $dataIndex + 1 -ge $lines.Count -or $lines[$dataIndex + 1] -cne '  Flags:') {
+      throw "Tracked Spriggit quest '$($questFile.FullName)' is missing its Data Flags list."
+    }
+    $flags = @(Get-SpriggitYamlListValues -Lines $lines -HeaderIndex ($dataIndex + 1) -Prefix '  - ')
+    Assert-ExactOrdinalList `
+      -Actual $flags `
+      -Expected @('StartGameEnabled', 'StartsEnabled') `
+      -Description "Tracked Spriggit quest flags for '$($questFile.FullName)'"
+    if ($lines -ccontains '  - RunOnce') {
+      throw "Tracked Spriggit quest '$($questFile.FullName)' must not retain RunOnce."
+    }
+  }
+
+  Assert-ExactOrdinalList `
+    -Actual @($actualEditorIds | Sort-Object) `
+    -Expected @($ExpectedEditorIds | Sort-Object) `
+    -Description "Tracked Spriggit quest inventory for '$FileName'"
+}
 if ([string]$matrix.Spriggit.PackageName -cne 'Spriggit.Yaml' -or
     [string]$matrix.Spriggit.MetadataPackageName -cne 'Spriggit.Yaml.Starfield' -or
     [string]$matrix.Spriggit.Version -cne '0.40.1' -or
@@ -936,6 +1060,24 @@ if (!$allToolText.Contains('Spriggit.CLI.exe') -or
   throw 'Consumer-discovery tooling must use the pinned Spriggit translator to serialize review-only YAML and must never assemble plugins from it.'
 }
 
+$spriggitConfigPath = Resolve-ConsumerDiscoveryRequiredFile `
+  -Path (Join-Path $repositoryRoot '.spriggit') `
+  -Description 'Spriggit known-master configuration'
+$spriggitConfig = Get-Content -LiteralPath $spriggitConfigPath -Raw | ConvertFrom-Json
+foreach ($expectedKnownMaster in @(
+  @{ ModKey = 'Starfield.esm'; Style = 'Full' }
+  @{ ModKey = 'Venworks-Core.esm'; Style = 'Small' }
+  @{ ModKey = 'Venworks-Canvas-Host.esm'; Style = 'Small' }
+)) {
+  $knownMasterMatches = @($spriggitConfig.KnownMasters | Where-Object {
+    [string]$_.ModKey -ceq [string]$expectedKnownMaster.ModKey -and
+    [string]$_.Style -ceq [string]$expectedKnownMaster.Style
+  })
+  if ($knownMasterMatches.Count -ne 1) {
+    throw "Spriggit must contain exactly one $($expectedKnownMaster.Style) known-master entry for '$($expectedKnownMaster.ModKey)'."
+  }
+}
+
 Write-Host -ForegroundColor Green "Verified resilient dynamic source contracts, profile '$($resolvedProfile.Key)', parser fixtures, PC archive-only matrix, and PowerShell syntax."
 if ($SourceOnly) {
   return
@@ -1156,6 +1298,42 @@ foreach ($plugin in @($matrix.Plugins)) {
       throw "Tracked Spriggit record data for '$fileName' is missing token '$token'."
     }
   }
+
+  $expectedMasters = if ([string]$plugin.Key -ceq 'Host') {
+    @('Starfield.esm', 'Venworks-Core.esm')
+  }
+  else {
+    @('Starfield.esm', 'Venworks-Core.esm', 'Venworks-Canvas-Host.esm')
+  }
+  Assert-SpriggitPluginHeader `
+    -Path $recordDataPath `
+    -FileName $fileName `
+    -ExpectedMasters $expectedMasters
+
+  $expectedQuestEditorIds = switch ([string]$plugin.Key) {
+    'Host' { @('VWCANVAS9_ConsumerDiscoveryRegistry') }
+    'ConsumerA' {
+      if ([string]$resolvedProfile.Key -ceq 'UpdatedA') {
+        @('VWCANVAS9_ConsumerARegistrar', 'VWCANVAS9_ConsumerAUpdateMigration')
+      }
+      else {
+        @('VWCANVAS9_ConsumerARegistrar')
+      }
+    }
+    'ConsumerB' {
+      if ([string]$resolvedProfile.Key -ceq 'Faults') {
+        @('VWCANVAS9_ConsumerBRegistrar', 'VWCANVAS9_ConsumerBCollisionProbe', 'VWCANVAS9_ConsumerBMissingProbe')
+      }
+      else {
+        @('VWCANVAS9_ConsumerBRegistrar')
+      }
+    }
+    default { throw "Unknown plugin key '$($plugin.Key)' in the consumer-discovery matrix." }
+  }
+  Assert-SpriggitQuestContract `
+    -PluginYamlPath $pluginYamlPath `
+    -FileName $fileName `
+    -ExpectedEditorIds @($expectedQuestEditorIds)
 }
 
 $expectedScriptOutputs = @($matrix.Plugins | ForEach-Object { @($_.Scripts) })
