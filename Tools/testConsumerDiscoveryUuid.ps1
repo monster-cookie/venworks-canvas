@@ -18,17 +18,8 @@ foreach ($inputValue in @('', 'invalid', '00000000-0000-0000-0000-000000000000',
 }
 $sourceRoot = Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Probes/ConsumerDiscovery'
 $registry = Get-Content -LiteralPath (Join-Path $sourceRoot 'Registry.psc') -Raw
-foreach ($name in @('RegisterConsumer','UnregisterConsumer','RequestUiLoad','EnsureStorage','FindConsumerIndex','MigrateConsumerIdentity')) {
-  $pattern = '(?ms)^(?:Bool|Int|String) Function ' + $name + '\([^\r\n]*\).*?^EndFunction'
-  $body = [regex]::Match($registry, $pattern).Value
-  if (!$body.Contains('LockGuard RegistryGuard') -or !$body.Contains($name + 'Locked(')) {
-    throw "Registry API is not guarded: $name"
-  }
-}
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryGuards.ps1')
 $registrar = Get-Content -LiteralPath (Join-Path $sourceRoot 'ConsumerARegistrar.psc') -Raw
-foreach ($token in @('Guard AttemptGuard ProtectsFunctionLogic','LockGuard AttemptGuard','PendingUpdate = True','If (PendingUpdate)','ApplyPendingUpdate()','DESCRIPTOR_UPDATE_PENDING')) {
-  if (!$registrar.Contains($token)) { throw "Pending migration contract missing: $token" }
-}
 if ($registry.Contains('GenerateV4(') -or $registrar.Contains('GenerateV4(')) { throw 'Registration must not generate IDs.' }
 $canvasHostSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/probes/consumer-discovery/actionscript/CanvasConsumerDiscoveryHost.as') -Raw
 foreach ($token in @('this.normalizeUuid(String(consumerIdFrame.value))','this.normalizeUuid(String(record.consumerId))','value.length != 36','value.length == 32','value = value.toLowerCase();')) {

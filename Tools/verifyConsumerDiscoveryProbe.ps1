@@ -933,7 +933,7 @@ foreach ($token in @(
   'Extends Venworks:Canvas:Base:BaseQuest'
   'Struct ConsumerRegistration'
   'Guard RegistryGuard ProtectsFunctionLogic'
-  'LockGuard RegistryGuard'
+  'TryLockGuard RegistryGuard'
   'Venworks:Core:Utilities:UUID.AreEqual'
   'Venworks:Core:Utilities:UUID.Normalize'
   'MigrateConsumerIdentityLocked'
@@ -943,7 +943,7 @@ foreach ($token in @(
   'Consumers.Add(registration)'
   'Consumers[existingIndex].Owner != owner'
   'Consumers[index].Owner == None'
-  'If (!EnsureStorageLocked())'
+  'EnsureStorageLocked(result)'
   'Consumers = new ConsumerRegistration[0]'
   'String Function RequestUiLoad(Quest owner, String consumerId)'
   'Return "REGISTERED_TRANSPORT_DISABLED"'
@@ -955,7 +955,7 @@ foreach ($token in @(
   'GetPrintableAsciiRejectionReason('
   'REGISTRATION_REJECTED'
   'REGISTRATION_UNCHANGED'
-  'EnsureMenuSubscriptionsLocked()'
+  'Function EnsureMenuSubscriptions()'
   'MenuSubscriptionsInitialized = True'
   'Consumers[index] == None'
   'WATCH BRIDGE DISABLED'
@@ -983,14 +983,12 @@ foreach ($forbiddenToken in @('ConsumerRegistration[] Consumers', 'ConsumerRegis
   }
 }
 
-if (![regex]::IsMatch($registrySource, '(?s)Bool Function EnsureStorageLocked\(\)\s+EnsureMenuSubscriptionsLocked\(\)\s+If \(Consumers == None\)') -or
-    ![regex]::IsMatch($registrySource, '(?s)Bool Function PublishSnapshot\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+Return False\s+EndFunction') -or
+if (![regex]::IsMatch($registrySource, '(?s)Bool Function PublishSnapshot\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+Return False\s+EndFunction') -or
     ![regex]::IsMatch($registrySource, '(?s)Function PublishDiagnostic\([^\r\n]*\)\s+LogDisabledPublication\(\)\s+EndFunction') -or
     [regex]::IsMatch($registrySource, '(?im)^\s*(?:PublishSnapshot|PublishDiagnostic)\(')) {
-  throw 'Registry recovery must restore subscriptions, and legacy publishers must remain inert with no internal callers.'
+  throw 'Legacy publishers must remain inert with no internal callers.'
 }
 foreach ($functionContract in @(
-  @{ Type = 'Bool'; Name = 'EnsureStorageLocked'; Return = 'True' },
   @{ Type = 'String'; Name = 'GetDescriptorRejectionReason'; Return = '""' },
   @{ Type = 'String'; Name = 'GetConsumerIdRejectionReason'; Return = '""' },
   @{ Type = 'String'; Name = 'GetPrintableAsciiRejectionReason'; Return = '""' }
@@ -1003,65 +1001,15 @@ foreach ($functionContract in @(
   }
 }
 
+# Keep lifecycle and transitive guard checks in the focused verifier, separate from artifact inspection.
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryGuards.ps1')
 foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc')) {
-  $consumerSource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot "Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\$consumerName"))
-  foreach ($token in @(
-    'Extends Venworks:Canvas:Base:BaseQuest'
-    'Property Registry Auto Const Mandatory'
-    'String Property ConsumerId Auto Const Mandatory'
-    'String Property NormalMoviePath Auto Const Mandatory'
-    'Int Property DescriptorVersion Auto Const Mandatory'
-    'Bool Property ExpectedRegistration Auto Const Mandatory'
-    'Float Property InitialDelaySeconds Auto Const Mandatory'
-    'While (attempt < 20)'
-    'Utility.WaitMenuPause(0.5)'
-    'Guard AttemptGuard ProtectsFunctionLogic'
-    'LockGuard AttemptGuard'
-    'RegistrationAttemptActive = True'
-    'RegistrationAttemptActive = False'
-    'Registry.RequestUiLoad(Self, registrationId)'
-    'EXPECTED_REGISTRATION_REJECTION'
-    'LogUserInformational('
-    'LogUserWarning('
-  )) {
-    if (!$consumerSource.Contains($token)) {
-      throw "Papyrus consumer '$consumerName' is missing token '$token'."
-    }
+  $consumerSource = Get-Content -LiteralPath (Join-Path $repositoryRoot "Papyrus/Venworks/Canvas/Probes/ConsumerDiscovery/$consumerName") -Raw
+  foreach ($token in @('Extends Venworks:Canvas:Base:BaseQuest', 'Property Registry Auto Const Mandatory', 'String Property ConsumerId Auto Const Mandatory', 'String Property NormalMoviePath Auto Const Mandatory', 'Int Property DescriptorVersion Auto Const Mandatory', 'Bool Property ExpectedRegistration Auto Const Mandatory', 'Float Property InitialDelaySeconds Auto Const Mandatory')) {
+    if (!$consumerSource.Contains($token)) { throw "Papyrus consumer '$consumerName' is missing token '$token'." }
   }
-  if ($consumerSource.Contains('Interface/VenworksCanvas/')) {
-    throw "Papyrus consumer '$consumerName' retained an Interface-prefixed loader path."
-  }
-  if ($consumerSource.Contains('Debug.Trace')) {
-    throw "Papyrus consumer '$consumerName' retained direct Debug.Trace logging."
-  }
-  if (![regex]::IsMatch($consumerSource, '(?s)If \(actualRegistration\)\s+String loadResult = Registry.RequestUiLoad\(Self, registrationId\)') -or
-      ![regex]::IsMatch($consumerSource, '(?s)Unexpected terminal registration result[^\r\n]*\s+Return False\s+EndIf\s+attempt \+= 1')) {
-    throw "Consumer '$consumerName' must request a UI load only after actual success and stop polling once the registry answers."
-  }
-}
-
-$consumerASource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'))
-foreach ($token in @(
-  'String ActiveDisplayName'
-  'Int ActiveDescriptorVersion = 0'
-  'EnsureActiveDescriptor()'
-  'result = AttemptDescriptorRegistration(ActiveDisplayName, ActiveNormalMovieUrl, ActiveLargeMovieUrl, ActiveDescriptorVersion, ExpectedRegistration)'
-  'Function ApplyDescriptorUpdate('
-  'PendingDisplayName = updatedDisplayName'
-  'PendingUpdate = True'
-  'ActiveDisplayName = PendingDisplayName'
-  'Bool applied = AttemptDescriptorRegistration(PendingDisplayName, PendingNormalMovieUrl, PendingLargeMovieUrl, PendingDescriptorVersion, True)'
-  'DESCRIPTOR_UPDATE_PENDING'
-  'Registry.RegisterConsumer(Self, registrationId, requestedDisplayName'
-)) {
-  if (!$consumerASource.Contains($token)) {
-    throw "Consumer A registrar is missing explicit update-owner token '$token'."
-  }
-}
-$migrationSource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerAUpdateMigration.psc'))
-foreach ($token in @('Extends Venworks:Canvas:Base:BaseQuest', 'Property Registrar Auto Const Mandatory', 'Registrar.ApplyDescriptorUpdate(', 'UpdatedDescriptorVersion Auto Const Mandatory', 'LogUserError(')) {
-  if (!$migrationSource.Contains($token)) {
-    throw "Consumer A update migration is missing token '$token'."
+  if ($consumerSource.Contains('Interface/VenworksCanvas/') -or $consumerSource.Contains('Debug.Trace')) {
+    throw "Papyrus consumer '$consumerName' retained an Interface-prefixed path or direct logging."
   }
 }
 

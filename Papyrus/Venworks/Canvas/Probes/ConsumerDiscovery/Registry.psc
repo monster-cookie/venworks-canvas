@@ -9,6 +9,20 @@ Struct ConsumerRegistration
   Int DescriptorVersion
 EndStruct
 
+; Per-call receipt, never shared as registry state. Diagnostics are emitted only after all guards are released.
+Struct OperationResult
+  String Status
+  String ConsumerId
+  String Detail
+  String UiLoad
+  Int DescriptorVersion = 0
+  Int Count = -1
+  Int Pruned = 0
+  Bool Initialized = False
+  Bool Migrated = False
+  Bool UpdateApplied = False
+EndStruct
+
 ConsumerRegistration[] Property Consumers Auto Mandatory
 Int MessageId = 0
 Bool MenuSubscriptionsInitialized = False
@@ -22,55 +36,101 @@ Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
 
-; Initializes persistent storage and menu callbacks without publishing any UI data.
+; OnInit may execute around the initial save-load/revert. Install callbacks only; do not enter a guard here.
 Event OnInit()
-  If (!EnsureStorage())
+  EnsureMenuSubscriptions()
+EndEvent
+
+; A supported HUD opening starts deferred reconciliation, never a guarded OnInit continuation.
+Event OnMenuOpenCloseEvent(String menuName, Bool opening)
+  If (opening)
+    StartTimer(0.2, 1)
+  EndIf
+EndEvent
+
+; Timer IDs carry the bounded attempt number; no saved "active" flag can permanently suppress work.
+Event OnTimer(Int aiTimerID)
+  If (aiTimerID < 1 || aiTimerID > 20)
     Return
   EndIf
-  LogUserInformational(ModuleName, "OnInit", "REGISTRATION LOG TEST | WATCH BRIDGE DISABLED | Consumers=" + GetConsumerCount())
-EndEvent
-
-; Reconciles saved storage and reports its current count once per supported HUD opening; never publishes UI data.
-Event OnMenuOpenCloseEvent(String menuName, Bool opening)
-  If (opening && EnsureStorage())
-    LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "WATCH BRIDGE DISABLED | Menu=" + menuName + " | Consumers=" + GetConsumerCount())
+  OperationResult result = TryEnsureStorage()
+  LogOperation(result)
+  If (IsDeferred(result.Status))
+    If (aiTimerID < 20)
+      StartTimer(0.5, aiTimerID + 1)
+    Else
+      LogUserWarning(ModuleName, "OnTimer", "REGISTRY_RETRY_EXHAUSTED | Deferred until a later HUD opening or explicit caller.")
+    EndIf
   EndIf
 EndEvent
 
-; Validates and stores one complete descriptor owned by the supplied quest; identical registration is a successful no-op.
-; True acknowledges Papyrus registry state only, not UI submission or loading. False is a terminal descriptor/ownership rejection.
-Bool Function RegisterConsumerLocked(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
-  If (!EnsureStorageLocked())
-    Return False
-  EndIf
-  String rejection = GetDescriptorRejectionReason(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
-  If (rejection != "")
-    LogUserWarning(ModuleName, "RegisterConsumer", "REGISTRATION_REJECTED | " + rejection + " | Owner=" + owner)
-    Return False
-  EndIf
+; Allocates a caller-owned result. A skipped TryLockGuard keeps its explicit deferred default.
+OperationResult Function NewResult(String status) Global
+  OperationResult result = new OperationResult
+  result.Status = status
+  Return result
+EndFunction
 
-  consumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+; Only these statuses acknowledge a stored descriptor; busy and negative tests are not acknowledgements.
+Bool Function IsRegistrationAccepted(String status) Global
+  Return status == "REGISTRATION_ACCEPTED" || status == "REGISTRATION_UPDATED" || status == "REGISTRATION_UNCHANGED"
+EndFunction
+
+; Busy/unavailable outcomes are distinct from terminal descriptor or ownership rejection.
+Bool Function IsDeferred(String status) Global
+  Return status == "DEFERRED_REGISTRY_BUSY" || status == "DEFERRED_ATTEMPT_BUSY" || status == "DEFERRED_REGISTRY_UNAVAILABLE"
+EndFunction
+
+; Validation is outside RegistryGuard. Optional legacy rekey and registration share one acquired transaction.
+; Does not log, subscribe, wait, call consumers, or publish. Callers must log the receipt outside their own guards.
+OperationResult Function TryRegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion, String legacyId = "")
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  result.Detail = GetDescriptorRejectionReason(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
+  If (result.Detail != "")
+    result.Status = "REGISTRATION_REJECTED"
+    Return result
+  EndIf
+  If (legacyId != "" && Venworks:Core:Utilities:UUID.IsValid(legacyId))
+    result.Status = "REGISTRATION_REJECTED"
+    result.Detail = "Legacy rekey accepts non-UUID keys only."
+    Return result
+  EndIf
+  result.ConsumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+  result.DescriptorVersion = descriptorVersion
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    Bool identityReady = True
+    If (legacyId != "")
+      identityReady = MigrateConsumerIdentityLocked(owner, legacyId, result.ConsumerId, result)
+    EndIf
+    If (identityReady)
+      result.Status = RegisterConsumerLocked(owner, result.ConsumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
+    Else
+      result.Status = "REGISTRATION_REJECTED"
+      result.Detail = "Legacy identity ownership conflict."
+    EndIf
+    result.Count = Consumers.Length
+  EndTryLockGuard
+  Return result
+EndFunction
+
+; Internal worker: the supplied descriptor is validated and RegistryGuard is held.
+String Function RegisterConsumerLocked(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
   Int existingIndex = FindConsumerIndexLocked(consumerId)
   If (existingIndex >= 0)
     If (Consumers[existingIndex].Owner != owner)
-      LogUserWarning(ModuleName, "RegisterConsumer", "Rejected duplicate consumer ID '" + consumerId + "' from a different owner.")
-      Return False
+      Return "REJECTED_OWNER_MISMATCH"
     EndIf
-
     Bool changed = Consumers[existingIndex].DisplayName != displayName || Consumers[existingIndex].NormalMovieUrl != normalMovieUrl || Consumers[existingIndex].LargeMovieUrl != largeMovieUrl || Consumers[existingIndex].DescriptorVersion != descriptorVersion
     If (!changed)
-      LogUserInformational(ModuleName, "RegisterConsumer", "REGISTRATION_UNCHANGED | Consumer=" + consumerId + " | Version=" + descriptorVersion + " | Consumers=" + Consumers.Length)
-      Return True
+      Return "REGISTRATION_UNCHANGED"
     EndIf
-
     Consumers[existingIndex].DisplayName = displayName
     Consumers[existingIndex].NormalMovieUrl = normalMovieUrl
     Consumers[existingIndex].LargeMovieUrl = largeMovieUrl
     Consumers[existingIndex].DescriptorVersion = descriptorVersion
-    LogUserInformational(ModuleName, "RegisterConsumer", "REGISTRATION_UPDATED | Consumer=" + consumerId + " | Version=" + descriptorVersion + " | Consumers=" + Consumers.Length)
-    Return True
+    Return "REGISTRATION_UPDATED"
   EndIf
-
   ConsumerRegistration registration = new ConsumerRegistration
   registration.Owner = owner
   registration.ConsumerId = consumerId
@@ -79,54 +139,67 @@ Bool Function RegisterConsumerLocked(Quest owner, String consumerId, String disp
   registration.LargeMovieUrl = largeMovieUrl
   registration.DescriptorVersion = descriptorVersion
   Consumers.Add(registration)
-  LogUserInformational(ModuleName, "RegisterConsumer", "REGISTRATION_ACCEPTED | Consumer=" + consumerId + " | Version=" + descriptorVersion + " | Consumers=" + Consumers.Length)
-  Return True
+  Return "REGISTRATION_ACCEPTED"
 EndFunction
 
-; Removes one consumer when the supplied quest owns its ID, without publishing UI data.
-; Returns true when the consumer is absent or removed, and false when another quest owns the ID.
-Bool Function UnregisterConsumerLocked(Quest owner, String consumerId)
-  If (!EnsureStorageLocked())
-    Return False
-  EndIf
+; Nonblocking removal; ownership is checked in the same transaction as removal. No diagnostic calls occur inside it.
+OperationResult Function TryUnregisterConsumer(Quest owner, String consumerId)
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   If (owner == None || !IsConsumerIdValid(consumerId))
-    Return False
+    result.Status = "REJECTED_CONSUMER_ID"
+    Return result
   EndIf
-  Int existingIndex = FindConsumerIndexLocked(consumerId)
-  If (existingIndex < 0)
-    Return True
-  EndIf
-  If (Consumers[existingIndex].Owner != owner)
-    LogUserWarning(ModuleName, "UnregisterConsumer", "Rejected unregister for consumer '" + consumerId + "' from a different owner.")
-    Return False
-  EndIf
-
-  Consumers.Remove(existingIndex)
-  LogUserInformational(ModuleName, "UnregisterConsumer", "Unregistered consumer '" + consumerId + "'.")
-  Return True
+  result.ConsumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    result.Status = UnregisterConsumerLocked(owner, result.ConsumerId)
+    result.Count = Consumers.Length
+  EndTryLockGuard
+  Return result
 EndFunction
 
-; Checks the registered owner/ID pair without accepting replacement paths. No request is queued or submitted and no movie is loaded.
-; Returns REGISTERED_TRANSPORT_DISABLED for a valid request, or a REJECTED_* reason for an unavailable owner, invalid ID, or ownership mismatch.
-String Function RequestUiLoadLocked(Quest owner, String consumerId)
-  If (!EnsureStorageLocked() || owner == None)
-    LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_OWNER_UNAVAILABLE")
-    Return "REJECTED_OWNER_UNAVAILABLE"
-  EndIf
-  If (!IsConsumerIdValid(consumerId))
-    LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_CONSUMER_ID")
-    Return "REJECTED_CONSUMER_ID"
-  EndIf
+; Internal owner-checked removal under RegistryGuard; absent IDs are successful no-ops.
+String Function UnregisterConsumerLocked(Quest owner, String consumerId)
   Int index = FindConsumerIndexLocked(consumerId)
   If (index < 0)
-    LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_NOT_REGISTERED | Consumer=" + consumerId)
+    Return "UNREGISTERED"
+  EndIf
+  If (Consumers[index].Owner != owner)
+    Return "REJECTED_OWNER_MISMATCH"
+  EndIf
+  Consumers.Remove(index)
+  Return "UNREGISTERED"
+EndFunction
+
+; Reads only the stored owner/ID pair. The accepted result deliberately queues, submits and loads nothing.
+OperationResult Function TryRequestUiLoad(Quest owner, String consumerId)
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  If (owner == None)
+    result.Status = "REJECTED_OWNER_UNAVAILABLE"
+    Return result
+  EndIf
+  If (!IsConsumerIdValid(consumerId))
+    result.Status = "REJECTED_CONSUMER_ID"
+    Return result
+  EndIf
+  result.ConsumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    result.Status = RequestUiLoadLocked(owner, result.ConsumerId)
+    result.Count = Consumers.Length
+  EndTryLockGuard
+  Return result
+EndFunction
+
+; Internal read under RegistryGuard; no replacement paths and no UI transport.
+String Function RequestUiLoadLocked(Quest owner, String consumerId)
+  Int index = FindConsumerIndexLocked(consumerId)
+  If (index < 0)
     Return "REJECTED_NOT_REGISTERED"
   EndIf
   If (Consumers[index].Owner != owner)
-    LogUserWarning(ModuleName, "RequestUiLoad", "REJECTED_OWNER_MISMATCH | Consumer=" + consumerId)
     Return "REJECTED_OWNER_MISMATCH"
   EndIf
-  LogUserInformational(ModuleName, "RequestUiLoad", "REGISTERED_TRANSPORT_DISABLED | Consumer=" + Consumers[index].ConsumerId + " | Version=" + Consumers[index].DescriptorVersion + " | Not queued, submitted, or loaded.")
   Return "REGISTERED_TRANSPORT_DISABLED"
 EndFunction
 
@@ -243,46 +316,36 @@ Int Function GetCharacterCount(String value)
   Return characters.Length
 EndFunction
 
-; Initializes missing persistent storage without replacing a valid saved array, then prunes records whose owning quest is unavailable.
-; Returns true after storage is available for registry operations.
-Bool Function EnsureStorageLocked()
-  EnsureMenuSubscriptionsLocked()
+; Repairs only missing storage and prunes invalid rows while RegistryGuard is held. The receipt carries diagnostics out.
+Function EnsureStorageLocked(OperationResult result)
   If (Consumers == None)
     Consumers = new ConsumerRegistration[0]
-    LogUserWarning(ModuleName, "EnsureStorage", "Initialized missing consumer registry storage; consumer quests may register again when a supported HUD menu opens.")
+    result.Initialized = True
   EndIf
-
   Int index = Consumers.Length - 1
   While (index >= 0)
     If (Consumers[index] == None)
       Consumers.Remove(index)
-      LogUserWarning(ModuleName, "EnsureStorage", "Pruned a None consumer record.")
+      result.Pruned += 1
     ElseIf (Consumers[index].Owner == None)
-      String staleConsumerId = Consumers[index].ConsumerId
       Consumers.Remove(index)
-      If (staleConsumerId == "")
-        LogUserInformational(ModuleName, "EnsureStorage", "Pruned the typed consumer registry storage seed.")
-      Else
-        LogUserWarning(ModuleName, "EnsureStorage", "Pruned unavailable consumer owner '" + staleConsumerId + "'.")
-      EndIf
+      result.Pruned += 1
     EndIf
     index -= 1
   EndWhile
-  Return True
 EndFunction
 
-; Restores both host callbacks on first use of this revision, including saved quests whose old OnInit exited early.
-; The saved flag is set only after both native registrations complete. No UI transport is involved.
-Function EnsureMenuSubscriptionsLocked()
+; Idempotent native subscriptions deliberately occur outside all guards, including the registrar guard.
+Function EnsureMenuSubscriptions()
   If (!MenuSubscriptionsInitialized)
     RegisterForMenuOpenCloseEvent("HUDMenu")
     RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
     MenuSubscriptionsInitialized = True
-    LogUserInformational(ModuleName, "EnsureMenuSubscriptions", "Registered HUDMenu and SpaceshipHudMenu callbacks; transport remains disabled.")
+    LogUserInformational(ModuleName, "EnsureMenuSubscriptions", "Registered HUD callbacks; WATCH BRIDGE DISABLED.")
   EndIf
 EndFunction
 
-; Returns the index of a registered consumer ID or negative one when no complete record has that ID.
+; Internal lookup of a complete record; caller holds RegistryGuard and has repaired storage.
 Int Function FindConsumerIndexLocked(String consumerId)
   Int index = 0
   While (index < Consumers.Length)
@@ -294,85 +357,93 @@ Int Function FindConsumerIndexLocked(String consumerId)
   Return -1
 EndFunction
 
-; Guarded public entry point. Serializes RegisterConsumer with all registry state operations; no waits or consumer callbacks occur under the guard.
+; Compatibility Boolean: true means stored; false includes busy. New consumers use the explicit TryRegisterConsumer receipt.
 Bool Function RegisterConsumer(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
-  Bool result
-  LockGuard RegistryGuard
-    result = RegisterConsumerLocked(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
-  EndLockGuard
-  Return result
+  EnsureMenuSubscriptions()
+  OperationResult result = TryRegisterConsumer(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion)
+  LogOperation(result)
+  Return IsRegistrationAccepted(result.Status)
 EndFunction
 
-; Guarded public entry point. Serializes UnregisterConsumer with all registry state operations; no waits or consumer callbacks occur under the guard.
+; Compatibility Boolean: false includes busy, not solely ownership rejection. Use TryUnregisterConsumer for distinct outcomes.
 Bool Function UnregisterConsumer(Quest owner, String consumerId)
-  Bool result
-  LockGuard RegistryGuard
-    result = UnregisterConsumerLocked(owner, consumerId)
-  EndLockGuard
-  Return result
+  OperationResult result = TryUnregisterConsumer(owner, consumerId)
+  LogOperation(result)
+  Return result.Status == "UNREGISTERED"
 EndFunction
 
-; Guarded public entry point. Serializes RequestUiLoad with all registry state operations; no waits or consumer callbacks occur under the guard.
+; Explicit UI request, returning DEFERRED_REGISTRY_BUSY separately from REJECTED_* and disabled transport.
 String Function RequestUiLoad(Quest owner, String consumerId)
-  String result
-  LockGuard RegistryGuard
-    result = RequestUiLoadLocked(owner, consumerId)
-  EndLockGuard
+  OperationResult result = TryRequestUiLoad(owner, consumerId)
+  LogOperation(result)
+  Return result.Status
+EndFunction
+
+; A single nonblocking repair/count operation. Busy is not an empty registry.
+OperationResult Function TryEnsureStorage()
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    result.Status = "REGISTRY_READY"
+    result.Count = Consumers.Length
+  EndTryLockGuard
   Return result
 EndFunction
 
-; Guarded public entry point. Serializes EnsureStorage with all registry state operations; no waits or consumer callbacks occur under the guard.
+; Explicit bootstrap for an old host-only save with missing callbacks. Never replaces valid storage.
 Bool Function EnsureStorage()
-  Bool result
-  LockGuard RegistryGuard
-    result = EnsureStorageLocked()
-  EndLockGuard
-  Return result
+  EnsureMenuSubscriptions()
+  OperationResult result = TryEnsureStorage()
+  LogOperation(result)
+  Return result.Status == "REGISTRY_READY"
 EndFunction
 
-; Guarded public entry point. Serializes FindConsumerIndex with all registry state operations; no waits or consumer callbacks occur under the guard.
+; Returns -2 for busy, -1 for absent, or the matching index. The returned index is not a transaction lease.
 Int Function FindConsumerIndex(String consumerId)
-  Int result
-  LockGuard RegistryGuard
-    EnsureStorageLocked()
-    result = FindConsumerIndexLocked(consumerId)
-  EndLockGuard
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  Int index = -2
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    index = FindConsumerIndexLocked(consumerId)
+  EndTryLockGuard
+  Return index
+EndFunction
+
+; Returns -1 when busy rather than inventing a zero count.
+Int Function GetConsumerCount()
+  OperationResult result = TryEnsureStorage()
+  Return result.Count
+EndFunction
+
+; Compatibility Boolean; false includes busy. Never infer a malformed UUID from this result.
+Bool Function MigrateConsumerIdentity(Quest owner, String legacyId, String newId)
+  OperationResult result = TryMigrateConsumerIdentity(owner, legacyId, newId)
+  LogOperation(result)
+  Return result.Status == "IDENTITY_READY"
+EndFunction
+
+; Explicit legacy rekey with a distinct busy result. New registrars combine rekey with registration instead.
+OperationResult Function TryMigrateConsumerIdentity(Quest owner, String legacyId, String newId)
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  If (owner == None || !IsConsumerIdValid(newId) || legacyId == "" || Venworks:Core:Utilities:UUID.IsValid(legacyId))
+    result.Status = "REJECTED_IDENTITY"
+    Return result
+  EndIf
+  result.ConsumerId = Venworks:Core:Utilities:UUID.Normalize(newId)
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    If (MigrateConsumerIdentityLocked(owner, legacyId, result.ConsumerId, result))
+      result.Status = "IDENTITY_READY"
+    Else
+      result.Status = "REJECTED_OWNER_MISMATCH"
+    EndIf
+    result.Count = Consumers.Length
+  EndTryLockGuard
   Return result
 EndFunction
 
-; Guarded public entry point. Serializes EnsureMenuSubscriptions with all registry state operations; no waits or consumer callbacks occur under the guard.
-Function EnsureMenuSubscriptions()
-  LockGuard RegistryGuard
-    EnsureMenuSubscriptionsLocked()
-  EndLockGuard
-EndFunction
-
-; Returns the current repaired registry count while holding the registry guard.
-Int Function GetConsumerCount()
-  Int count = 0
-  LockGuard RegistryGuard
-    EnsureStorageLocked()
-    count = Consumers.Length
-  EndLockGuard
-  Return count
-EndFunction
-
-; Explicit owner-checked legacy rekey. Absent legacy records are a successful no-op; conflicting ownership fails without mutation.
-; Consumers, FormIDs and descriptors are preserved. This method does not infer or generate the new UUID.
-Bool Function MigrateConsumerIdentity(Quest owner, String legacyId, String newId)
-  Bool migrated = False
-  LockGuard RegistryGuard
-    migrated = MigrateConsumerIdentityLocked(owner, legacyId, newId)
-  EndLockGuard
-  Return migrated
-EndFunction
-
-; Internal rekey transaction; caller holds RegistryGuard. Only non-UUID legacy text can be rekeyed.
-Bool Function MigrateConsumerIdentityLocked(Quest owner, String legacyId, String newId)
-  EnsureStorageLocked()
-  If (owner == None || !IsConsumerIdValid(newId) || legacyId == "" || Venworks:Core:Utilities:UUID.IsValid(legacyId))
-    Return False
-  EndIf
+; Owner-checked rekey under RegistryGuard. Absent legacy rows succeed without mutation; descriptors remain intact.
+Bool Function MigrateConsumerIdentityLocked(Quest owner, String legacyId, String newId, OperationResult result)
   Int current = FindConsumerIndexLocked(newId)
   If (current >= 0)
     If (Consumers[current].Owner != owner)
@@ -388,14 +459,33 @@ Bool Function MigrateConsumerIdentityLocked(Quest owner, String legacyId, String
           current -= 1
         EndIf
       Else
-        Consumers[index].ConsumerId = Venworks:Core:Utilities:UUID.Normalize(newId)
+        Consumers[index].ConsumerId = newId
         current = index
       EndIf
-      LogUserInformational(ModuleName, "MigrateConsumerIdentity", "LEGACY_ID_MIGRATED | Consumer=" + newId)
+      result.Migrated = True
     EndIf
     index -= 1
   EndWhile
   Return True
+EndFunction
+
+; Logs a caller-owned snapshot only after every guard has ended. Count is from that transaction, not a fresh read.
+Function LogOperation(OperationResult result)
+  If (result.Initialized)
+    LogUserWarning(ModuleName, "LogOperation", "Initialized missing consumer registry storage.")
+  EndIf
+  If (result.Pruned > 0)
+    LogUserInformational(ModuleName, "LogOperation", "REGISTRY_PRUNED | Records=" + result.Pruned)
+  EndIf
+  If (result.Migrated)
+    LogUserInformational(ModuleName, "LogOperation", "LEGACY_ID_MIGRATED | Consumer=" + result.ConsumerId)
+  EndIf
+  String diagnosticText = result.Status + " | Consumer=" + result.ConsumerId + " | Version=" + result.DescriptorVersion + " | Consumers=" + result.Count + " | " + result.Detail
+  If (IsRegistrationAccepted(result.Status) || result.Status == "REGISTRY_READY" || result.Status == "IDENTITY_READY" || result.Status == "UNREGISTERED" || result.Status == "REGISTERED_TRANSPORT_DISABLED")
+    LogUserInformational(ModuleName, "LogOperation", diagnosticText)
+  Else
+    LogUserWarning(ModuleName, "LogOperation", diagnosticText)
+  EndIf
 EndFunction
 
 ; Compares ASCII text numerically, ignoring only A-Z case. Used for legacy fixture names and archive URLs, never display labels.

@@ -13,7 +13,7 @@
     OutputRoot = 'Spriggit/ConsumerDiscovery'
   }
   VenworksCoreFixture = @{
-    Revision = 'bc1066574ba4ec2fe02f4ad10e4da8b9882c9beb'
+    Revision = 'd76fc0a5af7d47955d36985ee11a0ca5061efc34'
     SourceFiles = @(
       @{ Path = 'Papyrus/Venworks/Core/Utilities/UUID.psc'; Sha256 = '5BEC2410485E13E3925CA3E58E3EACC218F25FBF0FC49E8AAFC24D98FDF5EB24' }
       @{ Path = 'Papyrus/Venworks/Core/Tests/UUIDTests.psc'; Sha256 = '076639D852BE419BC791C262C692B100161AC5E2FC4D65F0A554BE5933C8F931' }
