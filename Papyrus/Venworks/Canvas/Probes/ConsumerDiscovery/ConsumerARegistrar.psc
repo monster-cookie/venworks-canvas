@@ -56,6 +56,7 @@ EndFunction
 ; One attempt followed by diagnostics and optional scheduling, all outside the acquired guards.
 Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
+  RequestRegisteredUi(result)
   ReportAttempt(result)
   If (IsDeferred(result.Status) || IsDeferred(result.UiLoad))
     If (attempt < 20)
@@ -87,8 +88,9 @@ EndFunction
 ; Compatibility Boolean: true means accepted; false may mean deferred. Explicit callers must retain input until accepted.
 Bool Function ApplyDescriptorUpdate(String updatedDisplayName, String updatedNormalMovieUrl, String updatedLargeMovieUrl, Int updatedDescriptorVersion)
   OperationResult result = TryApplyDescriptorUpdate(updatedDisplayName, updatedNormalMovieUrl, updatedLargeMovieUrl, updatedDescriptorVersion)
+  RequestRegisteredUi(result)
   ReportAttempt(result)
-  If (IsDeferred(result.Status))
+  If (IsDeferred(result.Status) || IsDeferred(result.UiLoad))
     StartTimer(0.5, 1)
   EndIf
   Return IsRegistrationAccepted(result.Status)
@@ -148,6 +150,7 @@ Bool Function RegisterDescriptorWithRetry(String requestedDisplayName, String re
   TryLockGuard AttemptGuard
     result = AttemptDescriptorRegistration(requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion, expectedResult)
   EndTryLockGuard
+  RequestRegisteredUi(result)
   ReportAttempt(result)
   Return IsRegistrationAccepted(result.Status) || result.Status == "EXPECTED_REGISTRATION_REJECTION"
 EndFunction
@@ -164,8 +167,7 @@ OperationResult Function AttemptDescriptorRegistration(String requestedDisplayNa
   EndIf
   If (IsRegistrationAccepted(result.Status))
     If (expectedResult)
-      OperationResult loadResult = Registry.TryRequestUiLoad(Self, registrationId)
-      result.UiLoad = loadResult.Status
+      result.UiLoad = "UI_LOAD_REQUEST_NEEDED"
     Else
       OperationResult removal = Registry.TryUnregisterConsumer(Self, registrationId)
       If (IsDeferred(removal.Status))
@@ -179,6 +181,20 @@ OperationResult Function AttemptDescriptorRegistration(String requestedDisplayNa
     result.Status = "EXPECTED_REGISTRATION_REJECTION"
   EndIf
   Return result
+EndFunction
+
+; An accepted migration may defer UI independently; schedule this consumer's own bounded reconciliation.
+Function RetryRegisteredUi()
+  StartTimer(0.5, 1)
+EndFunction
+
+; The consumer's explicit second step. Registration workers only mark intent; invoke outside all guards.
+Function RequestRegisteredUi(OperationResult result)
+  If (Registry != None && IsRegistrationAccepted(result.Status) && result.UiLoad == "UI_LOAD_REQUEST_NEEDED")
+    OperationResult loadResult = Registry.TryRequestUiLoad(Self, result.ConsumerId)
+    result.UiLoad = loadResult.Status
+    Registry.LogOperation(loadResult)
+  EndIf
 EndFunction
 
 ; Diagnostics consume the per-call receipt only after AttemptGuard and RegistryGuard have both ended.

@@ -513,10 +513,10 @@ if ($SourceOnly -and $ArtifactsOnly) {
   throw 'SourceOnly and ArtifactsOnly cannot be combined.'
 }
 
-if ([int]$matrix.Version -ne 7 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
-    [string]$matrix.TestMode -cne 'RegistrationOnlyBridgeDisabled' -or
-    [string]$matrix.UiLoadResult -cne 'REGISTERED_TRANSPORT_DISABLED') {
-  throw 'Consumer-discovery matrix must declare the v6 bridge-disabled registration test contract.'
+if ([int]$matrix.Version -ne 8 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
+    [string]$matrix.TestMode -cne 'ExplicitConsumerUiLoad' -or
+    [string]$matrix.UiLoadResult -cne 'UI_LOAD_QUEUED') {
+  throw 'Consumer-discovery matrix must declare the v8 explicit UI-load test contract.'
 }
 
 function Assert-ExactOrdinalList {
@@ -952,7 +952,7 @@ foreach ($token in @(
   'EnsureStorageLocked(result)'
   'Consumers = new ConsumerRegistration[0]'
   'String Function RequestUiLoad(Quest owner, String consumerId)'
-  'Return "REGISTERED_TRANSPORT_DISABLED"'
+  'Return "REGISTERED_UI_LOAD_ELIGIBLE"'
   'Return "REJECTED_NOT_REGISTERED"'
   'Return "REJECTED_OWNER_MISMATCH"'
   'Consumers[index].Owner != owner'
@@ -1010,6 +1010,7 @@ foreach ($functionContract in @(
 # Keep lifecycle and transitive guard checks in the focused verifier, separate from artifact inspection.
 & (Join-Path $PSScriptRoot 'testConsumerDiscoveryGuards.ps1')
 & (Join-Path $PSScriptRoot 'testConsumerDiscoveryConsole.ps1')
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryUiLoad.ps1')
 foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc')) {
   $consumerSource = Get-Content -LiteralPath (Join-Path $repositoryRoot "Papyrus/Venworks/Canvas/Probes/ConsumerDiscovery/$consumerName") -Raw
   foreach ($token in @('Extends Venworks:Canvas:Base:BaseQuest', 'Property Registry Auto Const Mandatory', 'String Property ConsumerId Auto Const Mandatory', 'String Property NormalMoviePath Auto Const Mandatory', 'Int Property DescriptorVersion Auto Const Mandatory', 'Bool Property ExpectedRegistration Auto Const Mandatory', 'Float Property InitialDelaySeconds Auto Const Mandatory')) {
@@ -1064,9 +1065,9 @@ foreach ($token in @(
   'inconsistent snapshot generation metadata'
   'this.getLoaderIds()'
   'this.dataManager.Unsubscribe(PROVIDER,this.callback)'
-  'REGISTRATION LOG TEST'
-  'WATCH BRIDGE DISABLED'
-  'CONSUMER MOVIES NOT LOADED'
+  'EXPLICIT UI LOAD TEST'
+  'LOAD BRIDGE SUBSCRIBED'
+  'SHIP UI TRANSPORT DEFERRED'
 )) {
   if (!$hostSource.Contains($token)) {
     throw "Dynamic ActionScript host is missing token '$token'."
@@ -1098,12 +1099,13 @@ $loaderIdentityGuard = 'if(loader == null || this.loaders[loader.name] !== loade
 if ([regex]::Matches($hostSource, [regex]::Escape($loaderIdentityGuard)).Count -ne 3) {
   throw 'Dynamic ActionScript host must reject stale init, completion, and error events from replaced loaders.'
 }
-if ($hostSource.Contains('.Subscribe(') -or $hostSource.Contains('.GetDataFromClient(') -or $hostSource.Contains('BRIDGE SUBSCRIBED')) {
-  throw 'Bridge-disabled ActionScript must not subscribe, request provider data, or report an active bridge.'
+if ([regex]::Matches($hostSource, [regex]::Escape('.Subscribe(')).Count -ne 1 -or
+    [regex]::Matches($hostSource, [regex]::Escape('.GetDataFromClient(')).Count -ne 1) {
+  throw 'The host must own exactly one provider subscription and priming site.'
 }
 foreach ($papyrusFile in @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas') -Recurse -File -Filter '*.psc')) {
-  if ([IO.File]::ReadAllText($papyrusFile.FullName) -match '(?i)ShowCustomWatchAlert') {
-    throw "Bridge-disabled Canvas source contains a Watch Alert reference: $($papyrusFile.FullName)"
+  if ($papyrusFile.Name -cne 'Registry.psc' -and [IO.File]::ReadAllText($papyrusFile.FullName) -match '(?i)ShowCustomWatchAlert') {
+    throw "Only the registry load pump may reference Watch Alert transport: $($papyrusFile.FullName)"
   }
 }
 
@@ -1185,7 +1187,7 @@ foreach ($expectedKnownMaster in @(
   }
 }
 
-Write-Host -ForegroundColor Green "Verified bridge-disabled registration sources, all three tracked YAML contracts, profile '$($resolvedProfile.Key)', deferred parser fixtures, PC matrices, and PowerShell syntax."
+Write-Host -ForegroundColor Green "Verified explicit UI-load sources, all three tracked YAML contracts, profile '$($resolvedProfile.Key)', reference parser fixtures, PC matrices, and PowerShell syntax."
 & (Join-Path $PSScriptRoot 'testConsumerDiscoveryUuid.ps1')
 & (Join-Path $PSScriptRoot 'testConsumerDiscoveryPackaging.ps1')
 
@@ -1433,8 +1435,8 @@ foreach ($output in $expectedScriptOutputs) {
   $source = [System.IO.Path]::ChangeExtension([string]$output, '.psc')
   # PEX function names are serialized strings; fail closed even when a native call is hidden in an inactive branch.
   $compiledText = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $resolvedScriptsDirectory ([string]$output))))
-  if ($compiledText -match '(?i)ShowCustomWatchAlert') {
-    throw "Bridge-disabled Canvas PEX contains a Watch Alert reference: $output"
+  if ($output -cne 'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex' -and $compiledText -match '(?i)ShowCustomWatchAlert') {
+    throw "Only the registry load pump may contain a Watch Alert reference: $output"
   }
   $scriptEvidenceMatches = @($compileEvidence.Scripts | Where-Object {
     [string]$_.Source -ceq $source -and [string]$_.Output -ceq [string]$output

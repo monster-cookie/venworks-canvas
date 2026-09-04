@@ -92,11 +92,16 @@ Event OnTimer(Int aiTimerID)
   OperationResult result = NewResult("DEFERRED_REGISTRY_UNAVAILABLE")
   If (Registrar != None)
     result = Registrar.TryApplyDescriptorUpdate(UpdatedDisplayName, UpdatedNormalMoviePath, UpdatedLargeMoviePath, UpdatedDescriptorVersion)
+    Registrar.RequestRegisteredUi(result)
     Registrar.ReportAttempt(result)
   EndIf
   If (IsRegistrationAccepted(result.Status))
     MigrationApplied = True
     LogUserInformational(ModuleName, "OnTimer", "DESCRIPTOR_UPDATE_ACK | Version=" + UpdatedDescriptorVersion)
+    If (Registrar != None && IsDeferred(result.UiLoad))
+      ; Keep the acknowledged descriptor; the consumer retries the second step through reconciliation.
+      Registrar.RetryRegisteredUi()
+    EndIf
   ElseIf (IsDeferred(result.Status))
     If (aiTimerID < 20)
       StartTimer(0.5, aiTimerID + 1)

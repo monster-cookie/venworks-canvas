@@ -79,7 +79,7 @@ function Assert-CanvasConsoleContract {
     }
     if ($name -eq 'ConsumerBRegistrar') {
       Assert-ConsolePattern $functions[$action].Body '(?s)String result = target.CheckUiLoadRequest\(requestedConsumerId\).*?CONSOLE_RESULT.*?Return result' 'B passes unchanged input through its instance method and returns the actual result'
-      Assert-ConsolePattern $functions.CheckUiLoadRequest.Body 'Registry.RequestUiLoad\(Self, requestedConsumerId\)' 'B remains the owner of the UI request'
+      Assert-ConsolePattern $functions.CheckUiLoadRequest.Body 'Registry.CheckUiLoadRequest\(Self, requestedConsumerId\)' 'B remains the owner of the check-only UI request'
       if ($functions[$action].Body -match '\b(?:Normalize|Trim|ToLower|TryRequestUiLoad|RequestUiLoad)\(') { throw 'The B wrapper bypasses the instance path or changes test input.' }
     }
     elseif ($name -eq 'Registry') {
@@ -130,7 +130,8 @@ $mutations = @(
   @{ Script = 'Registry'; From = 'If (targetForm == None)'; To = 'If (False)' }
   @{ Script = 'ConsumerBRegistrar'; From = 'If (target == None)'; To = 'If (False)' }
   @{ Script = 'ConsumerBRegistrar'; From = 'target.CheckUiLoadRequest(requestedConsumerId)'; To = 'target.CheckUiLoadRequest("beef70b2-024e-4e9b-a8d5-70a0c882c431")' }
-  @{ Script = 'ConsumerBRegistrar'; From = 'Registry.RequestUiLoad(Self, requestedConsumerId)'; To = 'Registry.RequestUiLoad(Registry, requestedConsumerId)' }
+  @{ Script = 'ConsumerBRegistrar'; From = 'Registry.CheckUiLoadRequest(Self, requestedConsumerId)'; To = 'Registry.CheckUiLoadRequest(Registry, requestedConsumerId)' }
+  @{ Script = 'ConsumerBRegistrar'; From = 'Registry.CheckUiLoadRequest(Self, requestedConsumerId)'; To = 'Registry.RequestUiLoad(Self, requestedConsumerId)' }
   @{ Script = 'ConsumerBRegistrar'; From = 'Return result'; To = 'Return "REGISTERED_TRANSPORT_DISABLED"' }
   @{ Script = 'Registry'; From = 'target.LogOperation(result)'; To = '; omitted' }
   @{ Script = 'ConsumerAUpdateMigration'; From = 'target.RetryUpdate()'; To = 'target.OnInit()' }

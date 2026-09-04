@@ -64,6 +64,40 @@ function ConvertTo-ConsumerDiscoveryUuid {
   return $parsed.ToString('D').ToLowerInvariant()
 }
 
+# Reference parser for the bounded single-consumer command; this is not a Scaleform VM test.
+function ConvertFrom-ConsumerDiscoveryUiLoadPacket {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Packet)
+  $prefix = 'VWC_EVT/1|canvas.ui.load|'
+  if ($Packet.Length -gt 512 -or $Packet -cnotmatch '\A[\x20-\x7e]+\z' -or !$Packet.StartsWith($prefix, [StringComparison]::Ordinal)) {
+    throw 'Invalid UI load envelope.'
+  }
+  $cursor = $prefix.Length
+  $values = @()
+  foreach ($maximum in @(1, 38, 4, 180, 180)) {
+    $delimiter = $Packet.IndexOf(':', $cursor)
+    if ($delimiter -le $cursor -or $delimiter - $cursor -gt 6) { throw 'Invalid UI load frame.' }
+    $lengthText = $Packet.Substring($cursor, $delimiter - $cursor)
+    if ($lengthText -cnotmatch '\A[0-9]+\z') { throw 'Invalid UI load frame length.' }
+    $length = [int]$lengthText
+    $cursor = $delimiter + 1
+    if ($length -gt $maximum -or $cursor + $length -gt $Packet.Length) { throw 'Truncated or oversized UI load frame.' }
+    $values += $Packet.Substring($cursor, $length)
+    $cursor += $length
+  }
+  if ($cursor -ne $Packet.Length -or $values[0] -cne '1' -or $values[2] -cnotmatch '\A[0-9]{1,4}\z' -or [int]$values[2] -lt 1) {
+    throw 'Invalid UI load protocol, version or trailing data.'
+  }
+  $id = ConvertTo-ConsumerDiscoveryUuid -Value $values[1]
+  $normal = [regex]::Match($values[3], '\AVenworksCanvas/Consumers/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])/normal\.swf\z', 'IgnoreCase')
+  $large = [regex]::Match($values[4], '\AVenworksCanvas/Consumers/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])/large\.swf\z', 'IgnoreCase')
+  if (!$normal.Success -or !$large.Success -or $normal.Groups[1].Value.Contains('..') -or $normal.Groups[1].Value -ine $large.Groups[1].Value) {
+    throw 'UI load paths must share one safe local namespace.'
+  }
+  $root = 'VenworksCanvas/Consumers/' + $normal.Groups[1].Value.ToLowerInvariant() + '/'
+  return [pscustomobject]@{ ConsumerId = $id; Version = [int]$values[2]; NormalPath = $root + 'normal.swf'; LargePath = $root + 'large.swf' }
+}
+
 function Assert-ConsumerDiscoveryArtifactHeader {
   [CmdletBinding()]
   param([Parameter(Mandatory = $true)][string]$Path)

@@ -21,9 +21,30 @@ Struct OperationResult
   Bool Initialized = False
   Bool Migrated = False
   Bool UpdateApplied = False
+  Int TimerId = 0
+  Int Epoch = 0
+  String Packet
+EndStruct
+
+; Presentation bookkeeping only. Reset on HUD activation; never replaces the persistent registration array.
+Struct UiLoadEntry
+  Quest Owner
+  String ConsumerId
+  String Packet
+  Bool Submitted = False
 EndStruct
 
 ConsumerRegistration[] Property Consumers Auto Mandatory
+UiLoadEntry[] UiLoads
+Bool PlayerHudRequested = False
+Bool UiActive = False
+Int UiEpoch = 0
+Int UiActivationRequest = 0
+Int UiAppliedActivationRequest = -1
+Int UiTimerSerial = 1000
+Int UiPumpBase = 0
+Float UiNextSubmitTime = 0.0
+Float UiPumpExpiresAt = 0.0
 Int MessageId = 0
 Bool MenuSubscriptionsInitialized = False
 Bool DisabledPublicationLogged = False
@@ -92,6 +113,11 @@ EndEvent
 
 ; A supported HUD opening starts deferred reconciliation, never a guarded OnInit continuation.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
+  If (menuName == "HUDMenu")
+    PlayerHudRequested = opening
+    UiActivationRequest += 1
+    StartTimer(0.2, 100)
+  EndIf
   If (opening)
     StartTimer(0.2, 1)
   EndIf
@@ -99,6 +125,13 @@ EndEvent
 
 ; Timer IDs carry the bounded attempt number; no saved "active" flag can permanently suppress work.
 Event OnTimer(Int aiTimerID)
+  If (aiTimerID >= 100 && aiTimerID < 120)
+    RefreshUiActivation(aiTimerID)
+    Return
+  ElseIf (aiTimerID >= 1001)
+    PumpUiLoad(aiTimerID)
+    Return
+  EndIf
   If (aiTimerID < 1 || aiTimerID > 20)
     Return
   EndIf
@@ -127,7 +160,7 @@ EndFunction
 
 ; Busy/unavailable outcomes are distinct from terminal descriptor or ownership rejection.
 Bool Function IsDeferred(String status) Global
-  Return status == "DEFERRED_REGISTRY_BUSY" || status == "DEFERRED_ATTEMPT_BUSY" || status == "DEFERRED_REGISTRY_UNAVAILABLE"
+  Return status == "DEFERRED_REGISTRY_BUSY" || status == "DEFERRED_ATTEMPT_BUSY" || status == "DEFERRED_REGISTRY_UNAVAILABLE" || status == "DEFERRED_UI_INACTIVE" || status == "DEFERRED_UI_QUEUE_FULL"
 EndFunction
 
 ; Validation is outside RegistryGuard. Optional legacy rekey and registration share one acquired transaction.
@@ -220,8 +253,8 @@ String Function UnregisterConsumerLocked(Quest owner, String consumerId)
   Return "UNREGISTERED"
 EndFunction
 
-; Reads only the stored owner/ID pair. The accepted result deliberately queues, submits and loads nothing.
-OperationResult Function TryRequestUiLoad(Quest owner, String consumerId)
+; Reads only the stored owner/ID pair. Never queues, schedules, or transmits a UI request.
+OperationResult Function TryCheckUiLoadRequest(Quest owner, String consumerId)
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   If (owner == None)
     result.Status = "REJECTED_OWNER_UNAVAILABLE"
@@ -249,7 +282,269 @@ String Function RequestUiLoadLocked(Quest owner, String consumerId)
   If (Consumers[index].Owner != owner)
     Return "REJECTED_OWNER_MISMATCH"
   EndIf
-  Return "REGISTERED_TRANSPORT_DISABLED"
+  Return "REGISTERED_UI_LOAD_ELIGIBLE"
+EndFunction
+
+; Explicit second step after registration. Call outside every caller guard; scheduling occurs after RegistryGuard.
+OperationResult Function TryRequestUiLoad(Quest owner, String consumerId)
+  Float now = Utility.GetCurrentRealTime()
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  If (owner == None)
+    result.Status = "REJECTED_OWNER_UNAVAILABLE"
+    Return result
+  EndIf
+  If (!IsConsumerIdValid(consumerId))
+    result.Status = "REJECTED_CONSUMER_ID"
+    Return result
+  EndIf
+  result.ConsumerId = Venworks:Core:Utilities:UUID.Normalize(consumerId)
+  TryLockGuard RegistryGuard
+    EnsureStorageLocked(result)
+    result.Status = RequestUiLoadLocked(owner, result.ConsumerId)
+    If (result.Status == "REGISTERED_UI_LOAD_ELIGIBLE")
+      QueueUiLoadLocked(owner, result, now)
+    EndIf
+    result.Count = Consumers.Length
+  EndTryLockGuard
+  ScheduleUiPump(result)
+  Return result
+EndFunction
+
+; A supported menu event defers presentation reset to a bounded timer, not OnInit or a waiting guard.
+Function RefreshUiActivation(Int timerId)
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  TryLockGuard RegistryGuard
+    result.Status = "UI_ACTIVATION_UNCHANGED"
+    If (UiAppliedActivationRequest != UiActivationRequest || UiActive != PlayerHudRequested)
+      UiEpoch += 1
+      UiActive = PlayerHudRequested
+      UiLoads = new UiLoadEntry[0]
+      UiPumpBase = 0
+      UiAppliedActivationRequest = UiActivationRequest
+      result.Status = "UI_ACTIVATION_RESET"
+    EndIf
+    result.Epoch = UiEpoch
+  EndTryLockGuard
+  LogOperation(result)
+  If (result.Status == "DEFERRED_REGISTRY_BUSY" && timerId < 119)
+    StartTimer(0.5, timerId + 1)
+  EndIf
+EndFunction
+
+; Copies only the current validated descriptor into a bounded packet; display names are not bridge data.
+String Function BuildUiLoadPacket(ConsumerRegistration registration)
+  Return "VWC_EVT/1|canvas.ui.load|" + EncodeField("1") + EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+EndFunction
+
+; Caller holds RegistryGuard. Coalesce one entry per UUID, cap pending work rather than registrations.
+Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
+  If (!UiActive || !PlayerHudRequested || UiLoads == None)
+    result.Status = "DEFERRED_UI_INACTIVE"
+    Return
+  EndIf
+  Int registeredIndex = FindConsumerIndexLocked(result.ConsumerId)
+  ; A saved or exhausted timer ticket is not a permanent gate, including after a process-clock reset.
+  If (UiPumpBase != 0 && (now >= UiPumpExpiresAt || UiPumpExpiresAt - now > 30.0))
+    UiPumpBase = 0
+  EndIf
+  ConsumerRegistration registration = Consumers[registeredIndex]
+  If (!IsDescriptorValid(owner, registration.ConsumerId, registration.DisplayName, registration.NormalMovieUrl, registration.LargeMovieUrl, registration.DescriptorVersion))
+    result.Status = "REJECTED_UI_DESCRIPTOR"
+    Return
+  EndIf
+  String packet = BuildUiLoadPacket(registration)
+  If (!IsPrintableAscii(packet, 1, 512))
+    result.Status = "REJECTED_UI_PACKET"
+    Return
+  EndIf
+  Int existing = -1
+  Int pending = 0
+  Int index = UiLoads.Length - 1
+  While (index >= 0)
+    If (UiLoads[index] == None)
+      UiLoads.Remove(index)
+    ElseIf (UiLoads[index].Owner == None || FindConsumerIndexLocked(UiLoads[index].ConsumerId) < 0)
+      UiLoads.Remove(index)
+    EndIf
+    index -= 1
+  EndWhile
+  index = 0
+  While (index < UiLoads.Length)
+    If (UiLoads[index].ConsumerId == result.ConsumerId)
+      existing = index
+    EndIf
+    If (!UiLoads[index].Submitted)
+      pending += 1
+    EndIf
+    index += 1
+  EndWhile
+  If (existing >= 0)
+    If (UiLoads[existing].Owner == owner && UiLoads[existing].Packet == packet)
+      result.Status = "UI_LOAD_ALREADY_REQUESTED"
+      ; Restart an exhausted local pump, but never resubmit an already reserved packet.
+      If (!UiLoads[existing].Submitted && UiPumpBase == 0)
+        result.TimerId = StartUiPumpLocked(now)
+      EndIf
+      Return
+    EndIf
+  EndIf
+  If (pending >= 32 && (existing < 0 || UiLoads[existing].Submitted))
+    result.Status = "DEFERRED_UI_QUEUE_FULL"
+    Return
+  EndIf
+  UiLoadEntry entry = new UiLoadEntry
+  entry.Owner = owner
+  entry.ConsumerId = result.ConsumerId
+  entry.Packet = packet
+  If (existing >= 0)
+    UiLoads[existing] = entry
+  Else
+    UiLoads.Add(entry)
+  EndIf
+  result.Status = "UI_LOAD_QUEUED"
+  result.DescriptorVersion = registration.DescriptorVersion
+  If (UiPumpBase == 0)
+    result.TimerId = StartUiPumpLocked(now)
+  EndIf
+EndFunction
+
+; Monotonic timer tickets make duplicate or superseded timer callbacks inert. Caller holds RegistryGuard.
+Int Function StartUiPumpLocked(Float now)
+  UiTimerSerial += 100
+  If (UiTimerSerial > 2000000000)
+    UiTimerSerial = 1000
+  EndIf
+  UiPumpBase = UiTimerSerial
+  UiPumpExpiresAt = now + 30.0
+  Return UiPumpBase + 1
+EndFunction
+
+; Timer work is never scheduled while holding a registry or registrar guard.
+Function ScheduleUiPump(OperationResult result)
+  If (result.TimerId > 0)
+    StartTimer(1.0, result.TimerId)
+  EndIf
+EndFunction
+
+; One owner-checked, rate-limited reservation; a missed UI event is never retried for lack of an ACK.
+Function PumpUiLoad(Int timerId)
+  Int attempt = timerId % 100
+  If (attempt >= 51 && attempt <= 70)
+    FinishUiLoad(timerId)
+    Return
+  EndIf
+  If (attempt < 1 || attempt > 20)
+    Return
+  EndIf
+  Float now = Utility.GetCurrentRealTime()
+  OperationResult result = TryTakeUiLoad(timerId - attempt, now)
+  If (result.Status == "UI_LOAD_RESERVED")
+    If (PlayerHudRequested && result.Epoch == UiEpoch)
+      Game.ShowCustomWatchAlert(result.Packet)
+      result.Status = "UI_LOAD_SUBMITTED"
+    Else
+      result.Status = "UI_LOAD_CANCELLED_ACTIVATION"
+    EndIf
+    FinishUiLoad(timerId - attempt + 51)
+  EndIf
+  LogOperation(result)
+  ScheduleUiPump(result)
+  If (result.Status == "DEFERRED_REGISTRY_BUSY" || result.Status == "DEFERRED_UI_RATE_LIMIT")
+    If (attempt < 20)
+      StartTimer(0.5, timerId + 1)
+    Else
+      ReleaseUiPump(timerId - attempt)
+      LogUserWarning(ModuleName, "PumpUiLoad", "UI_LOAD_RETRY_EXHAUSTED | Later explicit request or HUD activation may retry; no delivery ACK.")
+    EndIf
+  EndIf
+EndFunction
+
+; Drops stale owners/descriptors and atomically takes only one packet. No native transport is called here.
+OperationResult Function TryTakeUiLoad(Int ticket, Float now)
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  TryLockGuard RegistryGuard
+    result.Status = "UI_LOAD_IDLE"
+    If (UiActive && PlayerHudRequested && UiLoads != None && ticket == UiPumpBase)
+      EnsureStorageLocked(result)
+      If (now < UiNextSubmitTime && UiNextSubmitTime - now <= 1.0)
+        result.Status = "DEFERRED_UI_RATE_LIMIT"
+      Else
+        UiPumpBase = 0
+        Int index = 0
+        While (index < UiLoads.Length && result.Packet == "")
+          UiLoadEntry entry = UiLoads[index]
+          If (entry != None && !entry.Submitted)
+            Int registeredIndex = FindConsumerIndexLocked(entry.ConsumerId)
+            If (entry.Owner != None && registeredIndex >= 0)
+              ConsumerRegistration registration = Consumers[registeredIndex]
+              If (registration.Owner == entry.Owner && BuildUiLoadPacket(registration) == entry.Packet)
+                result.Packet = entry.Packet
+                result.ConsumerId = entry.ConsumerId
+                result.DescriptorVersion = registration.DescriptorVersion
+                result.Epoch = UiEpoch
+                result.Status = "UI_LOAD_RESERVED"
+                UiNextSubmitTime = now + 1.0
+                ; Keep an expiring ticket across submission so another caller cannot start a concurrent pump.
+                UiPumpBase = -ticket
+              EndIf
+            EndIf
+            entry.Submitted = True
+          EndIf
+          index += 1
+        EndWhile
+      EndIf
+    EndIf
+  EndTryLockGuard
+  Return result
+EndFunction
+
+; Complete a reservation after native submission, spacing the next timer from completion rather than reservation.
+Function FinishUiLoad(Int timerId)
+  Int attempt = timerId % 100
+  Int ticket = timerId - attempt
+  Float now = Utility.GetCurrentRealTime()
+  OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
+  TryLockGuard RegistryGuard
+    result.Status = "UI_LOAD_IDLE"
+    If (UiPumpBase == -ticket)
+      UiPumpBase = 0
+      UiNextSubmitTime = now + 1.0
+      If (UiActive && PlayerHudRequested && UiLoads != None)
+        Int index = 0
+        While (index < UiLoads.Length && result.TimerId == 0)
+          If (UiLoads[index] != None && !UiLoads[index].Submitted)
+            result.TimerId = StartUiPumpLocked(now)
+          EndIf
+          index += 1
+        EndWhile
+      EndIf
+    EndIf
+  EndTryLockGuard
+  ScheduleUiPump(result)
+  If (result.Status == "DEFERRED_REGISTRY_BUSY")
+    If (attempt < 70)
+      StartTimer(0.5, timerId + 1)
+    Else
+      ReleaseUiPump(ticket)
+      LogUserWarning(ModuleName, "FinishUiLoad", "UI_LOAD_RETRY_EXHAUSTED | Submission is not retried; remaining queued requests await recovery.")
+    EndIf
+  EndIf
+EndFunction
+
+; Bounded exhaustion must not leave a permanent active latch; failure here is recovered by HUD activation.
+Function ReleaseUiPump(Int ticket)
+  TryLockGuard RegistryGuard
+    If (UiPumpBase == ticket || UiPumpBase == -ticket)
+      UiPumpBase = 0
+    EndIf
+  EndTryLockGuard
+EndFunction
+
+; Read-only diagnostic wrapper retained separately from the transmitting RequestUiLoad API.
+String Function CheckUiLoadRequest(Quest owner, String consumerId)
+  OperationResult result = TryCheckUiLoadRequest(owner, consumerId)
+  LogOperation(result)
+  Return result.Status
 EndFunction
 
 ; Disabled compatibility entry point for saved callers. Always returns false; no snapshot is built, queued, or submitted.
@@ -267,7 +562,7 @@ EndFunction
 Function LogDisabledPublication()
   If (!DisabledPublicationLogged)
     DisabledPublicationLogged = True
-    LogUserWarning(ModuleName, "LogDisabledPublication", "WATCH BRIDGE DISABLED | Legacy publication suppressed; nothing queued or submitted.")
+    LogUserWarning(ModuleName, "LogDisabledPublication", "LEGACY WATCH BRIDGE DISABLED | Snapshot/diagnostic publication suppressed.")
   EndIf
 EndFunction
 
@@ -390,7 +685,7 @@ Function EnsureMenuSubscriptions()
     RegisterForMenuOpenCloseEvent("HUDMenu")
     RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
     MenuSubscriptionsInitialized = True
-    LogUserInformational(ModuleName, "EnsureMenuSubscriptions", "Registered HUD callbacks; WATCH BRIDGE DISABLED.")
+    LogUserInformational(ModuleName, "EnsureMenuSubscriptions", "Registered HUD callbacks; explicit load-only transport.")
   EndIf
 EndFunction
 
@@ -421,7 +716,7 @@ Bool Function UnregisterConsumer(Quest owner, String consumerId)
   Return result.Status == "UNREGISTERED"
 EndFunction
 
-; Explicit UI request, returning DEFERRED_REGISTRY_BUSY separately from REJECTED_* and disabled transport.
+; Explicit second step: queues a validated load request, never promises delivery or rendering.
 String Function RequestUiLoad(Quest owner, String consumerId)
   OperationResult result = TryRequestUiLoad(owner, consumerId)
   LogOperation(result)
@@ -529,8 +824,8 @@ Function LogOperation(OperationResult result)
   If (result.Migrated)
     LogUserInformational(ModuleName, "LogOperation", "LEGACY_ID_MIGRATED | Consumer=" + result.ConsumerId)
   EndIf
-  String diagnosticText = result.Status + " | Consumer=" + result.ConsumerId + " | Version=" + result.DescriptorVersion + " | Consumers=" + result.Count + " | " + result.Detail
-  If (IsRegistrationAccepted(result.Status) || result.Status == "REGISTRY_READY" || result.Status == "IDENTITY_READY" || result.Status == "UNREGISTERED" || result.Status == "REGISTERED_TRANSPORT_DISABLED")
+  String diagnosticText = result.Status + " | Consumer=" + result.ConsumerId + " | Version=" + result.DescriptorVersion + " | Consumers=" + result.Count + " | Epoch=" + result.Epoch + " | " + result.Detail
+  If (IsRegistrationAccepted(result.Status) || result.Status == "REGISTRY_READY" || result.Status == "IDENTITY_READY" || result.Status == "UNREGISTERED" || result.Status == "REGISTERED_UI_LOAD_ELIGIBLE" || result.Status == "UI_LOAD_QUEUED" || result.Status == "UI_LOAD_ALREADY_REQUESTED" || result.Status == "UI_LOAD_SUBMITTED" || result.Status == "UI_ACTIVATION_RESET" || result.Status == "UI_LOAD_IDLE")
     LogUserInformational(ModuleName, "LogOperation", diagnosticText)
   Else
     LogUserWarning(ModuleName, "LogOperation", diagnosticText)

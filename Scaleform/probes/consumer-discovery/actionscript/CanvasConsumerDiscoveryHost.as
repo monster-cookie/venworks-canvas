@@ -10,10 +10,15 @@ package
    import flash.net.URLRequest;
    import flash.text.TextField;
    import flash.text.TextFormat;
+   import flash.utils.getDefinitionByName;
 
    public final class CanvasConsumerDiscoveryHost extends MovieClip
    {
       private static const ENVELOPE_PREFIX:String = "VWC_EVT/1|";
+
+      private static const UI_LOAD_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load|";
+
+      private static const MAX_UI_LOAD_CHARACTERS:int = 512;
 
       private static const SNAPSHOT_TYPE:String = "canvas.registry.snapshot";
 
@@ -86,7 +91,7 @@ package
 
       public function initialize(param1:DisplayObjectContainer) : void
       {
-         if(this.disposed)
+         if(this.disposed || this.owner != null)
          {
             return;
          }
@@ -94,10 +99,16 @@ package
          this.ownerLabel = this.resolveOwnerUrl(param1);
          this.displayMode = this.ownerLabel.toLowerCase().indexOf("_lrg") >= 0 ? "large" : "normal";
          this.createDiagnostics();
-         this.appendDiagnostic("VWCANVAS-9 REGISTRATION LOG TEST");
+         this.appendDiagnostic("VWCANVAS-9 EXPLICIT UI LOAD TEST");
          this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
-         this.appendDiagnostic("WATCH BRIDGE DISABLED");
-         this.appendDiagnostic("CHECK PAPYRUS LOGS | CONSUMER MOVIES NOT LOADED");
+         if(this.resolveHostKind() == "PLAYER HUD")
+         {
+            this.subscribe();
+         }
+         else
+         {
+            this.appendDiagnostic("SHIP UI TRANSPORT DEFERRED");
+         }
       }
 
       public function reapplyVanillaPlacements() : void
@@ -153,6 +164,30 @@ package
          this.callback = null;
       }
 
+      private function subscribe() : void
+      {
+         if(this.disposed || this.subscribed)
+         {
+            return;
+         }
+         try
+         {
+            this.dataManager = getDefinitionByName("Shared.AS3.Data.BSUIDataManager");
+            if(this.dataManager == null)
+            {
+               throw new Error("BSUIDataManager definition was null");
+            }
+            this.dataManager.Subscribe(PROVIDER,this.callback);
+            this.subscribed = true;
+            this.dataManager.GetDataFromClient(PROVIDER,true);
+            this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
+         }
+         catch(subscriptionError:Error)
+         {
+            this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
+         }
+      }
+
       private function onCustomAlertsData(param1:Object) : void
       {
          var data:Object = null;
@@ -189,15 +224,58 @@ package
 
       private function receiveEnvelope(param1:String) : void
       {
-         if(param1.indexOf(SNAPSHOT_PREFIX) == 0)
+         // Legacy snapshot/diagnostic ingress remains disabled. One request only upserts its own consumer.
+         if(param1.indexOf(UI_LOAD_PREFIX) == 0)
          {
-            this.receiveSnapshot(param1.substr(SNAPSHOT_PREFIX.length));
-            return;
+            try
+            {
+               var descriptor:Object = this.parseUiLoad(param1);
+               var desired:Object = {};
+               desired[descriptor.consumerId] = descriptor;
+               this.appendDiagnostic("RX LOAD " + descriptor.consumerId + " | V" + descriptor.version);
+               this.reconcile(desired,false);
+            }
+            catch(loadCommandError:Error)
+            {
+               this.appendDiagnostic("UI LOAD REJECTED | " + this.sanitizeText(loadCommandError,100));
+            }
          }
-         if(param1.indexOf(DIAGNOSTIC_PREFIX) == 0)
+      }
+
+      private function parseUiLoad(packet:String) : Object
+      {
+         if(packet.length > MAX_UI_LOAD_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
          {
-            this.receiveDiagnostic(param1.substr(DIAGNOSTIC_PREFIX.length));
+            throw new Error("invalid UI load packet size or characters");
          }
+         var cursor:int = UI_LOAD_PREFIX.length;
+         var protocol:Object = this.readFrame(packet,cursor,1);
+         cursor = int(protocol.next);
+         if(protocol.value != "1")
+         {
+            throw new Error("unsupported UI load protocol");
+         }
+         var id:Object = this.readFrame(packet,cursor,38);
+         cursor = int(id.next);
+         var version:Object = this.readFrame(packet,cursor,4);
+         cursor = int(version.next);
+         var normal:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+         cursor = int(normal.next);
+         var large:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+         cursor = int(large.next);
+         if(cursor != packet.length)
+         {
+            throw new Error("trailing UI load data");
+         }
+         var descriptor:Object = {
+            "consumerId":this.normalizeUuid(String(id.value)),
+            "displayName":String(id.value),
+            "normalPath":String(normal.value),
+            "largePath":String(large.value),
+            "version":this.parseUnsignedInt(String(version.value),9999)
+         };
+         this.validateDescriptor(descriptor);
+         return descriptor;
       }
 
       private function receiveDiagnostic(param1:String) : void

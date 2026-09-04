@@ -32,7 +32,7 @@ function Assert-GuardCallTree {
   if ($Initialization) {
     if ($code -match '(?im)^\s*(?:Try)?LockGuard\b') { throw 'OnInit reaches a guard.' }
   }
-  elseif ($code -match '\b(?:Log\w*|ReportAttempt|StartTimer|CancelTimer|RegisterFor\w+|UnregisterFor\w+|Wait\w*)\s*\(') {
+  elseif ($code -match '\b(?:Log\w*|ReportAttempt|StartTimer|CancelTimer|RegisterFor\w+|UnregisterFor\w+|Wait\w*|ShowCustomWatchAlert|ExecuteConsole|GetCurrentRealTime)\s*\(') {
     throw 'A guard reaches logging, scheduling, subscriptions or a wait.'
   }
   foreach ($call in [regex]::Matches($code, '(?<![\w:])(?:(\w+)\.)?(\w+)\s*\(')) {
@@ -72,7 +72,7 @@ function Assert-CanvasGuardContract {
     if ($startCount -ne [regex]::Matches($source, '(?m)^\s*EndTryLockGuard\b').Count) { throw 'Unbalanced try guard blocks.' }
   }
   $registry = $Sources.Registry
-  foreach ($operation in @('TryRegisterConsumer', 'TryUnregisterConsumer', 'TryRequestUiLoad', 'TryEnsureStorage', 'TryMigrateConsumerIdentity')) {
+  foreach ($operation in @('TryRegisterConsumer', 'TryUnregisterConsumer', 'TryCheckUiLoadRequest', 'TryEnsureStorage', 'TryMigrateConsumerIdentity', 'TryTakeUiLoad')) {
     Assert-GuardPattern $functions["Registry.$operation"] '(?s)NewResult\("DEFERRED_REGISTRY_BUSY"\).*?TryLockGuard RegistryGuard.*?EndTryLockGuard\s+Return result' "$operation keeps busy distinct and returns after release"
   }
   Assert-GuardPattern $functions['Registry.TryRegisterConsumer'] '(?s)GetDescriptorRejectionReason.*?TryLockGuard RegistryGuard.*?MigrateConsumerIdentityLocked.*?RegisterConsumerLocked.*?EndTryLockGuard' 'rekey and registration share one transaction after validation'
@@ -83,7 +83,9 @@ function Assert-CanvasGuardContract {
   Assert-GuardPattern $functions['Registry.IsDeferred'] 'DEFERRED_REGISTRY_BUSY.*DEFERRED_ATTEMPT_BUSY.*DEFERRED_REGISTRY_UNAVAILABLE' 'all transient outcomes are recognized'
   foreach ($scriptName in @('ConsumerARegistrar', 'ConsumerBRegistrar')) {
     $attempt = $functions["$scriptName.AttemptDescriptorRegistration"]
-    Assert-GuardPattern $attempt '(?s)If \(IsDeferred\(result.Status\)\)\s+Return result\s+EndIf\s+If \(IsRegistrationAccepted\(result.Status\)\)\s+If \(expectedResult\)\s+OperationResult loadResult = Registry.TryRequestUiLoad' "$scriptName handles busy before negative tests and requests UI only after acceptance"
+    Assert-GuardPattern $attempt '(?s)If \(IsDeferred\(result.Status\)\)\s+Return result\s+EndIf\s+If \(IsRegistrationAccepted\(result.Status\)\)\s+If \(expectedResult\)\s+result.UiLoad = "UI_LOAD_REQUEST_NEEDED"' "$scriptName marks UI intent only after acceptance"
+    Assert-GuardPattern $functions["$scriptName.ProcessAttempt"] '(?s)TryReconcile\(\)\s+RequestRegisteredUi\(result\)\s+ReportAttempt\(result\)' "$scriptName calls the explicit second step after the registration worker returns"
+    Assert-GuardPattern $functions["$scriptName.RequestRegisteredUi"] '(?s)IsRegistrationAccepted\(result.Status\).*?result.UiLoad == "UI_LOAD_REQUEST_NEEDED".*?Registry.TryRequestUiLoad\(Self, result.ConsumerId\)' "$scriptName loads only its accepted owner and identity"
     Assert-GuardPattern $functions["$scriptName.TryReconcile"] '(?s)Registry.EnsureMenuSubscriptions\(\).*?NewResult\("DEFERRED_ATTEMPT_BUSY"\).*?TryLockGuard AttemptGuard.*?EndTryLockGuard\s+Return result' "$scriptName subscribes before acquiring and preserves a skipped result"
     Assert-GuardPattern $functions["$scriptName.ProcessAttempt"] '(?s)TryReconcile\(\).*?ReportAttempt\(result\).*?If \(IsDeferred\(result.Status\) \|\| IsDeferred\(result.UiLoad\)\).*?If \(attempt < 20\).*?StartTimer\(0.5, attempt \+ 1\)' "$scriptName retries only deferred outcomes, after its attempt"
     if ($functions["$scriptName.ResolveRegistrationId"] -match 'Registry\.(?:Try)?Migrate') { throw 'Identity resolution conflates host outcome with UUID validity.' }
@@ -109,6 +111,8 @@ $mutations = @(
   @{ File = 'Registry'; From = '  Int index = Consumers.Length - 1'; To = ('  LogUserWarning(ModuleName, "Unsafe", "Inside worker")' + $lineBreak + '  Int index = Consumers.Length - 1') }
   @{ File = 'Registry'; From = '  Int index = Consumers.Length - 1'; To = ('  StartTimer(0.5, 1)' + $lineBreak + '  Int index = Consumers.Length - 1') }
   @{ File = 'Registry'; From = '  Int index = Consumers.Length - 1'; To = ('  EnsureMenuSubscriptions()' + $lineBreak + '  Int index = Consumers.Length - 1') }
+  @{ File = 'Registry'; From = '  Int index = Consumers.Length - 1'; To = ('  Game.ShowCustomWatchAlert("unsafe")' + $lineBreak + '  Int index = Consumers.Length - 1') }
+  @{ File = 'ConsumerARegistrar'; From = 'result.UiLoad = "UI_LOAD_REQUEST_NEEDED"'; To = 'result = Registry.TryRequestUiLoad(Self, registrationId)' }
   @{ File = 'Registry'; From = '  EnsureMenuSubscriptions()'; To = ('  EnsureStorage()' + $lineBreak + '  EnsureMenuSubscriptions()') }
   @{ File = 'Registry'; From = 'Int Count = -1'; To = 'Int Count = 0' }
   @{ File = 'Registry'; From = 'Int index = -2'; To = 'Int index = -1' }

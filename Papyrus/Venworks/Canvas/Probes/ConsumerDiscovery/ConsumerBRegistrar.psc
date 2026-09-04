@@ -94,6 +94,7 @@ EndFunction
 ; One attempt followed by diagnostics and optional scheduling, all outside the acquired guards.
 Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
+  RequestRegisteredUi(result)
   ReportAttempt(result)
   If (IsDeferred(result.Status) || IsDeferred(result.UiLoad))
     If (attempt < 20)
@@ -123,7 +124,7 @@ String Function CheckUiLoadRequest(String requestedConsumerId)
     LogUserWarning(ModuleName, "CheckUiLoadRequest", "DEFERRED_REGISTRY_UNAVAILABLE")
     Return "DEFERRED_REGISTRY_UNAVAILABLE"
   EndIf
-  Return Registry.RequestUiLoad(Self, requestedConsumerId)
+  Return Registry.CheckUiLoadRequest(Self, requestedConsumerId)
 EndFunction
 
 ; Compatibility entry point now uses one attempt and bounded deferred retry, never a guarded wait.
@@ -143,8 +144,7 @@ OperationResult Function AttemptDescriptorRegistration(String requestedDisplayNa
   EndIf
   If (IsRegistrationAccepted(result.Status))
     If (expectedResult)
-      OperationResult loadResult = Registry.TryRequestUiLoad(Self, registrationId)
-      result.UiLoad = loadResult.Status
+      result.UiLoad = "UI_LOAD_REQUEST_NEEDED"
     Else
       OperationResult removal = Registry.TryUnregisterConsumer(Self, registrationId)
       If (IsDeferred(removal.Status))
@@ -158,6 +158,15 @@ OperationResult Function AttemptDescriptorRegistration(String requestedDisplayNa
     result.Status = "EXPECTED_REGISTRATION_REJECTION"
   EndIf
   Return result
+EndFunction
+
+; The consumer's explicit second step. Registration workers only mark intent; invoke outside all guards.
+Function RequestRegisteredUi(OperationResult result)
+  If (Registry != None && IsRegistrationAccepted(result.Status) && result.UiLoad == "UI_LOAD_REQUEST_NEEDED")
+    OperationResult loadResult = Registry.TryRequestUiLoad(Self, result.ConsumerId)
+    result.UiLoad = loadResult.Status
+    Registry.LogOperation(loadResult)
+  EndIf
 EndFunction
 
 ; Diagnostics consume the per-call receipt only after AttemptGuard and RegistryGuard have both ended.
