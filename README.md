@@ -38,6 +38,8 @@ Source-only CI checks all three profiles' typed `Consumers` seeds and quest/head
 
 `Tools/testConsumerDiscoveryGuards.ps1` checks guard/lifecycle source contracts, follows local helper calls for logging/wait/subscription/scheduling hazards, and rejects deliberate unsafe source mutations held in memory. It is included in source verification and the UUID checks. It does not execute the Papyrus VM or establish lock behavior across save/load. The compiler output can be isolated with `compileConsumerDiscoveryScripts.ps1 -OutputDirectory <fresh-directory-under-.work/consumer-discovery>`; pass that same directory as `-ScriptsDirectory` to subsequent artifact, staging and full verification commands.
 
+`Tools/testConsumerDiscoveryConsole.ps1` checks the real `Global` declarations, permanent plugin/file-local record mappings, failure guards, unchanged UUID input and B ownership, separate recovery dispatch, and documented commands. Its negative mutations are in memory only. Source verification includes it; neither this check nor compilation proves that the game console can invoke the packaged functions or resolve these small-master records.
+
 ### Persistent UUID identity
 
 Every new consumer supplies a stable, non-nil UUID separately from its display name and safe asset namespace. Acceptable shapes are dashed D (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`), braced D, and compact 32-hex N, in any combination of upper/lower case. Whitespace, URNs and malformed values are rejected rather than repaired. Papyrus compares decoded UUID values because VM string interning may preserve earlier casing; ActionScript normalizes every external UUID intake to a lowercase dashed key. Asset folders are not renamed to UUIDs, and display labels are not registration identities.
@@ -59,19 +61,32 @@ Core exposes structural validation, parsing, formatting, value comparison and an
 3. Inspect both the Venworks and Papyrus logs. Expect `REGISTRATION_ACCEPTED` for each real consumer, followed by `REGISTRATION_ACK` and `REGISTERED_TRANSPORT_DISABLED`. The registry count should be zero, one, or two for those Baseline combinations. `REGISTRATION_UNCHANGED` is expected during idempotent menu reconciliation.
 4. If registration fails, capture `REGISTRATION_REJECTED` with its bounded field reason or `REJECTED_OWNER_MISMATCH`. Busy results are `DEFERRED_REGISTRY_BUSY` or `DEFERRED_ATTEMPT_BUSY`; a missing registry is `DEFERRED_REGISTRY_UNAVAILABLE`. Busy must never produce `EXPECTED_REGISTRATION_REJECTION`. Each automatic retry sequence must stop after 20 attempts, logging `REGISTRATION_RETRY_EXHAUSTED` or `REGISTRY_RETRY_EXHAUSTED`. Repeated exhaustion without recovery fails acceptance. There must be no terminal-rejection polling loop and no Canvas Watch Alert activity.
 5. After A+B works, create a disposable test save, exit, reload it with the same packages, and close/reopen the HUD several times. Valid saved records must remain present. `Consumers` is initialized only when `None`; the inert VMAD seed and unavailable owners are pruned. No recorded UI request is replayed.
-6. For an older affected host quest whose `OnInit` never installed callbacks, a consumer call into the host restores them. A host-only save with no remaining callback/caller cannot repair itself merely by replacing PEX; invoke `cqf VWCANVAS9_ConsumerDiscoveryRegistry EnsureStorage` once, then reopen the HUD and inspect the recovery/count logs. This does not reset valid registry storage.
-
+6. For an older affected host quest whose `OnInit` never installed callbacks, a consumer call into the host restores them. A host-only save with no remaining callback/caller cannot repair itself merely by replacing PEX; use the separate host recovery commands below after confirming resolution. This does not reset valid registry storage.
 7. Search the complete Papyrus log for `Cannot unlock`, `RegistryGuard`, and `AttemptGuard`, including the initial load/revert period. Any native ownership/unlock error is a failed test, even if both consumers eventually register. Confirm that busy read APIs do not invent an empty registry: `GetConsumerCount()` returns -1 when busy; `FindConsumerIndex()` returns -2 when busy and -1 only when absent.
 
-After both consumers are confirmed registered, these explicit console probes exercise the UI-request boundary as Consumer B. They do not register another consumer or transmit UI data; read the host's result in the logs:
+### Global console diagnostics: resolve first
+
+These commands target functions explicitly declared `Global` in the existing packaged scripts. Their first console argument is a qualified function name, never a FormID. Inside Papyrus, each wrapper resolves its own quest using `Game.GetFormFromFile` with the permanent plugin name and file-local record ID, then checks both the form and attached-script cast for `None`. The diagnostic mappings are Host registry `0x000800`, Consumer B registrar `0x000800`, and UpdatedA migration `0x000801` in their respective ESMs. Bethesda's installed `SQ_FollowersScript.GetScript()` uses this lookup/cast pattern; that source precedent does not establish runtime acceptance for these small-master fixtures. Do not copy runtime load-order prefixes from LOOT, xEdit or the Creation Kit.
+
+After both consumers are confirmed registered, run only the resolution gate first:
 
 ```text
-cqf VWCANVAS9_ConsumerBRegistrar CheckUiLoadRequest "BEEF70B2-024E-4E9B-A8D5-70A0C882C431"
-cqf VWCANVAS9_ConsumerBRegistrar CheckUiLoadRequest "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"
-cqf VWCANVAS9_ConsumerBRegistrar CheckUiLoadRequest "ea1d08f2-80a9-454a-8051-bd24b99650fc"
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleResolve"
 ```
 
-Expected results are respectively `REGISTERED_TRANSPORT_DISABLED`, `REJECTED_OWNER_MISMATCH`, and `REJECTED_NOT_REGISTERED`. These console probes and save-recovery behavior require human PC execution; build-time checks do not establish their runtime success.
+Inspect the Papyrus/Venworks log for `VWCANVAS_CONSOLE/1 | CONSOLE_BEGIN`, then `CONSOLE_RESOLVED | Form=... | RuntimeFormId=...`. This proves only that the packaged function ran and resolved its quest/script, not registration or UI readiness. No begin marker means invocation/loading is not confirmed. `CONSOLE_TARGET_NOT_FOUND` or `CONSOLE_SCRIPT_NOT_BOUND` means stop and capture the console output and logs; the wrapper returns `CONSOLE_RESOLVE_FAILED` without forwarding work. The resolution-only command does not initialize storage, register consumers, or schedule retries. The migration quest exists only in UpdatedA: its missing-target result under Baseline or Faults is expected.
+
+Optional in-game quest discovery uses the **Editor ID**, not the display title: `help "VWCANVAS9_ConsumerBRegistrar" 4 QUST`. This is a diagnostic aid, not an input requirement for the global wrappers.
+
+Once resolution succeeds, these explicit probes exercise the UI-request boundary as Consumer B. Each forwards the input unchanged through B's existing instance method and passes B as the owner. They do not register another consumer, transmit UI data, or schedule retries; the existing registry request path can initialize missing storage and prune invalid owners. Read `CONSOLE_RESULT | Status=...` and the host's result in the logs:
+
+```text
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "BEEF70B2-024E-4E9B-A8D5-70A0C882C431"
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "ea1d08f2-80a9-454a-8051-bd24b99650fc"
+```
+
+Expected results are respectively `REGISTERED_TRANSPORT_DISABLED`, `REJECTED_OWNER_MISMATCH`, and `REJECTED_NOT_REGISTERED`. `DEFERRED_REGISTRY_BUSY` is inconclusive, not acceptance or rejection: let gameplay advance and manually retry the same command. These console probes and save-recovery behavior require human PC execution; build-time checks do not establish their runtime success. Manual lookup wrappers for owned fixture quests do not replace dynamic consumer registration or introduce coordinated consumer slots.
 
 Repeat B's request with `{BeEf70B2-024e-4e9b-A8D5-70A0c882C431}` and `beef70b2024e4e9ba8d570a0c882c431`: both must find B. Nil, whitespace and malformed UUIDs must return `REJECTED_CONSUMER_ID`. To run the included Core probes explicitly:
 
@@ -82,7 +97,25 @@ cgf "Venworks:Core:Tests:UUIDTests.RunGeneration"
 
 Inspect Papyrus logs for the UUID test results; compilation alone does not establish their success. For migration, keep a disposable copy of the previously tested legacy-ID save, replace all three packages without renaming plugins, load it and look for `LEGACY_ID_MIGRATED`, A+B registration and a count of two after reload. For UpdatedA, first save Baseline A+B, exit, deploy the verified UpdatedA profile, and load that same disposable save. Expect `DESCRIPTOR_UPDATE_APPLIED`, version 2, and version 2 retained across subsequent HUD openings and save/reload. Exercise rapid repeated menu openings during startup/update and the Faults profile's mixed-case ownership collision; collect logs if updates revert, duplicate rows appear or counts change unexpectedly. These manual checks do not by themselves force every VM interleaving: deterministic simultaneous-owner and unavailable-registry/save-during-update stress remain explicit runtime acceptance cases.
 
-The migration quest reports `DESCRIPTOR_UPDATE_ACK | Version=2` only after registration acceptance. `DESCRIPTOR_UPDATE_RETRY_EXHAUSTED` retains its request for a later HUD opening. A saved UpdatedA quest from the old build may have completed `OnInit` without installing callbacks; `cqf VWCANVAS9_ConsumerAUpdateMigration RetryUpdate` explicitly restores subscriptions and schedules its retained request. This does not reset an acknowledged update. Replacing PEX is not claimed to repair already-corrupted saved stacks or orphaned native guard ownership; test older saves separately from a clean pre-Canvas baseline.
+### Separate, explicit saved-quest recovery
+
+For the affected host-only save, resolve first and continue only on `CONSOLE_RESOLVED`:
+
+```text
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:Registry.ConsoleResolve"
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:Registry.ConsoleEnsureStorage"
+```
+
+The second command restores menu subscriptions, makes one nonblocking storage attempt, and logs its actual result outside the guard. Expect `REGISTRY_READY`, or manually retry an inconclusive `DEFERRED_REGISTRY_BUSY` after gameplay advances. Reopen the HUD and inspect recovery/count logs; valid registry records must be retained.
+
+For an affected **UpdatedA** save only, resolve its separate migration quest before requesting recovery:
+
+```text
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration.ConsoleResolve"
+cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration.ConsoleRetryUpdate"
+```
+
+`CONSOLE_RETRY_REQUESTED` means the existing recovery method was called, not that an update succeeded. It restores subscriptions and schedules the retained request only if the saved update is not already acknowledged. The migration quest reports `DESCRIPTOR_UPDATE_ACK | Version=2` only after registration acceptance. `DESCRIPTOR_UPDATE_RETRY_EXHAUSTED` retains its request for a later HUD opening. No acknowledged update is reset. Replacing PEX is not claimed to repair already-corrupted saved stacks or orphaned native guard ownership; test older saves separately from a clean pre-Canvas baseline.
 
 ### Papyrus guard investigation and modding-notes gate
 

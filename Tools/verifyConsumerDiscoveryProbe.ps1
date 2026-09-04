@@ -833,7 +833,7 @@ foreach ($caseId in $requiredParserCases) {
 }
 Assert-ConsumerDiscoveryParserFixtures
 
-$requiredRegistrationCases = @('pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership', 'pc-registration-uuid-case', 'pc-registration-legacy-migration', 'pc-registration-concurrent-owners', 'pc-registration-pending-update')
+$requiredRegistrationCases = @('pc-console-resolution', 'pc-console-host-recovery', 'pc-console-update-recovery', 'pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership', 'pc-registration-uuid-case', 'pc-registration-legacy-migration', 'pc-registration-concurrent-owners', 'pc-registration-pending-update')
 Assert-ExactOrdinalList `
   -Actual @($matrix.RegistrationRuntimeCases.Id) `
   -Expected $requiredRegistrationCases `
@@ -1003,6 +1003,7 @@ foreach ($functionContract in @(
 
 # Keep lifecycle and transitive guard checks in the focused verifier, separate from artifact inspection.
 & (Join-Path $PSScriptRoot 'testConsumerDiscoveryGuards.ps1')
+& (Join-Path $PSScriptRoot 'testConsumerDiscoveryConsole.ps1')
 foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc')) {
   $consumerSource = Get-Content -LiteralPath (Join-Path $repositoryRoot "Papyrus/Venworks/Canvas/Probes/ConsumerDiscovery/$consumerName") -Raw
   foreach ($token in @('Extends Venworks:Canvas:Base:BaseQuest', 'Property Registry Auto Const Mandatory', 'String Property ConsumerId Auto Const Mandatory', 'String Property NormalMoviePath Auto Const Mandatory', 'Int Property DescriptorVersion Auto Const Mandatory', 'Bool Property ExpectedRegistration Auto Const Mandatory', 'Float Property InitialDelaySeconds Auto Const Mandatory')) {

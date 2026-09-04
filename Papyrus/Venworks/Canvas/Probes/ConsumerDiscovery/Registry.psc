@@ -36,6 +36,51 @@ Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
 
+; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
+String Function ConsoleResolve() Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:Registry target = ResolveConsoleRegistry()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  Return "CONSOLE_RESOLVED"
+EndFunction
+
+; Explicit host bootstrap; callbacks and logging stay outside the existing nonblocking storage guard.
+String Function ConsoleEnsureStorage() Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:Registry target = ResolveConsoleRegistry()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  target.EnsureMenuSubscriptions()
+  OperationResult result = target.TryEnsureStorage()
+  target.LogOperation(result)
+  LogConsoleRegistry("ConsoleEnsureStorage", "CONSOLE_RESULT | Status=" + result.Status)
+  Return result.Status
+EndFunction
+
+; Resolve the permanent file-local identity on every explicit call; no Editor ID, cached target or external prefix.
+Venworks:Canvas:Probes:ConsumerDiscovery:Registry Function ResolveConsoleRegistry() Global
+  LogConsoleRegistry("ResolveConsoleRegistry", "CONSOLE_BEGIN | Plugin=Venworks-Canvas-Host.esm | LocalId=0x000800")
+  Form targetForm = Game.GetFormFromFile(0x000800, "Venworks-Canvas-Host.esm")
+  If (targetForm == None)
+    LogConsoleRegistry("ResolveConsoleRegistry", "CONSOLE_TARGET_NOT_FOUND")
+    Return None
+  EndIf
+  Venworks:Canvas:Probes:ConsumerDiscovery:Registry target = targetForm as Venworks:Canvas:Probes:ConsumerDiscovery:Registry
+  If (target == None)
+    LogConsoleRegistry("ResolveConsoleRegistry", "CONSOLE_SCRIPT_NOT_BOUND | Form=" + targetForm)
+    Return None
+  EndIf
+  LogConsoleRegistry("ResolveConsoleRegistry", "CONSOLE_RESOLVED | Form=" + targetForm + " | RuntimeFormId=" + targetForm.GetFormID())
+  Return target
+EndFunction
+
+; Global diagnostics cannot use instance logging or saved ModuleName; emit the same bounded build marker to both logs.
+Function LogConsoleRegistry(String functionName, String logMessage) Global
+  Venworks:Core:Enumerations:LogSeverity severityTable = new Venworks:Core:Enumerations:LogSeverity
+  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="Probes:ConsumerDiscovery:Registry", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
+EndFunction
+
 ; OnInit may execute around the initial save-load/revert. Install callbacks only; do not enter a guard here.
 Event OnInit()
   EnsureMenuSubscriptions()

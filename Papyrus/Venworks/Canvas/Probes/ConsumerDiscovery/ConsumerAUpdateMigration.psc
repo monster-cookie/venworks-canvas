@@ -11,6 +11,49 @@ String ModuleName = "Probes:ConsumerDiscovery:ConsumerAUpdateMigration"
 ; Saved acknowledgement only, never a lock. A failed/busy attempt cannot set it.
 Bool MigrationApplied = False
 
+; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
+String Function ConsoleResolve() Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration target = ResolveConsoleMigration()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  Return "CONSOLE_RESOLVED"
+EndFunction
+
+; Requests existing migration recovery; dispatch is not an acknowledgement that an update was applied.
+String Function ConsoleRetryUpdate() Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration target = ResolveConsoleMigration()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  target.RetryUpdate()
+  LogConsoleMigration("ConsoleRetryUpdate", "CONSOLE_RETRY_REQUESTED | Await DESCRIPTOR_UPDATE_ACK; an already acknowledged update is not reset.")
+  Return "CONSOLE_RETRY_REQUESTED"
+EndFunction
+
+; Resolve the permanent file-local identity on every explicit call; no Editor ID, cached target or external prefix.
+Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration Function ResolveConsoleMigration() Global
+  LogConsoleMigration("ResolveConsoleMigration", "CONSOLE_BEGIN | Plugin=Venworks-Canvas-ConsumerA.esm | LocalId=0x000801")
+  Form targetForm = Game.GetFormFromFile(0x000801, "Venworks-Canvas-ConsumerA.esm")
+  If (targetForm == None)
+    LogConsoleMigration("ResolveConsoleMigration", "CONSOLE_TARGET_NOT_FOUND")
+    Return None
+  EndIf
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration target = targetForm as Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration
+  If (target == None)
+    LogConsoleMigration("ResolveConsoleMigration", "CONSOLE_SCRIPT_NOT_BOUND | Form=" + targetForm)
+    Return None
+  EndIf
+  LogConsoleMigration("ResolveConsoleMigration", "CONSOLE_RESOLVED | Form=" + targetForm + " | RuntimeFormId=" + targetForm.GetFormID())
+  Return target
+EndFunction
+
+; Global diagnostics cannot use instance logging or saved ModuleName; emit the same bounded build marker to both logs.
+Function LogConsoleMigration(String functionName, String logMessage) Global
+  Venworks:Core:Enumerations:LogSeverity severityTable = new Venworks:Core:Enumerations:LogSeverity
+  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="Probes:ConsumerDiscovery:ConsumerAUpdateMigration", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
+EndFunction
+
 ; Subscribe only. The new update quest must not enter a registrar guard indirectly during OnInit.
 Event OnInit()
   EnsureMenuSubscriptions()

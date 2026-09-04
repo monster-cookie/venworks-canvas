@@ -120,6 +120,9 @@
     @{ Id = 'superseded-generation'; Expected = 'new-complete-generation-accepted' }
   )
   RegistrationRuntimeCases = @(
+    @{ Id = 'pc-console-resolution'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerBRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
+    @{ Id = 'pc-console-host-recovery'; Packages = @('Host'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
+    @{ Id = 'pc-console-update-recovery'; Profile = 'UpdatedA'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerAUpdateMigration.ConsoleResolve resolves local record 000801 only in UpdatedA. ConsoleRetryUpdate reports dispatch, not acceptance; the existing migration later reports DESCRIPTOR_UPDATE_ACK without resetting an acknowledged update.' }
     @{ Id = 'pc-registration-host-only'; Packages = @('Host'); Expected = 'Host logs zero consumers and disabled transport; vanilla watch stays responsive.' }
     @{ Id = 'pc-registration-consumer-a'; Packages = @('Host', 'ConsumerA'); Expected = 'A logs REGISTRATION_ACK and REGISTERED_TRANSPORT_DISABLED; no movie delivery is claimed.' }
     @{ Id = 'pc-registration-two-consumers'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'A and B each acknowledge registration and validate RequestUiLoad ownership; registry count is two.' }

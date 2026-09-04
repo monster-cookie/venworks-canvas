@@ -15,6 +15,49 @@ String ModuleName = "Probes:ConsumerDiscovery:ConsumerBRegistrar"
 Bool RegistrationAttemptActive = False
 Guard AttemptGuard ProtectsFunctionLogic
 
+; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
+String Function ConsoleResolve() Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar target = ResolveConsoleConsumerB()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  Return "CONSOLE_RESOLVED"
+EndFunction
+
+; One explicit B-owned request; pass the original UUID unchanged and never register or schedule a retry here.
+String Function ConsoleCheckUiLoadRequest(String requestedConsumerId) Global
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar target = ResolveConsoleConsumerB()
+  If (target == None)
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  String result = target.CheckUiLoadRequest(requestedConsumerId)
+  LogConsoleConsumerB("ConsoleCheckUiLoadRequest", "CONSOLE_RESULT | Status=" + result)
+  Return result
+EndFunction
+
+; Resolve the permanent file-local identity on every explicit call; no Editor ID, cached target or external prefix.
+Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar Function ResolveConsoleConsumerB() Global
+  LogConsoleConsumerB("ResolveConsoleConsumerB", "CONSOLE_BEGIN | Plugin=Venworks-Canvas-ConsumerB.esm | LocalId=0x000800")
+  Form targetForm = Game.GetFormFromFile(0x000800, "Venworks-Canvas-ConsumerB.esm")
+  If (targetForm == None)
+    LogConsoleConsumerB("ResolveConsoleConsumerB", "CONSOLE_TARGET_NOT_FOUND")
+    Return None
+  EndIf
+  Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar target = targetForm as Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar
+  If (target == None)
+    LogConsoleConsumerB("ResolveConsoleConsumerB", "CONSOLE_SCRIPT_NOT_BOUND | Form=" + targetForm)
+    Return None
+  EndIf
+  LogConsoleConsumerB("ResolveConsoleConsumerB", "CONSOLE_RESOLVED | Form=" + targetForm + " | RuntimeFormId=" + targetForm.GetFormID())
+  Return target
+EndFunction
+
+; Global diagnostics cannot use instance logging or saved ModuleName; emit the same bounded build marker to both logs.
+Function LogConsoleConsumerB(String functionName, String logMessage) Global
+  Venworks:Core:Enumerations:LogSeverity severityTable = new Venworks:Core:Enumerations:LogSeverity
+  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="Probes:ConsumerDiscovery:ConsumerBRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
+EndFunction
+
 ; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.
 Event OnInit()
   RegisterForMenuOpenCloseEvent("HUDMenu")

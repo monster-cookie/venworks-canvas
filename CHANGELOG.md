@@ -5,3 +5,4 @@
 - Requires Venworks Core Library 2.1.6 or higher
 - Added initial registration system for modders/creators to hook in their creations
 - Reworked the PC registration diagnostic to defer startup and retry busy Papyrus guards without waiting inside them; in-game guard/save-load acceptance remains pending.
+- Added real global console wrappers with runtime quest resolution, explicit ownership probes and separate saved-quest recovery; console invocation and small-master lookup require PC validation.
