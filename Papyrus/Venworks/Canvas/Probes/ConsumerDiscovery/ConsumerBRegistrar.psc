@@ -19,8 +19,10 @@ Guard AttemptGuard ProtectsFunctionLogic
 String Function ConsoleResolve() Global
   Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar target = ResolveConsoleConsumerB()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerBRegistrar.ConsoleResolve | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerBRegistrar.ConsoleResolve | " + "CONSOLE_RESOLVED")
   Return "CONSOLE_RESOLVED"
 EndFunction
 
@@ -28,10 +30,12 @@ EndFunction
 String Function ConsoleCheckUiLoadRequest(String requestedConsumerId) Global
   Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar target = ResolveConsoleConsumerB()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerBRegistrar.ConsoleCheckUiLoadRequest | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
   String result = target.CheckUiLoadRequest(requestedConsumerId)
   LogConsoleConsumerB("ConsoleCheckUiLoadRequest", "CONSOLE_RESULT | Status=" + result)
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerBRegistrar.ConsoleCheckUiLoadRequest | " + result)
   Return result
 EndFunction
 

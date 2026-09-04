@@ -15,8 +15,10 @@ Bool MigrationApplied = False
 String Function ConsoleResolve() Global
   Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration target = ResolveConsoleMigration()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerAUpdateMigration.ConsoleResolve | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerAUpdateMigration.ConsoleResolve | " + "CONSOLE_RESOLVED")
   Return "CONSOLE_RESOLVED"
 EndFunction
 
@@ -24,10 +26,12 @@ EndFunction
 String Function ConsoleRetryUpdate() Global
   Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration target = ResolveConsoleMigration()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerAUpdateMigration.ConsoleRetryUpdate | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
   target.RetryUpdate()
   LogConsoleMigration("ConsoleRetryUpdate", "CONSOLE_RETRY_REQUESTED | Await DESCRIPTOR_UPDATE_ACK; an already acknowledged update is not reset.")
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ConsumerAUpdateMigration.ConsoleRetryUpdate | " + "CONSOLE_RETRY_REQUESTED")
   Return "CONSOLE_RETRY_REQUESTED"
 EndFunction
 

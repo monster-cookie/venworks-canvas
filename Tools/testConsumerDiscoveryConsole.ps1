@@ -51,9 +51,19 @@ function Assert-CanvasConsoleContract {
     Assert-ConsolePattern $body ('(?s)' + $logger + '\("' + $resolver + '", "CONSOLE_BEGIN.*?GetFormFromFile.*?CONSOLE_RESOLVED.*?targetForm.GetFormID\(\).*?Return target') "$name exposes invocation and runtime binding separately"
     if ([regex]::Matches($body, 'Game.GetFormFromFile\(').Count -ne 1) { throw "$name has an unexpected fallback lookup." }
     foreach ($functionName in @('ConsoleResolve', $action)) {
-      Assert-ConsolePattern $functions[$functionName].Body ('(?s)target = ' + $resolver + '\(\)\s+If \(target == None\)\s+Return "CONSOLE_RESOLVE_FAILED"\s+EndIf') "$name.$functionName stops on resolution failure"
+      Assert-ConsolePattern $functions[$functionName].Body ('(?s)target = ' + $resolver + '\(\)\s+If \(target == None\)\s+Venworks:Core:Utilities:Console\.ConsoleEcho\([^\r\n]*\)\s+Return "CONSOLE_RESOLVE_FAILED"\s+EndIf') "$name.$functionName prints and stops on resolution failure"
+      $entryBody = $functions[$functionName].Body
+      $returns = @([regex]::Matches($entryBody, '(?m)^\s*Return ([^\r\n]+)'))
+      if ($returns.Count -ne 2 -or [regex]::Matches($entryBody, 'Venworks:Core:Utilities:Console\.ConsoleEcho\(').Count -ne 2) {
+        throw "$name.$functionName must echo exactly once on each of its two return paths."
+      }
+      foreach ($returnLine in $returns) {
+        $value = $returnLine.Groups[1].Value
+        $echo = 'Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ' + $name + '.' + $functionName + ' | " + ' + $value + ')'
+        Assert-ConsolePattern $entryBody ([regex]::Escape($echo) + '\s+Return ' + [regex]::Escape($value)) "$name.$functionName echoes the same result it returns with the caller-owned label"
+      }
     }
-    Assert-ConsolePattern $functions.ConsoleResolve.Body '(?s)EndIf\s+Return "CONSOLE_RESOLVED"\s*$' "$name resolution does not perform recovery or a probe"
+    Assert-ConsolePattern $functions.ConsoleResolve.Body '(?s)EndIf\s+Venworks:Core:Utilities:Console\.ConsoleEcho\([^\r\n]*\)\s+Return "CONSOLE_RESOLVED"\s*$' "$name resolution only echoes its result after lookup"
     Assert-ConsolePattern $functions[$logger].Body 'Venworks:Core:Logging.LogUser\(' "$name uses existing shared logging"
     Assert-ConsolePattern $functions[$logger].Body 'VWCANVAS_CONSOLE/1 \| ' "$name emits the packaged diagnostic marker"
 
@@ -109,6 +119,9 @@ foreach ($definition in $definitions) {
 $readme = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../README.md') -Raw
 Assert-CanvasConsoleContract -Sources $sources -Readme $readme -Definitions $definitions
 $mutations = @(
+  @{ Script = 'ConsumerBRegistrar'; From = 'Venworks:Core:Utilities:Console.ConsoleEcho('; To = 'Venworks:Core:Logging.ConsoleEcho(' }
+  @{ Script = 'Registry'; From = '"VWCANVAS: Registry.ConsoleEnsureStorage | "'; To = '"VWCORE: Registry.ConsoleEnsureStorage | "' }
+  @{ Script = 'ConsumerAUpdateMigration'; From = '"VWCANVAS: ConsumerAUpdateMigration.ConsoleRetryUpdate | " + "CONSOLE_RETRY_REQUESTED"'; To = '"VWCANVAS: ConsumerAUpdateMigration.ConsoleRetryUpdate | " + "DESCRIPTOR_UPDATE_ACK"' }
   @{ Script = 'ConsumerBRegistrar'; From = 'ConsoleCheckUiLoadRequest(String requestedConsumerId) Global'; To = 'ConsoleCheckUiLoadRequest(String requestedConsumerId)' }
   @{ Script = 'Registry'; From = 'ConsoleResolve() Global'; To = 'ConsoleResolve() Global Protected' }
   @{ Script = 'Registry'; From = 'Game.GetFormFromFile(0x000800,'; To = 'Game.GetFormFromFile(0xFE004800,' }

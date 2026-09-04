@@ -15,9 +15,9 @@ After actual registration success, consumers make an explicit `TryRequestUiLoad(
 
 ### Build and packaging
 
-Use released Venworks Core **2.1.6** and the VWHUD-v2-derived toolchain declared in `Scaleform/probes/consumer-discovery/probe-matrix.psd1`. The Core fixture is pinned to `d76fc0a5af7d47955d36985ee11a0ca5061efc34`; its six source hashes and six runtime hashes are unchanged from the preceding UUID diagnostic. This Canvas fix does not modify or rebuild Core. The profile ESMs bind fixed UUIDs and were generated with Mutagen, then independently serialized with Spriggit. The generator and `.work` build inputs are local scratch, not supplied by a fresh checkout; use materialized committed Baseline packages to deploy, or the matching verified profile ESM inputs when rebuilding. The deployable payloads are the ESM and matching BA2 in each of `Staging-Host`, `Staging-ConsumerA`, and `Staging-ConsumerB`.
+Use released Venworks Core **2.1.6** with the additional pinned console diagnostic scripts bundled in the Canvas Host BA2, and the VWHUD-v2-derived toolchain declared in `Scaleform/probes/consumer-discovery/probe-matrix.psd1`. Rebuilding requires Core fixture commit `06d9789cc02e2dd64a5a5bc98ae6255ca9f94ba2` (VWCORE-5), with eight pinned source/runtime pairs. The preceding six Core dependency pairs remain byte-identical; the additive console utility and its visual probe are unreleased, not part of Core 2.1.6. Core's ESM, release archives, and version metadata are unchanged. The profile ESMs bind fixed UUIDs and were generated with Mutagen, then independently serialized with Spriggit. The generator and `.work` build inputs are local scratch, not supplied by a fresh checkout; use materialized committed Baseline packages to deploy, or the matching verified profile ESM inputs when rebuilding. The deployable payloads are the ESM and matching BA2 in each of `Staging-Host`, `Staging-ConsumerA`, and `Staging-ConsumerB`.
 
-The Host diagnostic archive includes six pinned Core PEX dependencies, including `Utilities/UUID` and its explicit `Tests/UUIDTests` probe. This is a diagnostic dependency bundle, not a rebuilt or released Core distribution. Core's ESM and existing archives are unchanged. Legacy `compileScripts.ps1`, `createPackages.ps1`, and Spriggit dump entry points now forward to the variant-aware pipeline; the Spriggit assembly entry point fails with an actionable error. Neither `checkRepo.ps1` mode accepts Git LFS pointers, empty files, truncated headers or the wrong binary signature as staged ESM/BA2 content.
+The Host diagnostic archive includes eight pinned Core PEX dependencies: its existing six, plus `Utilities/Console` and `Tests/ConsoleOutputTests`. This is a diagnostic dependency bundle, not a rebuilt or released Core distribution. Do not deploy the new Canvas scripts without the matching Host BA2; an older Host lacks the echo helper. Legacy `compileScripts.ps1`, `createPackages.ps1`, and Spriggit dump entry points now forward to the variant-aware pipeline; the Spriggit assembly entry point fails with an actionable error. Neither `checkRepo.ps1` mode accepts Git LFS pointers, empty files, truncated headers or the wrong binary signature as staged ESM/BA2 content.
 
 From the repository root, supply verified fixture paths through `$coreFixture`, `$hudFixture`, and the selected profile's existing plugin directory through `$plugins`:
 
@@ -66,6 +66,17 @@ Core exposes structural validation, parsing, formatting, value comparison and an
 
 ### Global console diagnostics: resolve first
 
+First verify the deployed console-output utility with the following smoke test, then its explicit block probe:
+
+```text
+cgf "Venworks:Core:Utilities:Console.ConsoleEcho" "VWCANVAS: echo smoke test"
+cgf "Venworks:Core:Tests:ConsoleOutputTests.Run"
+```
+
+Require visible `=> VWCANVAS: echo smoke test` before continuing. The Core probe submits eleven lines covering single/block output, blank lines, None/empty arrays and two controlled LF rejection messages, ending in `CONSOLE_TEST_END`; see [Core console output documentation](https://github.com/monster-cookie/starfield-venworks-core/blob/06d9789cc02e2dd64a5a5bc98ae6255ca9f94ba2/Documentation/ConsoleOutput.md) for the exact sequence. The end marker is not an automatic PASS. The compiler rejects `\r` literals, so CR/CRLF rejection is source-checked but not exercised by this VM probe. Capture actual console decoration/errors and stop if the `=> ` prefix behaves unexpectedly. No visible-output acceptance is claimed by build checks.
+
+Each Canvas command below explicitly calls the shared helper and prints one final `=> VWCANVAS: <script>.<function> | <status>` line, including `CONSOLE_RESOLVE_FAILED`. Existing Papyrus return values remain for script callers; CGF return values are not themselves console feedback. The detailed begin/resolution/result logs remain separate. Echoing occurs only on explicit console wrapper paths, outside guarded work, and does not mirror ordinary logging or use the watch bridge.
+
 These commands target functions explicitly declared `Global` in the existing packaged scripts. Their first console argument is a qualified function name, never a FormID. Inside Papyrus, each wrapper resolves its own quest using `Game.GetFormFromFile` with the permanent plugin name and file-local record ID, then checks both the form and attached-script cast for `None`. The diagnostic mappings are Host registry `0x000800`, Consumer B registrar `0x000800`, and UpdatedA migration `0x000801` in their respective ESMs. Bethesda's installed `SQ_FollowersScript.GetScript()` uses this lookup/cast pattern; that source precedent does not establish runtime acceptance for these small-master fixtures. Do not copy runtime load-order prefixes from LOOT, xEdit or the Creation Kit.
 
 After both consumers are confirmed registered, run only the resolution gate first:
@@ -86,7 +97,7 @@ cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiL
 cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "ea1d08f2-80a9-454a-8051-bd24b99650fc"
 ```
 
-Expected results are respectively `REGISTERED_TRANSPORT_DISABLED`, `REJECTED_OWNER_MISMATCH`, and `REJECTED_NOT_REGISTERED`. `DEFERRED_REGISTRY_BUSY` is inconclusive, not acceptance or rejection: let gameplay advance and manually retry the same command. These console probes and save-recovery behavior require human PC execution; build-time checks do not establish their runtime success. Manual lookup wrappers for owned fixture quests do not replace dynamic consumer registration or introduce coordinated consumer slots.
+Expected visible results are respectively `REGISTERED_TRANSPORT_DISABLED`, `REJECTED_OWNER_MISMATCH`, and `REJECTED_NOT_REGISTERED`, each with the `VWCANVAS: ConsumerBRegistrar.ConsoleCheckUiLoadRequest` label. Compare each printed result with `CONSOLE_RESULT | Status=...` in the logs. `DEFERRED_REGISTRY_BUSY` is inconclusive, not acceptance or rejection: let gameplay advance and manually retry the same command. These console probes and save-recovery behavior require human PC execution; build-time checks do not establish their runtime success. Manual lookup wrappers for owned fixture quests do not replace dynamic consumer registration or introduce coordinated consumer slots.
 
 Repeat B's request with `{BeEf70B2-024e-4e9b-A8D5-70A0c882C431}` and `beef70b2024e4e9ba8d570a0c882c431`: both must find B. Nil, whitespace and malformed UUIDs must return `REJECTED_CONSUMER_ID`. To run the included Core probes explicitly:
 

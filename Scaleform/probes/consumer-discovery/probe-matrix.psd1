@@ -13,8 +13,10 @@
     OutputRoot = 'Spriggit/ConsumerDiscovery'
   }
   VenworksCoreFixture = @{
-    Revision = 'd76fc0a5af7d47955d36985ee11a0ca5061efc34'
+    Revision = '06d9789cc02e2dd64a5a5bc98ae6255ca9f94ba2'
     SourceFiles = @(
+      @{ Path = 'Papyrus/Venworks/Core/Utilities/Console.psc'; Sha256 = '7A7EF284DD078D550DB3D73EEEA1CB9BB387433C9A0B1B0E761832582D09A4B1' }
+      @{ Path = 'Papyrus/Venworks/Core/Tests/ConsoleOutputTests.psc'; Sha256 = 'CBC699724A55E58BB70B339D7AF5BB3748353C2404ADFF18DCAF645F15DD774A' }
       @{ Path = 'Papyrus/Venworks/Core/Utilities/UUID.psc'; Sha256 = '5BEC2410485E13E3925CA3E58E3EACC218F25FBF0FC49E8AAFC24D98FDF5EB24' }
       @{ Path = 'Papyrus/Venworks/Core/Tests/UUIDTests.psc'; Sha256 = '076639D852BE419BC791C262C692B100161AC5E2FC4D65F0A554BE5933C8F931' }
       @{ Path = 'Papyrus/Venworks/Core/Base/BaseQuest.psc'; Sha256 = 'F6949CA9871039FA68B697676C3095A320A06983459C9472DFC73C5D5B02626A' }
@@ -23,6 +25,8 @@
       @{ Path = 'Papyrus/Venworks/Core/GlobalConfig.psc'; Sha256 = 'D1BA0153344316AD0CE9A989BC235C3218BBCD9F3EE5D4F8BF11AC4F250A9E80' }
     )
     RuntimeScripts = @(
+      @{ Source = 'Staging/Scripts/Venworks/Core/Utilities/Console.pex'; Target = 'Scripts/Venworks/Core/Utilities/Console.pex'; Sha256 = '92BB9FC47C7B00639ECAB13E3C930EBE33D307A283004A34B2AD5002B9A1E5B7' }
+      @{ Source = 'Staging/Scripts/Venworks/Core/Tests/ConsoleOutputTests.pex'; Target = 'Scripts/Venworks/Core/Tests/ConsoleOutputTests.pex'; Sha256 = '51BC4040102A3A60F200882629B264E0826DACF2C2758CC77E3C5BB7FD526B06' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Utilities/UUID.pex'; Target = 'Scripts/Venworks/Core/Utilities/UUID.pex'; Sha256 = '611C0777CA4BCBCAA5CB5748FB70759E884DECBA89DD8174A781814798FCF03E' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Tests/UUIDTests.pex'; Target = 'Scripts/Venworks/Core/Tests/UUIDTests.pex'; Sha256 = '12AE2847A0C7E398C56F594F10C2497B7F8EC828508F71C9D1D34A1CCAD88AC2' }
       @{ Source = 'Staging/Scripts/Venworks/Core/Base/BaseQuest.pex'; Target = 'Scripts/Venworks/Core/Base/BaseQuest.pex'; Sha256 = 'BF118F1918605CD1DF374C54C0D741B3FB98F8D1CBBA9FECA707CE105011F917' }
@@ -120,6 +124,8 @@
     @{ Id = 'superseded-generation'; Expected = 'new-complete-generation-accepted' }
   )
   RegistrationRuntimeCases = @(
+    @{ Id = 'pc-console-echo'; Packages = @('Host'); Expected = 'Core Utilities:Console.ConsoleEcho visibly echoes the supplied label with the neutral => prefix; ConsoleOutputTests.Run exercises ordered block, blank, None/empty, and rejected LF entries. Stop if prefix rendering differs; compile/source checks do not prove visible output, and CR/CRLF VM coverage remains pending.' }
+    @{ Id = 'pc-console-result-output'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Each Canvas ConsoleResolve/action CGF prints exactly one final VWCANVAS-labeled status matching its Papyrus return/log path, including resolution failure. Busy remains inconclusive and migration dispatch is not update acknowledgement. No watch transport is enabled.' }
     @{ Id = 'pc-console-resolution'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerBRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
     @{ Id = 'pc-console-host-recovery'; Packages = @('Host'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
     @{ Id = 'pc-console-update-recovery'; Profile = 'UpdatedA'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerAUpdateMigration.ConsoleResolve resolves local record 000801 only in UpdatedA. ConsoleRetryUpdate reports dispatch, not acceptance; the existing migration later reports DESCRIPTOR_UPDATE_ACK without resetting an acknowledged update.' }

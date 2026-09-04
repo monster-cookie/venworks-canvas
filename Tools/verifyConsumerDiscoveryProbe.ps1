@@ -770,9 +770,15 @@ if (@($matrix.VwHudFixture.PlayerHudMovies).Count -ne 4) {
 }
 $coreSources = @($matrix.VenworksCoreFixture.SourceFiles)
 $coreRuntimeScripts = @($matrix.VenworksCoreFixture.RuntimeScripts)
-if ($coreSources.Count -ne 6 -or $coreRuntimeScripts.Count -ne 6 -or
+if ($coreSources.Count -ne 8 -or $coreRuntimeScripts.Count -ne 8 -or
     [string]::IsNullOrWhiteSpace([string]$matrix.VenworksCoreFixture.Revision)) {
-  throw 'Consumer discovery must pin six required Venworks Core sources and matching runtime scripts, including UUID utilities/tests.'
+  throw 'Consumer discovery must pin eight required Venworks Core sources and matching runtime scripts, including UUID and console utilities/tests.'
+}
+foreach ($requiredConsoleScript in @('Utilities/Console', 'Tests/ConsoleOutputTests')) {
+  if (@($coreSources | Where-Object { $_.Path -ceq "Papyrus/Venworks/Core/$requiredConsoleScript.psc" }).Count -ne 1 -or
+      @($coreRuntimeScripts | Where-Object { $_.Source -ceq "Staging/Scripts/Venworks/Core/$requiredConsoleScript.pex" -and $_.Target -ceq "Scripts/Venworks/Core/$requiredConsoleScript.pex" }).Count -ne 1) {
+    throw "Missing exact Core console source/runtime mapping: $requiredConsoleScript"
+  }
 }
 
 $profileKeys = @($matrix.Profiles.Key)
@@ -833,7 +839,7 @@ foreach ($caseId in $requiredParserCases) {
 }
 Assert-ConsumerDiscoveryParserFixtures
 
-$requiredRegistrationCases = @('pc-console-resolution', 'pc-console-host-recovery', 'pc-console-update-recovery', 'pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership', 'pc-registration-uuid-case', 'pc-registration-legacy-migration', 'pc-registration-concurrent-owners', 'pc-registration-pending-update')
+$requiredRegistrationCases = @('pc-console-echo', 'pc-console-result-output', 'pc-console-resolution', 'pc-console-host-recovery', 'pc-console-update-recovery', 'pc-registration-host-only', 'pc-registration-consumer-a', 'pc-registration-two-consumers', 'pc-registration-reload', 'pc-registration-rejection', 'pc-registration-ui-ownership', 'pc-registration-uuid-case', 'pc-registration-legacy-migration', 'pc-registration-concurrent-owners', 'pc-registration-pending-update')
 Assert-ExactOrdinalList `
   -Actual @($matrix.RegistrationRuntimeCases.Id) `
   -Expected $requiredRegistrationCases `

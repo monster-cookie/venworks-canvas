@@ -40,8 +40,10 @@ Int MaxSnapshotPagePayloadCharacters = 3600
 String Function ConsoleResolve() Global
   Venworks:Canvas:Probes:ConsumerDiscovery:Registry target = ResolveConsoleRegistry()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: Registry.ConsoleResolve | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: Registry.ConsoleResolve | " + "CONSOLE_RESOLVED")
   Return "CONSOLE_RESOLVED"
 EndFunction
 
@@ -49,12 +51,14 @@ EndFunction
 String Function ConsoleEnsureStorage() Global
   Venworks:Canvas:Probes:ConsumerDiscovery:Registry target = ResolveConsoleRegistry()
   If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: Registry.ConsoleEnsureStorage | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
   EndIf
   target.EnsureMenuSubscriptions()
   OperationResult result = target.TryEnsureStorage()
   target.LogOperation(result)
   LogConsoleRegistry("ConsoleEnsureStorage", "CONSOLE_RESULT | Status=" + result.Status)
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: Registry.ConsoleEnsureStorage | " + result.Status)
   Return result.Status
 EndFunction
 
