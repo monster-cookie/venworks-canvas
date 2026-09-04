@@ -19,6 +19,10 @@ param(
 
   [string]$ShipMoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\ship-movies'),
 
+  [string]$WatchMoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\watch-movies'),
+
+  [switch]$HostOnly,
+
   [string]$ArchiveRootsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\archive-roots')
 )
 
@@ -140,6 +144,7 @@ function Resolve-ConsumerDiscoveryArchiveTarget {
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workRoot = Join-Path $repositoryRoot '.work\consumer-discovery'
 $matrix = Get-ConsumerDiscoveryMatrix -RepositoryRoot $repositoryRoot
+$selectedStaging = @(Get-ConsumerDiscoveryStagingSelection -Matrix $matrix -HostOnly:$HostOnly)
 $resolvedProfile = Resolve-ConsumerDiscoveryProfile -Matrix $matrix -ProbeProfile $ProbeProfile
 $resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 $resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture `
@@ -227,6 +232,23 @@ foreach ($expected in @($expectedStagingByKey.Values)) {
 }
 $allowedPhysicalTargetPaths = [System.Collections.Generic.List[string]]::new()
 
+# Validate disjoint targets for every package, including packages excluded by HostOnly.
+$allInstallPaths = @{}
+foreach ($staging in @($matrix.Staging)) {
+  $path = Join-Path $repositoryRoot $staging.Directory
+  $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+  if ($null -ne $item -and $item.LinkType -ceq 'Junction') {
+    $expectedTarget = [string]$expectedPhysicalTargetByKey[$staging.Key]
+    if ([string]::IsNullOrWhiteSpace($expectedTarget)) { throw "Missing physical target for $($staging.Key)." }
+    Assert-ConsumerDiscoveryJunctionTarget -StagingPath $path -ExpectedTargetPath $expectedTarget
+    $path = [IO.Path]::GetFullPath($expectedTarget)
+  }
+  foreach ($otherPath in $allInstallPaths.Values) {
+    if (Test-ConsumerDiscoveryOverlappingPaths -Left $path -Right $otherPath) { throw 'Selected and unselected package targets must be disjoint.' }
+  }
+  $allInstallPaths[$staging.Key] = $path
+}
+
 $consumerAMovieDefinitions = @($matrix.Movies | Where-Object {
   [string]$_.Key -ceq [string]$resolvedProfile.ConsumerAMovie
 })
@@ -272,6 +294,11 @@ foreach ($playerHudMovie in @($matrix.VwHudFixture.PlayerHudMovies)) {
 }
 
 $resolvedPayloads = @{}
+$watchEvidence = @(Get-ConsumerDiscoveryWatchMovieEvidence -RepositoryRoot $repositoryRoot `
+  -VwHudRepositoryPath $resolvedVwHudRoot -MoviesDirectory ([IO.Path]::GetFullPath($WatchMoviesDirectory)) -Matrix $matrix)
+foreach ($watchMovie in $watchEvidence) {
+  $payloads.Host += @{ Source = $watchMovie.Source; Target = $watchMovie.Target }
+}
 foreach ($staging in @($matrix.Staging)) {
   $key = [string]$staging.Key
   $keyPayloads = [System.Collections.Generic.List[object]]::new()
@@ -297,6 +324,7 @@ $artifactVerificationArguments = @{
   VenworksCoreRepositoryPath = $resolvedVenworksCoreRoot
   MoviesDirectory = $resolvedMoviesDirectory
   ShipMoviesDirectory = $resolvedShipMoviesDirectory
+  WatchMoviesDirectory = $WatchMoviesDirectory
   PluginsDirectory = $resolvedPluginsDirectory
   ScriptsDirectory = $resolvedScriptsDirectory
 }
@@ -317,18 +345,30 @@ $stageEvidence = [System.Collections.Generic.List[object]]::new()
 $candidateInputs = [System.Collections.Generic.List[object]]::new()
 foreach ($staging in @($matrix.Staging)) {
   $key = [string]$staging.Key
+  $selected = @($selectedStaging | Where-Object { $_.Key -ceq $key }).Count -eq 1
   $archiveRoot = Join-Path $resolvedArchiveRootsDirectory $key
-  New-Item -ItemType Directory -Force -Path $archiveRoot | Out-Null
-  $candidateStagingPath = Join-Path $resolvedCandidateStagingDirectory ([string]$staging.Directory)
-  New-Item -ItemType Directory -Force -Path $candidateStagingPath | Out-Null
+  $candidateStagingPath = if ($selected) { Join-Path $resolvedCandidateStagingDirectory ([string]$staging.Directory) } else { Join-Path $repositoryRoot ([string]$staging.Directory) }
+  if ($selected) {
+    New-Item -ItemType Directory -Force -Path $archiveRoot, $candidateStagingPath | Out-Null
+  }
+  else {
+    $existingNames = @(Get-ChildItem -LiteralPath $candidateStagingPath -Force | Select-Object -ExpandProperty Name | Sort-Object)
+    $expectedNames = @([string]$staging.Plugin, [string]$staging.Archive | Sort-Object)
+    if (($existingNames -join '|') -cne ($expectedNames -join '|')) {
+      throw "$key unselected package must already contain exactly its ESM and BA2."
+    }
+  }
   $entries = [System.Collections.Generic.List[object]]::new()
   foreach ($payload in @($resolvedPayloads[$key])) {
     $sourcePath = [string]$payload.Source
     $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
     $targetPath = Resolve-ConsumerDiscoveryArchiveTarget -Root $archiveRoot -Target ([string]$payload.Target)
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
-    Copy-Item -LiteralPath $sourcePath -Destination $targetPath
-    $targetHash = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    $targetHash = $sourceHash
+    if ($selected) {
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
+      Copy-Item -LiteralPath $sourcePath -Destination $targetPath
+      $targetHash = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
     if ($targetHash -cne $sourceHash) {
       throw "$key payload '$($payload.Target)' changed while it was copied into the archive root."
     }
@@ -342,7 +382,7 @@ foreach ($staging in @($matrix.Staging)) {
   $pluginSource = [string]$pluginPathsByKey[$key]
   $pluginSourceHash = (Get-FileHash -LiteralPath $pluginSource -Algorithm SHA256).Hash.ToUpperInvariant()
   $pluginTarget = Join-Path $candidateStagingPath ([string]$staging.Plugin)
-  Copy-Item -LiteralPath $pluginSource -Destination $pluginTarget
+  if ($selected) { Copy-Item -LiteralPath $pluginSource -Destination $pluginTarget }
   $pluginTargetHash = (Get-FileHash -LiteralPath $pluginTarget -Algorithm SHA256).Hash.ToUpperInvariant()
   if ($pluginTargetHash -cne $pluginSourceHash) {
     throw "$key plugin changed while it was copied into the candidate staging root."
@@ -359,9 +399,11 @@ foreach ($staging in @($matrix.Staging)) {
     '-maxSizeMB=2048'
     '-excludeFilters=.*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2'
   )
-  & $archive2Path @archiveArguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "Archive2 failed to build the $key archive with exit code $LASTEXITCODE."
+  if ($selected) {
+    & $archive2Path @archiveArguments
+    if ($LASTEXITCODE -ne 0) {
+      throw "Archive2 failed to build the $key archive with exit code $LASTEXITCODE."
+    }
   }
   [void](Resolve-ConsumerDiscoveryRequiredFile -Path $archiveTarget -Description "$key staged archive")
   $archiveEntries = @(Get-ConsumerDiscoveryGeneralBa2Entries -Path $archiveTarget)
@@ -418,7 +460,7 @@ foreach ($candidateInput in @($candidateInputs)) {
 
 $allowedInstallPaths = @($allowedStagingPaths)
 $swapOperations = [System.Collections.Generic.List[object]]::new()
-foreach ($staging in @($matrix.Staging)) {
+foreach ($staging in $selectedStaging) {
   $key = [string]$staging.Key
   $directoryName = [string]$staging.Directory
   $stagingPath = Join-Path $repositoryRoot $directoryName
@@ -542,9 +584,9 @@ catch {
     }
   }
   if ($rollbackErrors.Count -ne 0) {
-    throw "Unable to install all three staged packages, and automatic restoration was incomplete. $($swapError.Exception.Message) Rollback errors: $([string]::Join(' | ', $rollbackErrors))"
+    throw "Unable to install selected staged packages, and automatic restoration was incomplete. $($swapError.Exception.Message) Rollback errors: $([string]::Join(' | ', $rollbackErrors))"
   }
-  throw "Unable to install all three staged packages; prior package directories were restored. $($swapError.Exception.Message)"
+  throw "Unable to install selected staged packages; prior package directories were restored. $($swapError.Exception.Message)"
 }
 
 foreach ($generatedDirectory in @($resolvedCandidateStagingDirectory, $resolvedStagingBackupDirectory)) {
@@ -566,4 +608,4 @@ Write-ConsumerDiscoveryUtf8WithoutBom `
   -Path (Join-Path $workRoot 'staging-evidence.json') `
   -Text (($evidence | ConvertTo-Json -Depth 10) + "`n")
 
-Write-Host -ForegroundColor Green "Created the exact Host, ConsumerA, and ConsumerB archive-only staging roots for profile '$($resolvedProfile.Key)'."
+Write-Host -ForegroundColor Green "Staged $($selectedStaging.Key -join ', ') and verified all three archive-only packages for profile '$($resolvedProfile.Key)'."

@@ -416,6 +416,55 @@ function Get-VwHudHostMovieEvidence {
   return @($evidence)
 }
 
+function Get-ConsumerDiscoveryStagingSelection {
+  <# Selects canonical package entries without changing the supplied matrix. #>
+  param([Parameter(Mandatory = $true)][hashtable]$Matrix, [switch]$HostOnly)
+  $keys = @($Matrix.Staging | ForEach-Object { [string]$_.Key })
+  if ($keys.Count -ne 3 -or @($keys | Sort-Object -Unique).Count -ne 3 -or
+      @($keys | Where-Object { $_ -cnotin @('Host', 'ConsumerA', 'ConsumerB') }).Count -ne 0) {
+    throw 'Staging selection requires the three canonical package keys.'
+  }
+  return @($Matrix.Staging | Where-Object { !$HostOnly -or $_.Key -ceq 'Host' })
+}
+
+function Get-ConsumerDiscoveryWatchMovieEvidence {
+  <# Validates exact, source-bound Watch build evidence before allowing archive inclusion. #>
+  param(
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)][string]$VwHudRepositoryPath,
+    [Parameter(Mandatory = $true)][string]$MoviesDirectory,
+    [Parameter(Mandatory = $true)][hashtable]$Matrix
+  )
+  $definitionPath = Join-Path $RepositoryRoot 'Scaleform\probes\consumer-discovery\build\player-hud-watch.build.psd1'
+  $definition = Import-PowerShellDataFile -LiteralPath $definitionPath
+  $patchPath = [IO.Path]::GetFullPath((Join-Path (Split-Path $definitionPath -Parent) $definition.Patch))
+  $evidence = Get-Content -LiteralPath (Join-Path $MoviesDirectory 'build-evidence.json') -Raw | ConvertFrom-Json
+  $names = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')
+  $inventory = @(Get-ChildItem -LiteralPath $MoviesDirectory -File -Recurse | ForEach-Object {
+    [IO.Path]::GetRelativePath($MoviesDirectory, $_.FullName)
+  } | Sort-Object)
+  $expectedInventory = @($names + 'build-evidence.json' | Sort-Object)
+  if (($inventory -join '|') -cne ($expectedInventory -join '|') -or
+      $evidence.Schema -cne 'VWCANVAS9_WATCH_BUILD/1' -or $evidence.PinnedOutputs -cne $true -or
+      $evidence.VwHudRevision -cne $Matrix.VwHudFixture.Revision -or
+      $evidence.DefinitionSha256 -cne (Get-FileHash -LiteralPath $definitionPath -Algorithm SHA256).Hash -or
+      $evidence.PatchSha256 -cne (Get-FileHash -LiteralPath $patchPath -Algorithm SHA256).Hash -or
+      $evidence.CompilerSha256 -cne (Get-FileHash -LiteralPath (Join-Path $VwHudRepositoryPath 'Tools\compileScaleform.ps1') -Algorithm SHA256).Hash -or
+      @($evidence.Movies).Count -ne 4 -or @($definition.Movies).Count -ne 4) {
+    throw 'Watch build evidence is not the exact pinned source-bound four-movie build.'
+  }
+  foreach ($name in $names) {
+    $row = @($evidence.Movies | Where-Object { $_.File -ceq $name })
+    $pin = @($definition.Movies | Where-Object { $_.File -ceq $name })
+    $path = Join-Path $MoviesDirectory $name
+    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    if ($row.Count -ne 1 -or $pin.Count -ne 1 -or $row[0].Sha256 -cne $hash -or $pin[0].OutputSha256 -cne $hash) {
+      throw "Watch movie output hash mismatch: $name"
+    }
+    [pscustomobject]@{ Source = $path; Target = "Interface/$name"; Sha256 = $hash }
+  }
+}
+
 function Invoke-ConsumerDiscoveryJavaJar {
   param(
     [Parameter(Mandatory = $true)]

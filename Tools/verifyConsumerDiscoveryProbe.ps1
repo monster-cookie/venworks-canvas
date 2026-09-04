@@ -15,6 +15,8 @@ param(
 
   [string]$ShipMoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\ship-movies'),
 
+  [string]$WatchMoviesDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\watch-movies'),
+
   [string]$PluginsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\plugins'),
 
   [string]$ScriptsDirectory = (Join-Path $PSScriptRoot '..\.work\consumer-discovery\scripts')
@@ -513,10 +515,12 @@ if ($SourceOnly -and $ArtifactsOnly) {
   throw 'SourceOnly and ArtifactsOnly cannot be combined.'
 }
 
-if ([int]$matrix.Version -ne 8 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
+if ([int]$matrix.Version -ne 9 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
     [string]$matrix.TestMode -cne 'ExplicitConsumerUiLoad' -or
+    [string]$matrix.WatchPresentation -cne 'DisabledBeforeSubscriptions' -or
+    [string]$matrix.WatchBuild -cne 'build/player-hud-watch.build.psd1' -or
     [string]$matrix.UiLoadResult -cne 'UI_LOAD_QUEUED') {
-  throw 'Consumer-discovery matrix must declare the v8 explicit UI-load test contract.'
+  throw 'Consumer-discovery matrix must declare the v9 Watch-isolated UI-load test contract.'
 }
 
 function Assert-ExactOrdinalList {
@@ -1067,6 +1071,10 @@ foreach ($token in @(
   'this.dataManager.Unsubscribe(PROVIDER,this.callback)'
   'EXPLICIT UI LOAD TEST'
   'LOAD BRIDGE SUBSCRIBED'
+  'watch.getCanvasWatchDataManager()'
+  'watch.getCanvasWatchDisabled()'
+  'PROVIDER CALLBACK RECEIVED'
+  'PROVIDER PAYLOAD REJECTED'
   'SHIP UI TRANSPORT DEFERRED'
 )) {
   if (!$hostSource.Contains($token)) {
@@ -1130,6 +1138,8 @@ $toolPaths = @(
   'Tools\sharedConsumerDiscoveryProbe.ps1'
   'Tools\buildConsumerDiscoveryProbe.ps1'
   'Tools\buildConsumerDiscoveryShipMovies.ps1'
+  'Tools\buildConsumerDiscoveryWatchMovies.ps1'
+  'Tools\testConsumerDiscoveryUiReceive.ps1'
   'Tools\compileConsumerDiscoveryScripts.ps1'
   'Tools\dumpConsumerDiscoveryPluginsToYaml.ps1'
   'Tools\stageConsumerDiscoveryProbe.ps1'
@@ -1209,6 +1219,8 @@ $resolvedMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $Mov
 $resolvedShipMoviesDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ShipMoviesDirectory -Description 'Built Ship HUD movie directory'
 $resolvedPluginsDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $PluginsDirectory -Description 'Generated plugin directory'
 $resolvedScriptsDirectory = Resolve-ConsumerDiscoveryRequiredDirectory -Path $ScriptsDirectory -Description 'Compiled script directory'
+$watchMovieEvidence = @(Get-ConsumerDiscoveryWatchMovieEvidence -RepositoryRoot $repositoryRoot `
+  -VwHudRepositoryPath $resolvedVwHudRoot -MoviesDirectory ([IO.Path]::GetFullPath($WatchMoviesDirectory)) -Matrix $matrix)
 
 $expectedMovieInventory = @('build-evidence.json')
 foreach ($movie in @($matrix.Movies)) {
@@ -1490,6 +1502,10 @@ foreach ($playerHudMovie in @($matrix.VwHudFixture.PlayerHudMovies)) {
     -Path (Join-Path $resolvedVwHudRoot ([string]$playerHudMovie.Source)) `
     -Description "Pinned VWHUD player HUD movie '$($playerHudMovie.Source)'"
   $payloadHashes.Host[([string]$playerHudMovie.Target).ToLowerInvariant()] = Get-FileSha256 -Path $sourcePath
+}
+
+foreach ($watchMovie in $watchMovieEvidence) {
+  $payloadHashes.Host[$watchMovie.Target.ToLowerInvariant()] = $watchMovie.Sha256
 }
 
 if ($ArtifactsOnly) {

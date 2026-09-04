@@ -27,6 +27,10 @@
     <token>canvas.ui.load</token>
     <token>MAX_UI_LOAD_CHARACTERS</token>
     <token>LOAD BRIDGE SUBSCRIBED</token>
+    <token>getCanvasWatchDataManager</token>
+    <token>getCanvasWatchDisabled</token>
+    <token>PROVIDER CALLBACK RECEIVED</token>
+    <token>PROVIDER PAYLOAD REJECTED</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>URLLoader</token>

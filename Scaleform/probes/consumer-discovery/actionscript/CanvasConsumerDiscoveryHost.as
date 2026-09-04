@@ -10,7 +10,6 @@ package
    import flash.net.URLRequest;
    import flash.text.TextField;
    import flash.text.TextFormat;
-   import flash.utils.getDefinitionByName;
 
    public final class CanvasConsumerDiscoveryHost extends MovieClip
    {
@@ -43,6 +42,8 @@ package
       private var dataManager:Object;
 
       private var callback:Function;
+
+      private var receiveNotes:Object = {};
 
       private var subscribed:Boolean = false;
 
@@ -162,6 +163,7 @@ package
          this.owner = null;
          this.dataManager = null;
          this.callback = null;
+         this.receiveNotes = {};
       }
 
       private function subscribe() : void
@@ -172,18 +174,34 @@ package
          }
          try
          {
-            this.dataManager = getDefinitionByName("Shared.AS3.Data.BSUIDataManager");
-            if(this.dataManager == null)
+            var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
+            if(watch == null || !("getCanvasWatchDisabled" in watch) || !watch.getCanvasWatchDisabled())
             {
-               throw new Error("BSUIDataManager definition was null");
+               throw new Error("WATCH PATCH MISSING OR ACTIVE; verify Host archive deployment");
             }
-            this.dataManager.Subscribe(PROVIDER,this.callback);
+            this.appendDiagnostic("WATCH PRESENTATION DISABLED");
+            // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
+            this.dataManager = watch.getCanvasWatchDataManager();
+            var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
+            if(provider == null)
+            {
+               throw new Error("CustomAlertsData provider unavailable");
+            }
+            this.appendDiagnostic("PROVIDER " + (provider.dataReady ? "READY" : "WAITING FOR CLIENT"));
+            // Get first, then Subscribe: vanilla replays an existing ready provider synchronously.
+            // Record ownership before that callback so failure cleanup cannot leave an orphan listener.
             this.subscribed = true;
-            this.dataManager.GetDataFromClient(PROVIDER,true);
+            this.dataManager.Subscribe(PROVIDER,this.callback);
             this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
          }
          catch(subscriptionError:Error)
          {
+            if(this.subscribed && this.dataManager != null)
+            {
+               try { this.dataManager.Unsubscribe(PROVIDER,this.callback); }
+               catch(cleanupError:Error) { this.appendDiagnostic("BRIDGE CLEANUP ERROR"); }
+            }
+            this.subscribed = false;
             this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
          }
       }
@@ -191,34 +209,65 @@ package
       private function onCustomAlertsData(param1:Object) : void
       {
          var data:Object = null;
-         var alerts:Array = null;
+         var alerts:Object = null;
          var alert:Object = null;
          var text:String = null;
-         if(this.disposed || param1 == null)
+         if(this.disposed)
          {
             return;
          }
-         data = param1.data == null ? param1 : param1.data;
-         if(data == null || data.aAlerts == null)
+         this.receiveNote("callback","PROVIDER CALLBACK RECEIVED");
+         try
          {
-            return;
-         }
-         alerts = data.aAlerts as Array;
-         if(alerts == null)
-         {
-            return;
-         }
-         for each(alert in alerts)
-         {
-            if(alert == null || alert.sAlertText == null)
+            if(param1 == null)
             {
-               continue;
+               throw new Error("null event");
             }
-            text = String(alert.sAlertText);
-            if(text.indexOf(ENVELOPE_PREFIX) == 0)
+            // FromClientDataEvent exposes data through a getter; raw payloads are used by fixtures.
+            data = "data" in param1 ? param1.data : param1;
+            if(data == null || !("aAlerts" in data) || data.aAlerts == null)
             {
-               this.receiveEnvelope(text);
+               throw new Error("missing aAlerts");
             }
+            alerts = data.aAlerts;
+            if(typeof alerts != "object" || !("length" in alerts) || typeof alerts.length != "number")
+            {
+               throw new Error("alerts are not an indexed collection");
+            }
+            var count:Number = Number(alerts.length);
+            if(!isFinite(count) || count < 0 || count != Math.floor(count) || count > 256)
+            {
+               throw new Error("invalid alert count");
+            }
+            this.receiveNote("shape","PROVIDER PAYLOAD ACCEPTED");
+            // Scaleform-native collections need not be ActionScript Array instances.
+            for(var index:int = 0; index < count; index++)
+            {
+               alert = alerts[index];
+               if(alert == null || typeof alert != "object" || !("sAlertText" in alert) || typeof alert.sAlertText != "string")
+               {
+                  this.receiveNote("entry","PROVIDER ENTRY SKIPPED | missing string sAlertText");
+                  continue;
+               }
+               text = alert.sAlertText;
+               if(text.indexOf(UI_LOAD_PREFIX) == 0)
+               {
+                  this.receiveEnvelope(text);
+               }
+            }
+         }
+         catch(payloadError:Error)
+         {
+            this.receiveNote("error","PROVIDER PAYLOAD REJECTED | " + this.sanitizeText(payloadError,100));
+         }
+      }
+
+      private function receiveNote(key:String, message:String) : void
+      {
+         if(this.receiveNotes[key] !== true)
+         {
+            this.receiveNotes[key] = true;
+            this.appendDiagnostic(message);
          }
       }
 
@@ -798,7 +847,7 @@ package
             return;
          }
          this.diagnosticLines.push(this.sanitizeText(param1,220));
-         while(this.diagnosticLines.length > 10)
+         while(this.diagnosticLines.length > 16)
          {
             this.diagnosticLines.shift();
          }

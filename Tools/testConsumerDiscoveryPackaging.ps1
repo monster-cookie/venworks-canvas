@@ -7,6 +7,21 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sharedConsumerDiscoveryProbe.ps1')
+$selectionMatrix = @{ Staging = @(@{ Key = 'Host' }, @{ Key = 'ConsumerA' }, @{ Key = 'ConsumerB' }) }
+$hostSelection = @(Get-ConsumerDiscoveryStagingSelection -Matrix $selectionMatrix -HostOnly)
+if ($hostSelection.Count -ne 1 -or $hostSelection[0].Key -cne 'Host' -or $selectionMatrix.Staging.Count -ne 3) {
+  throw 'Host-only selection changed the matrix or selected consumer packages.'
+}
+if (@(Get-ConsumerDiscoveryStagingSelection -Matrix $selectionMatrix).Count -ne 3) { throw 'Default staging must retain all three variants.' }
+foreach ($badKeys in @(@('Host','Host','ConsumerA'), @('Host','ConsumerA'), @('Host','ConsumerA','consumerb'))) {
+  $caught = $false
+  try { [void](Get-ConsumerDiscoveryStagingSelection -Matrix @{ Staging = @($badKeys | ForEach-Object { @{ Key = $_ } }) } -HostOnly) } catch { $caught = $true }
+  if (!$caught) { throw 'A noncanonical staging matrix was accepted.' }
+}
+$stageSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'stageConsumerDiscoveryProbe.ps1') -Raw
+foreach ($contract in @('foreach ($staging in $selectedStaging)', 'if ($selected) { Copy-Item -LiteralPath $pluginSource', 'Selected and unselected package targets must be disjoint.')) {
+  if (!$stageSource.Contains($contract)) { throw "Missing Host-only staging safety contract: $contract" }
+}
 $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('canvas-artifact-tests-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $pointer = [Text.Encoding]::UTF8.GetBytes("version https://git-lfs.github.com/spec/v1`noid sha256:012345`nsize 4096`n")

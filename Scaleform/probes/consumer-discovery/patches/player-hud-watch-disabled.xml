@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actionScriptPatch name="vwcanvas9-player-watch-disabled" version="1" script="BottomLeftGroup">
+  <validation>
+    <requiredSourceTokens>
+      <token>getCanvasWatchDataManager</token>
+      <token>getCanvasWatchDisabled</token>
+      <token>disableCanvasWatch</token>
+      <token>this.AlertTimer.stop()</token>
+      <token>removeChildAt(0)</token>
+    </requiredSourceTokens>
+    <requiredInspectionTokens>
+      <token>getCanvasWatchDataManager</token>
+      <token>getCanvasWatchDisabled</token>
+    </requiredInspectionTokens>
+  </validation>
+  <insertions>
+    <insertion position="after"><anchor><![CDATA[         TextFieldEx.setTextAutoSize(this.EnvAlertText.Subtext_tf,TextFieldEx.TEXTAUTOSZ_SHRINK);]]></anchor><content><![CDATA[
+         this.disableCanvasWatch();]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[      override public function onAddedToStage() : void]]></anchor><content><![CDATA[      // Diagnostic isolation: retain the public container, not its presentation or animation queue.
+      public function getCanvasWatchDataManager() : Object
+      {
+         return BSUIDataManager;
+      }
+
+      public function getCanvasWatchDisabled() : Boolean
+      {
+         return numChildren == 0 && !this.AlertTimer.running && !this.PlayingAnimation;
+      }
+
+      private function stopCanvasWatchTree(clip:MovieClip) : void
+      {
+         clip.stop();
+         for(var index:int = 0; index < clip.numChildren; index++)
+         {
+            var child:MovieClip = clip.getChildAt(index) as MovieClip;
+            if(child != null)
+            {
+               this.stopCanvasWatchTree(child);
+            }
+         }
+      }
+
+      private function disableCanvasWatch() : void
+      {
+         this.stopCanvasWatchTree(this);
+         this.AlertTimer.stop();
+         this.AlertTimer.removeEventListener(TimerEvent.TIMER_COMPLETE,this.PlayNextInQueue);
+         this.removeEventListener(ANIMATION_FINISHED,this.AnimationFinished);
+         this.AnimationQueue = [];
+         this.PlayingAnimation = false;
+         this.CurrentAnimationName = "";
+         while(numChildren > 0)
+         {
+            removeChildAt(0);
+         }
+      }
+
+]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
+         this.disableCanvasWatch();
+         return;]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         var _loc4_:int = 0;]]></anchor><content><![CDATA[         return false;
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         while(_loc2_ < param1.data.aAlerts.length)]]></anchor><content><![CDATA[         return;
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         removeEventListener(ANIMATION_FINISHED,this.AnimationFinished);]]></anchor><content><![CDATA[         return;
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         var _loc1_:Object = this.AnimationQueue.shift();]]></anchor><content><![CDATA[         return;
+]]></content></insertion>
+  </insertions>
+</actionScriptPatch>
