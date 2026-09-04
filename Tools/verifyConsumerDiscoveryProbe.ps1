@@ -517,7 +517,7 @@ if ($SourceOnly -and $ArtifactsOnly) {
 
 if ([int]$matrix.Version -ne 9 -or [string]$matrix.Protocol -cne 'VWCANVAS_REGISTRY_PROBE/3' -or
     [string]$matrix.TestMode -cne 'ExplicitConsumerUiLoad' -or
-    [string]$matrix.WatchPresentation -cne 'DisabledBeforeSubscriptions' -or
+    [string]$matrix.WatchPresentation -cne 'DisabledAfterSubscriptionsRestored' -or
     [string]$matrix.WatchBuild -cne 'build/player-hud-watch.build.psd1' -or
     [string]$matrix.UiLoadResult -cne 'UI_LOAD_QUEUED') {
   throw 'Consumer-discovery matrix must declare the v9 Watch-isolated UI-load test contract.'
@@ -1073,7 +1073,10 @@ foreach ($token in @(
   'LOAD BRIDGE SUBSCRIBED'
   'watch.getCanvasWatchDataManager()'
   'watch.getCanvasWatchDisabled()'
-  'PROVIDER CALLBACK RECEIVED'
+  'watch.getCanvasWatchSubscriptionsRestored()'
+  'WATCH SUBSCRIPTIONS RESTORED'
+  'PROVIDER CALLBACK #'
+  'PROVIDER ALERT #'
   'PROVIDER PAYLOAD REJECTED'
   'SHIP UI TRANSPORT DEFERRED'
 )) {

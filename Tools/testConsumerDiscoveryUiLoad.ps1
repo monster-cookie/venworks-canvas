@@ -59,7 +59,8 @@ function Assert-UiLoadSourceContract {
     'protocol.value != "1"', 'cursor != packet.length', 'this.validateDescriptor(descriptor)',
     'this.normalizeUuid(String(id.value))', 'this.removeLoaderListeners(loader)',
     'this.dataManager.Unsubscribe(PROVIDER,this.callback)', 'this.disposed || this.owner != null'
-    'watch.getCanvasWatchDisabled()', 'watch.getCanvasWatchDataManager()', 'PROVIDER CALLBACK RECEIVED'
+    'watch.getCanvasWatchDisabled()', 'watch.getCanvasWatchDataManager()', 'watch.getCanvasWatchSubscriptionsRestored()',
+    'WATCH SUBSCRIPTIONS RESTORED', 'PROVIDER CALLBACK #', 'PROVIDER ALERT #'
   )) {
     if (!$Movie.Contains($token)) { throw "Missing host load invariant: $token" }
   }

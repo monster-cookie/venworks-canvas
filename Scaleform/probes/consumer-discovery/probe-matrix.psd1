@@ -1,6 +1,6 @@
 @{
   Version = 9
-  WatchPresentation = 'DisabledBeforeSubscriptions'
+  WatchPresentation = 'DisabledAfterSubscriptionsRestored'
   WatchBuild = 'build/player-hud-watch.build.psd1'
   Protocol = 'VWCANVAS_REGISTRY_PROBE/3'
   TestMode = 'ExplicitConsumerUiLoad'
@@ -132,7 +132,7 @@
     @{ Id = 'pc-console-resolution'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerBRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
     @{ Id = 'pc-console-host-recovery'; Packages = @('Host'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
     @{ Id = 'pc-console-update-recovery'; Profile = 'UpdatedA'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'ConsumerAUpdateMigration.ConsoleResolve resolves local record 000801 only in UpdatedA. ConsoleRetryUpdate reports dispatch, not acceptance; the existing migration later reports DESCRIPTOR_UPDATE_ACK without resetting an acknowledged update.' }
-    @{ Id = 'pc-registration-host-only'; Packages = @('Host'); Expected = 'Host logs zero consumers and submits no load packets; Watch presentation is disabled from startup and gameplay remains responsive.' }
+    @{ Id = 'pc-registration-host-only'; Packages = @('Host'); Expected = 'Host logs zero consumers and submits no load packets; all vanilla Watch subscriptions are restored before its presentation is detached and gameplay remains responsive.' }
     @{ Id = 'pc-registration-consumer-a'; Packages = @('Host', 'ConsumerA'); Expected = 'A logs REGISTRATION_ACK then a separate UI_LOAD_QUEUED/UI_LOAD_SUBMITTED; readiness requires the visible panel.' }
     @{ Id = 'pc-registration-two-consumers'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'A and B each acknowledge registration and validate RequestUiLoad ownership; registry count is two.' }
     @{ Id = 'pc-registration-reload'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Reload/menu openings preserve valid records; separate consumer load requests recreate the UI with bounded bridge traffic.' }
@@ -145,7 +145,7 @@
   )
   # Player HUD cases are the current PC gate; ship/pilot and package-removal cases remain later controlled acceptance.
   RuntimeCases = @(
-    @{ Id = 'pc-archive-host-only'; Profile = 'Baseline'; Packages = @('Host'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
+    @{ Id = 'pc-archive-host-only'; Profile = 'Baseline'; Packages = @('Host'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST, WATCH SUBSCRIPTIONS RESTORED and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
     @{ Id = 'pc-archive-consumer-a'; Profile = 'Baseline'; Packages = @('Host', 'ConsumerA'); Expected = 'Player HUD visibly reports Consumer A READY from its namespaced normal movie.' }
     @{ Id = 'pc-archive-two-consumers'; Profile = 'Baseline'; Packages = @('Host', 'ConsumerA', 'ConsumerB'); Expected = 'Player HUD visibly reports both independently registered consumers READY with no static slot.' }
     @{ Id = 'pc-archive-reversed-consumer-order'; Profile = 'Baseline'; Packages = @('Host', 'ConsumerB', 'ConsumerA'); Expected = 'Both consumers register regardless of consumer load order; Host remains their explicit master.' }

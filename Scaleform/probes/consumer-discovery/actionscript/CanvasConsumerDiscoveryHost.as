@@ -37,6 +37,10 @@ package
 
       private static const MAX_CONSUMER_MOVIE_URL_CHARACTERS:int = 180;
 
+      private static const MAX_CALLBACK_DIAGNOSTICS:int = 8;
+
+      private static const MAX_ALERT_DIAGNOSTICS:int = 16;
+
       private var owner:DisplayObjectContainer;
 
       private var dataManager:Object;
@@ -44,6 +48,10 @@ package
       private var callback:Function;
 
       private var receiveNotes:Object = {};
+
+      private var callbackCount:int = 0;
+
+      private var alertDiagnosticCount:int = 0;
 
       private var subscribed:Boolean = false;
 
@@ -164,6 +172,8 @@ package
          this.dataManager = null;
          this.callback = null;
          this.receiveNotes = {};
+         this.callbackCount = 0;
+         this.alertDiagnosticCount = 0;
       }
 
       private function subscribe() : void
@@ -175,9 +185,18 @@ package
          try
          {
             var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
-            if(watch == null || !("getCanvasWatchDisabled" in watch) || !watch.getCanvasWatchDisabled())
+            if(watch == null || !("getCanvasWatchDisabled" in watch) || !("getCanvasWatchSubscriptionsRestored" in watch))
             {
-               throw new Error("WATCH PATCH MISSING OR ACTIVE; verify Host archive deployment");
+               throw new Error("WATCH PATCH MISSING; verify Host archive deployment");
+            }
+            if(!watch.getCanvasWatchSubscriptionsRestored())
+            {
+               throw new Error("WATCH SUBSCRIPTIONS NOT RESTORED");
+            }
+            this.appendDiagnostic("WATCH SUBSCRIPTIONS RESTORED");
+            if(!watch.getCanvasWatchDisabled())
+            {
+               throw new Error("WATCH PRESENTATION ACTIVE");
             }
             this.appendDiagnostic("WATCH PRESENTATION DISABLED");
             // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
@@ -216,7 +235,7 @@ package
          {
             return;
          }
-         this.receiveNote("callback","PROVIDER CALLBACK RECEIVED");
+         this.callbackCount++;
          try
          {
             if(param1 == null)
@@ -239,20 +258,29 @@ package
             {
                throw new Error("invalid alert count");
             }
-            this.receiveNote("shape","PROVIDER PAYLOAD ACCEPTED");
+            this.appendCallbackDiagnostic("PROVIDER CALLBACK #" + this.callbackCount + " | ALERTS " + count);
             // Scaleform-native collections need not be ActionScript Array instances.
             for(var index:int = 0; index < count; index++)
             {
                alert = alerts[index];
                if(alert == null || typeof alert != "object" || !("sAlertText" in alert) || typeof alert.sAlertText != "string")
                {
-                  this.receiveNote("entry","PROVIDER ENTRY SKIPPED | missing string sAlertText");
+                  this.appendAlertDiagnostic("INVALID ENTRY");
                   continue;
                }
                text = alert.sAlertText;
                if(text.indexOf(UI_LOAD_PREFIX) == 0)
                {
+                  this.appendAlertDiagnostic("UI LOAD",text.length);
                   this.receiveEnvelope(text);
+               }
+               else if(text.indexOf(ENVELOPE_PREFIX) == 0)
+               {
+                  this.appendAlertDiagnostic("CANVAS OTHER",text.length);
+               }
+               else
+               {
+                  this.appendAlertDiagnostic("OTHER",text.length);
                }
             }
          }
@@ -268,6 +296,36 @@ package
          {
             this.receiveNotes[key] = true;
             this.appendDiagnostic(message);
+         }
+      }
+
+      private function appendCallbackDiagnostic(message:String) : void
+      {
+         if(this.callbackCount <= MAX_CALLBACK_DIAGNOSTICS)
+         {
+            this.appendDiagnostic(message);
+         }
+         else if(this.callbackCount == MAX_CALLBACK_DIAGNOSTICS + 1)
+         {
+            this.appendDiagnostic("PROVIDER CALLBACK DIAGNOSTICS SUPPRESSED");
+         }
+      }
+
+      private function appendAlertDiagnostic(classification:String, characterCount:int = -1) : void
+      {
+         this.alertDiagnosticCount++;
+         if(this.alertDiagnosticCount <= MAX_ALERT_DIAGNOSTICS)
+         {
+            var message:String = "PROVIDER ALERT #" + this.alertDiagnosticCount + " | " + classification;
+            if(characterCount >= 0)
+            {
+               message += " | LENGTH " + characterCount;
+            }
+            this.appendDiagnostic(message);
+         }
+         else if(this.alertDiagnosticCount == MAX_ALERT_DIAGNOSTICS + 1)
+         {
+            this.appendDiagnostic("PROVIDER ALERT DIAGNOSTICS SUPPRESSED");
          }
       }
 

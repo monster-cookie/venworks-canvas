@@ -29,7 +29,10 @@
     <token>LOAD BRIDGE SUBSCRIBED</token>
     <token>getCanvasWatchDataManager</token>
     <token>getCanvasWatchDisabled</token>
-    <token>PROVIDER CALLBACK RECEIVED</token>
+    <token>getCanvasWatchSubscriptionsRestored</token>
+    <token>WATCH SUBSCRIPTIONS RESTORED</token>
+    <token>PROVIDER CALLBACK #</token>
+    <token>PROVIDER ALERT #</token>
     <token>PROVIDER PAYLOAD REJECTED</token>
   </requiredTokens>
   <forbiddenTokens>
