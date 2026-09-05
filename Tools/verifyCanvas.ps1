@@ -8,7 +8,8 @@ param(
 
   [switch]$ArtifactsOnly,
 
-  [string]$Profile = 'Production',
+  [Alias('Profile')]
+  [string]$BuildProfile = 'Production',
 
   [string[]]$VariantKeys,
 
@@ -54,9 +55,9 @@ function Assert-EvidenceHash {
     [Parameter(Mandatory = $true)][string]$Description
   )
 
-  $matches = @($Rows | Where-Object { [string]$_.$NameProperty -ceq $Name })
+  $matchingRows = @($Rows | Where-Object { [string]$_.$NameProperty -ceq $Name })
   $actualHash = Get-CanvasFileSha256 -Path $Path
-  if ($matches.Count -ne 1 -or [string]$matches[0].Sha256 -cne $actualHash) {
+  if ($matchingRows.Count -ne 1 -or [string]$matchingRows[0].Sha256 -cne $actualHash) {
     throw "$Description evidence does not match '$Name'."
   }
 }
@@ -65,7 +66,7 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $matrix = Get-CanvasMatrix -RepositoryRoot $repositoryRoot
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 $allVariants = @(Get-ModuleVariants)
-$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -BuildProfile $BuildProfile
 
 $retiredInvestigationTerm = 'pro' + 'be'
 $retiredExplorationTerm = 'sp' + 'ike'
@@ -165,8 +166,8 @@ if ($SourceOnly) {
 if ([string]::IsNullOrWhiteSpace($VwHudRepositoryPath) -or [string]::IsNullOrWhiteSpace($VenworksCoreRepositoryPath)) {
   throw 'Artifact verification requires VwHudRepositoryPath and VenworksCoreRepositoryPath.'
 }
-$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
-$resolvedCoreRoot = Assert-PinnedVenworksCoreFixture -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath -Matrix $matrix
+[void](Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix)
+[void](Assert-PinnedVenworksCoreFixture -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath -Matrix $matrix)
 $resolvedPluginsDirectory = Resolve-CanvasRequiredDirectory -Path $PluginsDirectory -Description 'Generated plugin directory'
 $resolvedScriptsDirectory = Resolve-CanvasRequiredDirectory -Path $ScriptsDirectory -Description 'Compiled Papyrus directory'
 $resolvedScaleformDirectory = Resolve-CanvasRequiredDirectory -Path $ScaleformDirectory -Description 'Built Scaleform directory'

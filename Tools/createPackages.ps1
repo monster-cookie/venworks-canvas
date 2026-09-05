@@ -6,7 +6,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$VenworksCoreRepositoryPath,
 
-  [string]$Profile = 'Production',
+  [Alias('Profile')]
+  [string]$BuildProfile = 'Production',
 
   [string[]]$VariantKeys,
 
@@ -142,7 +143,7 @@ $workRoot = Join-Path $repositoryRoot '.work\canvas'
 $matrix = Get-CanvasMatrix -RepositoryRoot $repositoryRoot
 $allVariants = @(Get-ModuleVariants)
 $selectedVariants = @(Get-CanvasStagingSelection -VariantKeys $VariantKeys)
-$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -BuildProfile $BuildProfile
 $resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
 $resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture `
   -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath `

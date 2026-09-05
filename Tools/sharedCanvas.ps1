@@ -220,10 +220,11 @@ function Resolve-CanvasProfile {
     [Parameter(Mandatory = $true)]
     [hashtable]$Matrix,
 
-    [string]$Profile
+    [Alias('Profile')]
+    [string]$BuildProfile
   )
 
-  $profileKey = $Profile
+  $profileKey = $BuildProfile
   if ([string]::IsNullOrWhiteSpace($profileKey)) {
     $profileKey = [string]$Matrix.DefaultProfile
   }

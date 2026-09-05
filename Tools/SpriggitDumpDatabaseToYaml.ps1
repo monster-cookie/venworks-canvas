@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$Profile = 'Production',
+  [Alias('Profile')]
+  [string]$BuildProfile = 'Production',
 
   [string[]]$VariantKeys,
 
@@ -21,7 +22,7 @@ $env:DOTNET_CLI_HOME = Join-Path $workRoot 'spriggit-dotnet-home'
 $env:DOTNET_NOLOGO = '1'
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 $matrix = Get-CanvasMatrix -RepositoryRoot $repositoryRoot
-$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -Profile $Profile
+$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -BuildProfile $BuildProfile
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 $resolvedPluginsDirectory = Resolve-CanvasRequiredDirectory `
   -Path $PluginsDirectory `
