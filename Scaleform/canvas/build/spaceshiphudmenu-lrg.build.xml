@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scaleformBuild name="vwcanvas-spaceshiphudmenu-lrg"
+                mode="auxiliary-bootstrap"
+                inputFile="spaceshiphudmenu_lrg.swf"
+                outputFile="spaceshiphudmenu_lrg.swf"
+                vanillaHashFile="spaceshiphudmenu-lrg.vanilla.sha256"
+                expectedHashFile="spaceshiphudmenu-lrg.expected.sha256">
+  <actionScriptPatches>
+    <patch path="../patches/spaceship-hud-auxiliary-loader.xml" />
+  </actionScriptPatches>
+</scaleformBuild>

@@ -1,0 +1,43 @@
+FormKey: 000800:Venworks-Canvas-Example.esm
+EditorID: VWCANVAS_ExampleRegistrar
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:ExampleRegistrar
+    Properties:
+    - MutagenObjectType: ScriptStringProperty
+      Name: ConsumerId
+      Data: a8098c1a-f86e-4b1e-9d7c-5a102bf38460
+    - MutagenObjectType: ScriptIntProperty
+      Name: DescriptorVersion
+      Data: 1
+    - MutagenObjectType: ScriptStringProperty
+      Name: DisplayName
+      Data: VWCANVAS Example
+    - MutagenObjectType: ScriptBoolProperty
+      Name: ExpectedRegistration
+      Data: True
+    - MutagenObjectType: ScriptFloatProperty
+      Name: InitialDelaySeconds
+    - MutagenObjectType: ScriptStringProperty
+      Name: LargeMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/large.swf
+    - MutagenObjectType: ScriptStringProperty
+      Name: NormalMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/normal.swf
+    - MutagenObjectType: ScriptObjectProperty
+      Name: Registry
+      Object: 000800:Venworks-Canvas.esm
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS Example Registrar
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  Unused: 0x000000
