@@ -113,6 +113,12 @@ foreach ($variant in $moduleVariants) {
 }
 
 if (!$Committed) {
+  $configuredStagingPaths = @($moduleVariants | ForEach-Object {
+    [pscustomobject]@{
+      VariantName = $_.VariantName
+      Path = (Get-NormalizedFullPath -Path $_.StagingFolderPath)
+    }
+  })
   $configuredVariantTargets = @()
   foreach ($configuredVariant in $moduleVariants) {
     if ([string]::IsNullOrWhiteSpace($configuredVariant.PluginModulePath)) {
@@ -121,10 +127,16 @@ if (!$Committed) {
 
     $configuredTargetPath = Get-NormalizedFullPath -Path $configuredVariant.PluginModulePath
     $matchingTarget = @($configuredVariantTargets | Where-Object {
-      Test-SamePath -Left $_.Path -Right $configuredTargetPath
+      Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
     })
     if ($matchingTarget.Count -ne 0) {
-      throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use the same physical module folder: $configuredTargetPath"
+      throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use identical or nested physical module folders: $configuredTargetPath"
+    }
+    $matchingStagingPath = @($configuredStagingPaths | Where-Object {
+      Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+    })
+    if ($matchingStagingPath.Count -ne 0) {
+      throw "$($configuredVariant.VariantName) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0].Path)"
     }
     $configuredVariantTargets += [pscustomobject]@{
       VariantName = $configuredVariant.VariantName

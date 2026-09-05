@@ -33,6 +33,61 @@ function Resolve-CanvasRequiredDirectory {
   return $resolved.Path
 }
 
+function Get-CanvasNormalizedFullPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    throw 'A filesystem path cannot be empty.'
+  }
+
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+  if ($fullPath.Length -gt $pathRoot.Length) {
+    return $fullPath.TrimEnd(
+      [System.IO.Path]::DirectorySeparatorChar,
+      [System.IO.Path]::AltDirectorySeparatorChar
+    )
+  }
+  return $fullPath
+}
+
+function Test-CanvasOverlappingPaths {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Left,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Right
+  )
+
+  $leftPath = Get-CanvasNormalizedFullPath -Path $Left
+  $rightPath = Get-CanvasNormalizedFullPath -Path $Right
+  if ([string]::Equals($leftPath, $rightPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $true
+  }
+
+  $leftPrefix = if ($leftPath.EndsWith([string][System.IO.Path]::DirectorySeparatorChar) -or
+      $leftPath.EndsWith([string][System.IO.Path]::AltDirectorySeparatorChar)) {
+    $leftPath
+  }
+  else {
+    $leftPath + [System.IO.Path]::DirectorySeparatorChar
+  }
+  $rightPrefix = if ($rightPath.EndsWith([string][System.IO.Path]::DirectorySeparatorChar) -or
+      $rightPath.EndsWith([string][System.IO.Path]::AltDirectorySeparatorChar)) {
+    $rightPath
+  }
+  else {
+    $rightPath + [System.IO.Path]::DirectorySeparatorChar
+  }
+
+  return $leftPath.StartsWith($rightPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $rightPath.StartsWith($leftPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Write-CanvasUtf8WithoutBom {
   param(
     [Parameter(Mandatory = $true)]

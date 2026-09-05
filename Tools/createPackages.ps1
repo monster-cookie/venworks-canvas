@@ -60,23 +60,6 @@ function Test-CanvasSamePath {
   )
 }
 
-function Test-CanvasOverlappingPaths {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Left,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Right
-  )
-
-  $leftPath = [System.IO.Path]::GetFullPath($Left).TrimEnd('\', '/')
-  $rightPath = [System.IO.Path]::GetFullPath($Right).TrimEnd('\', '/')
-  $separator = [System.IO.Path]::DirectorySeparatorChar
-  return [string]::Equals($leftPath, $rightPath, [StringComparison]::OrdinalIgnoreCase) -or
-    $leftPath.StartsWith($rightPath + $separator, [StringComparison]::OrdinalIgnoreCase) -or
-    $rightPath.StartsWith($leftPath + $separator, [StringComparison]::OrdinalIgnoreCase)
-}
-
 function Get-CanvasJunctionTarget {
   param(
     [Parameter(Mandatory = $true)]
@@ -223,6 +206,31 @@ $allowedStagingPaths = @($packages.StagingPath)
 foreach ($package in $packages) {
   $stagingPath = [string]$package.StagingPath
   Assert-CanvasStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
+}
+$configuredPhysicalTargets = [System.Collections.Generic.List[object]]::new()
+foreach ($package in $packages) {
+  $configuredTarget = [string]$expectedPhysicalTargetByKey[$package.Key]
+  if ([string]::IsNullOrWhiteSpace($configuredTarget)) {
+    continue
+  }
+
+  $configuredTargetPath = Get-CanvasNormalizedFullPath -Path $configuredTarget
+  $matchingTarget = @($configuredPhysicalTargets | Where-Object {
+    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+  })
+  if ($matchingTarget.Count -ne 0) {
+    throw "$($package.Key) and $($matchingTarget[0].Key) cannot use identical or nested physical module folders: $configuredTargetPath"
+  }
+  $matchingStagingPath = @($allowedStagingPaths | Where-Object {
+    Test-CanvasOverlappingPaths -Left $_ -Right $configuredTargetPath
+  })
+  if ($matchingStagingPath.Count -ne 0) {
+    throw "$($package.Key) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0])"
+  }
+  $configuredPhysicalTargets.Add([pscustomobject]@{
+    Key = $package.Key
+    Path = $configuredTargetPath
+  })
 }
 $allowedPhysicalTargetPaths = [System.Collections.Generic.List[string]]::new()
 

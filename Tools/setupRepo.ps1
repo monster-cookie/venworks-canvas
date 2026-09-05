@@ -23,6 +23,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 $loadedConfigurationRoot = Get-Variable -Name SharedConfigurationRepositoryRoot -Scope Global -ErrorAction SilentlyContinue
 $environmentConfigurationLoaded = Get-Variable -Name SharedConfigurationEnvironmentLoaded -Scope Global -ErrorAction SilentlyContinue
 if ($null -eq $loadedConfigurationRoot -or
@@ -210,6 +211,14 @@ function Remove-VerifiedBackupDirectory {
 
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 $operations = @()
+$configuredStagingPaths = @($Global:ModuleVariants | ForEach-Object {
+  $configuredStagingPath = Get-NormalizedFullPath -Path $_.StagingFolderPath
+  Assert-RepositoryStagingPath -Path $configuredStagingPath
+  [pscustomobject]@{
+    VariantName = $_.VariantName
+    Path = $configuredStagingPath
+  }
+})
 $configuredVariantTargets = @()
 foreach ($configuredVariant in $Global:ModuleVariants) {
   if ([string]::IsNullOrWhiteSpace($configuredVariant.PluginModulePath)) {
@@ -218,10 +227,16 @@ foreach ($configuredVariant in $Global:ModuleVariants) {
 
   $configuredTargetPath = Get-NormalizedFullPath -Path $configuredVariant.PluginModulePath
   $matchingTarget = @($configuredVariantTargets | Where-Object {
-    Test-SamePath -Left $_.Path -Right $configuredTargetPath
+    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
   })
   if ($matchingTarget.Count -ne 0) {
-    throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use the same physical module folder: $configuredTargetPath"
+    throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use identical or nested physical module folders: $configuredTargetPath"
+  }
+  $matchingStagingPath = @($configuredStagingPaths | Where-Object {
+    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+  })
+  if ($matchingStagingPath.Count -ne 0) {
+    throw "$($configuredVariant.VariantName) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0].Path)"
   }
   $configuredVariantTargets += [pscustomobject]@{
     VariantName = $configuredVariant.VariantName
@@ -237,9 +252,6 @@ foreach ($variant in $variants) {
   $stagingPath = Get-NormalizedFullPath -Path $variant.StagingFolderPath
   $targetPath = Get-NormalizedFullPath -Path $variant.PluginModulePath
   Assert-RepositoryStagingPath -Path $stagingPath
-  if (Test-SamePath -Left $stagingPath -Right $targetPath) {
-    throw "$($variant.VariantName) staging and physical module paths cannot be the same."
-  }
 
   if (Test-Path -LiteralPath $targetPath) {
     if (!(Test-Path -LiteralPath $targetPath -PathType Container)) {
