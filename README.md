@@ -1,167 +1,133 @@
-# venworks-canvas
-BGS Scaleform HTML and CSS Engine along with a papyrus data layer. 
+# Venworks Canvas
 
-## VWCANVAS-9: explicit consumer UI-loading PC test
+Venworks Canvas is a Starfield Player HUD host and Papyrus registration layer for independently packaged Scaleform consumers.
 
-Registration remains entirely Papyrus-side. A consumer first registers its persistent UUID and descriptor, checks the result, then explicitly calls `TryRequestUiLoad(owner, consumerId)` when ready. Registration itself never queues or publishes UI work. The demo registrars make these two calls in sequence during normal startup, without console commands. The Player HUD overlay identifies `EXPLICIT UI LOAD TEST`; actual A/B panels and `READY` diagnostics, not the banner, establish visible loading.
+## Packages
 
-`TryRegisterConsumer()` returns a caller-owned Papyrus receipt after one nonblocking attempt. `REGISTRATION_ACCEPTED`, `REGISTRATION_UPDATED`, and `REGISTRATION_UNCHANGED` acknowledge stored state; `DEFERRED_REGISTRY_BUSY` is neither acceptance nor rejection. The legacy `RegisterConsumer()` Boolean wrapper remains available, but false now includes contention: new consumers must use the explicit receipt. No acknowledgement establishes UI readiness.
+`Tools/sharedConfig.ps1` is the only source of truth for package variants, staging paths, Papyrus ownership, Scaleform manifests, output names, UI namespaces, and Player/Ship HUD inclusion.
 
-`OnInit` only installs menu callbacks. A supported HUD opening schedules timer-driven reconciliation; it does not resume a waiting `OnInit` stack. Registrars try `AttemptGuard`, then the host tries `RegistryGuard`; neither waits for acquisition. Retry delays, subscriptions and logging run outside both guards. Each deferred sequence has at most 20 attempts at half-second retry intervals, with exhaustion logged and pending data retained for a later event. Overlapping events may create overlapping bounded sequences; no fairness or native-timer ordering guarantee is claimed. The old saved `RegistrationAttemptActive` flag is not consulted as a lock or scheduling gate.
+| Variant | Plugin | Purpose | Staging root |
+| --- | --- | --- | --- |
+| `CANVAS` | `Venworks-Canvas.esm` | Registry, Player HUD host, and shared transport | `Staging-Canvas` |
+| `EXAMPLE` | `Venworks-Canvas-Example.esm` | Minimal independently registered consumer | `Staging-Example` |
+| `COMPONENTGALLERY` | `Venworks-Canvas-ComponentGallery.esm` | Independently registered component gallery | `Staging-ComponentGallery` |
 
-An acquired registrar guard stores a complete pending update before calling the host. Busy/unavailable host results retain it; only acceptance commits active descriptor fields, while terminal rejection clears that submitted pending request. If the registrar guard itself is busy, the input has **not** been stored: the caller must retain and resubmit it. The UpdatedA migration quest does this from its persistent VMAD descriptor until an explicit registration acknowledgement. Known legacy rekey and registration share one host transaction, so busy cannot be misread as an invalid UUID or skipped migration.
+Each staging root must remain a Vortex junction. Packaging may replace the exact ESM and BA2 child files beneath a verified junction, but it must never delete, move, recreate, or retarget the junction itself.
 
-The explicit second step obtains paths and version from the owner-checked registered descriptor. It returns `UI_LOAD_QUEUED`, `UI_LOAD_ALREADY_REQUESTED`, a `REJECTED_*` reason, or a distinct `DEFERRED_*` result. Queuing is not submission; `UI_LOAD_SUBMITTED` is logged only after the native call returns and is not delivery or rendering acknowledgement. `CheckUiLoadRequest` / `TryCheckUiLoadRequest` are separate non-transmitting diagnostics and return `REGISTERED_UI_LOAD_ELIGIBLE` for a valid owner/UUID pair. Expected negative registration fixtures never request UI loads. A deferred load never undoes an accepted descriptor update.
+## Registration and UI loading
 
-### Load-only transport and presentation state
+Consumers supply a persistent UUID, display name, normal and large movie paths, and descriptor version. Canvas validates the UUID, normalizes accepted UUID forms to lowercase, and treats the normalized value as the stable registry key. Canvas does not generate an identity during registration. A mod author may explicitly use the Venworks Core UUID helper or any other UUID source, but must persist that identity rather than regenerate it on every load.
 
-The only active bridge packet is one ASCII envelope: `VWC_EVT/1|canvas.ui.load|` followed by five decimal-length-prefixed fields in this order: protocol `1`, normalized consumer UUID, descriptor version, normal movie path, and large movie path. Consumer-facing Papyrus calls select the supported event header and packet type through Canvas-owned struct-as-enum integer values; Canvas resolves those selectors and emits the canonical wire spelling, so callers cannot supply raw header or packet-type strings. Each field is encoded as `<length>:<value>`; the complete packet is limited to 512 characters. The old registry snapshot and diagnostic publishers and their host ingress remain disabled.
+Registration and UI loading are intentionally separate calls:
 
-Pending work is capped at 32 requests, not 32 registrations. Requests coalesce by UUID; identical owner/descriptor requests are suppressed during the current Player HUD activation. A ticketed pump reserves one request under a nonblocking guard, rechecks its registered owner and descriptor, then invokes the native bridge outside every guard. The next submission is scheduled at least one second after completing the preceding submission path. Local contention retries stop after 20 attempts. Completion retries never invoke the native bridge again. Expiring timer tickets and activation reset prevent saved scheduling state from permanently suppressing future requests.
+1. The consumer calls `TryRegisterConsumer(...)` and retains the returned receipt.
+2. Only an accepted, updated, or unchanged registration sets `UI_LOAD_REQUEST_NEEDED`.
+3. Outside every guard, the consumer calls `TryRequestUiLoad(owner, consumerId)`.
+4. Canvas queues and publishes one load command for that owner-checked registration.
 
-A new observed Player HUD activation resets only presentation bookkeeping. The demos reconcile registration and explicitly request loading again, including when registration returns `REGISTRATION_UNCHANGED`. It does not reset `Consumers` or an acknowledged descriptor update. Queued work is not a durable delivery promise; a missed event is not automatically retransmitted for lack of acknowledgement. Invalidated timer tickets are inert. The new transient structs/fields may be serialized by Papyrus, so they are explicitly reset on the HUD callback rather than assumed to disappear on save/reload.
+This explicit second call is part of normal consumer startup; it is not a console-driven workflow. Registration does not itself publish to the UI bridge.
 
-The Player HUD owns one `CustomAlertsData` subscription, primes the provider, validates load commands, selects normal/large assets, and upserts only the named consumer. Repeated identical loads do not create duplicate loaders. Loader failures and stale callbacks are isolated, and disposal removes owned loaders/listeners/subscriptions. The ship host deliberately reports `SHIP UI TRANSPORT DEFERRED` and does not subscribe in this phase.
+The registry initializes `Consumers` only when the saved array is `None`. Existing saved records are preserved. Same-owner descriptor changes update the stored record, while a different owner for the same UUID is rejected. Busy guards return distinct deferred receipts and never masquerade as success or invalid input.
 
-This diagnostic build deliberately disables the Watch presentation, including its compass/O2/environment display. The Canvas-owned `BottomLeftGroup` patch hides the Watch before its normal setup, allows every vanilla UI-data subscription to run, then stops its movie tree and alert timer, detaches its visual children, and keeps its alert animation entry points inert. It retains the container referenced by HUD layout and the shared data manager; HUD opacity/visibility updates cannot reveal detached Watch visuals. This is isolation, not a repair of normal Watch animations or a production Watch replacement.
+`OnInit` installs menu callbacks only. Registration attempts and presentation reconciliation use bounded timers and nonblocking `TryLockGuard` sections. Logging, waits, scheduling, menu subscription changes, and the native UI bridge all remain outside acquired guards.
 
-The vanilla custom-alert handler treats `sAlertText` as an animation frame label and sound identifier. Canvas packets are not valid Watch frame labels, so that handler remains inert even though its subscription is restored. Canvas obtains the data-manager class directly from the patched Watch component, requires proof that all vanilla subscriptions completed and the presentation was then disabled, gets the provider, and subscribes. Vanilla `Subscribe` replays an existing ready provider; `GetDataFromClient` alone does not force delivery. The receiver reads indexed native alert collections without requiring an ActionScript `Array` cast. It accepts at most 256 entries per callback and routes only the fixed `VWC_EVT/1|canvas.ui.load|` prefix through the existing strict parser. Header and packet-type comparison folds ASCII letter case only because the Watch path can change their casing; the original packet, length prefixes, UUID, version, and movie paths are never normalized before strict parsing. It emits at most eight numbered callback summaries and sixteen alert classifications per host instance, followed by one suppression notice for each limit. Classifications expose only `UI LOAD`, `CANVAS OTHER`, `OTHER`, `INVALID ENTRY`, and character counts; unrelated alert text is never logged. Exact and case-folded UI-load prefixes are identified separately in bounded diagnostics. `PROVIDER WAITING FOR CLIENT`, numbered `PROVIDER CALLBACK`, `PROVIDER ALERT ... UI LOAD`, `RX LOAD`, and consumer `READY` are distinct observations. Missing Watch patch deployment, incomplete vanilla subscription setup, or an active presentation fails receiver setup explicitly rather than silently falling back to an unverified manager.
+## Player HUD transport
 
-Low-frequency load events still use the shared, lossy transport; cached provider data, HUD-startup timing, in-flight menu transitions, and another mod consuming the channel remain runtime risks. UUID/owner checks are Papyrus API checks, not authentication of an arbitrary packet from another mod. No UI-to-Papyrus reply channel, guaranteed ordering/delivery, or production compatibility is claimed. Success with the Watch disabled does not establish safety with its normal animation handlers restored.
+The current bridge carries only explicit UI-load commands. The wire packet is `VWC_EVT/1|canvas.ui.load|` followed by five decimal-length-prefixed fields: protocol version, normalized consumer UUID, descriptor version, normal movie path, and large movie path. Canvas-owned struct-as-enum selectors choose the supported header and packet type so consumer code cannot supply arbitrary wire identifiers.
 
-The current Consumer A and Consumer B probes are static movies and request no UI-data providers or Core topics. Declarative child subscription metadata, one host subscription per distinct channel, and host-to-child fanout remain lifecycle work for VWCANVAS-16; they are not part of this control-channel diagnostic and cannot explain a missing `RX LOAD` before a child loader exists.
+The Player HUD host restores the vanilla Watch data subscriptions, then disables Watch presentation before Canvas begins receiving bridge events. The Watch visual tree and alert animation entry points stay inactive while the shared data manager remains available. This prevents the high-volume Watch animation and responsiveness failures observed during development; it is not a general repair for the vanilla Watch implementation.
 
-### Build and packaging
+The host validates each UI-load packet, selects the normal or large asset for the active HUD, and upserts the consumer by UUID. Each consumer loads into its own namespaced movie path. A missing or invalid consumer movie fails independently and cannot occupy a global slot or block another consumer.
 
-Use Venworks Core **2.1.8 or higher**, matching the project changelog, and the VWHUD-v2-derived toolchain declared in `Scaleform/probes/consumer-discovery/probe-matrix.psd1`. The reproducible build fixture remains Core commit `fce6fadcb110f8a462c41680a1147d3c36e8421f` (VWCORE-5), with eight pinned source/runtime pairs including the user-tested `RM>` console helper. The UI-receive change does not rebuild or modify Core. The profile ESMs bind fixed UUIDs and were generated with Mutagen, then independently serialized with Spriggit. The generator and `.work` build inputs are local scratch, not supplied by a fresh checkout; use materialized committed Baseline packages to deploy, or the matching verified profile ESM inputs when rebuilding. The deployable payloads are the ESM and matching BA2 in each of `Staging-Host`, `Staging-ConsumerA`, and `Staging-ConsumerB`.
+The bridge is one-way and lossy. Submission is not delivery or render acknowledgement, and there is no UI-to-Papyrus reply channel. Reopening the Player HUD causes registered consumers to request their UI again. Ship HUD delivery, pilot-seat behavior, and PS5 acceptance remain outside the current PC gate.
 
-The Host diagnostic archive includes eight pinned Core PEX dependencies: its existing six, plus `Utilities/Console` and `Tests/ConsoleOutputTests`. This is a diagnostic dependency bundle, not a rebuilt or released Core distribution. Do not deploy the new Canvas scripts without the matching Host BA2; an older Host lacks the echo helper. `compileScripts.ps1` remains the supported compiler entry point and forwards to the currently active profile compiler. `createPackages.ps1` uses the standard Host/ConsumerA/ConsumerB variant keys and builds only each selected variant's existing PC Main loose payload; it does not build, copy, or stage probe inputs. The profile-aware staging and Spriggit dump helpers remain active because the generic entry points do not replace their responsibilities. The Spriggit assembly entry point remains available as an explicit failure guard and never assembles an ESM. Neither `checkRepo.ps1` mode accepts Git LFS pointers, empty files, truncated headers or the wrong binary signature as staged ESM/BA2 content.
+## Build pipeline
 
-From the repository root, supply verified fixture paths through `$coreFixture`, `$hudFixture`, and the selected profile's existing plugin directory through `$plugins`:
+The production build pipeline has three entry points:
+
+1. `Tools/compileScripts.ps1` compiles the Papyrus sources declared by the selected variants.
+2. `Tools/buildScaleform.ps1` builds the selected Canvas consumer movies and, for `CANVAS`, the Player HUD support movies and Ship HUD loader movies through the pinned VWHUD v2-derived toolchain.
+3. `Tools/createPackages.ps1` validates all inputs, serializes the generated ESMs to reviewable Spriggit YAML, creates uncompressed PC Main BA2 archives, and swaps only the exact child files under verified staging junctions.
+
+Plugin authoring is a separate maintainer operation. `createPackages.ps1` requires a complete generated plugin set plus `generation-evidence.json` in `.work/canvas/plugins`. Spriggit YAML is a review representation only and is never an assembly source. `Tools/SpriggitAssembleDatabaseFromYaml.ps1` remains available solely as a fail-closed guard against accidental assembly.
+
+The checked build matrix pins the exact Venworks Core and VWHUD revisions and file hashes used for reproducible artifacts. Venworks Core 2.1.8 or newer is required at runtime.
+
+From the repository root:
 
 ```powershell
-.\Tools\verifyConsumerDiscoveryProbe.ps1 -SourceOnly -ProbeProfile Baseline
-.\Tools\compileScripts.ps1 -VenworksCoreRepositoryPath $coreFixture
-.\Tools\buildConsumerDiscoveryProbe.ps1 -VwHudRepositoryPath $hudFixture
-.\Tools\buildConsumerDiscoveryWatchMovies.ps1 -VwHudRepositoryPath $hudFixture -VanillaInterfacePath $vanillaInterface
-.\Tools\dumpConsumerDiscoveryPluginsToYaml.ps1 -ProbeProfile Baseline -PluginsDirectory $plugins
-.\Tools\verifyConsumerDiscoveryProbe.ps1 -ArtifactsOnly -ProbeProfile Baseline -PluginsDirectory $plugins -VwHudRepositoryPath $hudFixture -VenworksCoreRepositoryPath $coreFixture
-.\Tools\stageConsumerDiscoveryProbe.ps1 -ProbeProfile Baseline -PluginsDirectory $plugins -VwHudRepositoryPath $hudFixture -VenworksCoreRepositoryPath $coreFixture
-.\Tools\verifyConsumerDiscoveryProbe.ps1 -ProbeProfile Baseline -PluginsDirectory $plugins -VwHudRepositoryPath $hudFixture -VenworksCoreRepositoryPath $coreFixture
-.\Tools\checkRepo.ps1 -VariantKeys HOST,CONSUMERA,CONSUMERB
+$coreRepository = 'C:\Repositories\Venworks\starfield-venworks-core'
+$hudRepository = 'C:\Repositories\Venworks\venworks-honkcore-ta-ui'
+
+.\Tools\compileScripts.ps1 -VenworksCoreRepositoryPath $coreRepository
+.\Tools\buildScaleform.ps1 -VwHudRepositoryPath $hudRepository
+.\Tools\createPackages.ps1 -Profile Production -VenworksCoreRepositoryPath $coreRepository -VwHudRepositoryPath $hudRepository
 ```
 
-Run source, artifact, serialization, and stage verification for Baseline, Faults, and UpdatedA using each profile's matching plugin directory; finish with Baseline staged. Staging invokes Spriggit serialization itself, retains the exact Vortex junctions, and rejects equal or nested installation targets before swaps. Spriggit is review-only: never assemble ESMs from YAML. The permanent ESM names, FormIDs, masters, small-master flags, and non-RunOnce quest configuration remain unchanged.
+Use `-VariantKeys CANVAS`, `-VariantKeys EXAMPLE`, or `-VariantKeys COMPONENTGALLERY` to select a subset. An omitted variant list means all variants. Unselected staging packages must already contain exactly their expected ESM and BA2 because full verification checks the complete deployed set.
 
-For this receiver/protocol rebuild, regenerate the Canvas Papyrus output because the Host now requires `Scripts/Venworks/Canvas/Enumerations.pex` and the updated `Registry.pex`; reuse the matching existing `-PluginsDirectory` and `-ShipMoviesDirectory` without regenerating plugins. Build the auxiliary movies and the four Watch variants into fresh output directories, then pass the fresh `-ScriptsDirectory`, `-MoviesDirectory`, and `-WatchMoviesDirectory` to artifact verification, staging, and full verification. `$vanillaInterface` is the user's extracted vanilla Interface directory, never a source-controlled machine path. `buildConsumerDiscoveryWatchMovies.ps1` rejects existing output directories, checks pinned vanilla/output hashes, builds twice through the pinned compiler, and rejects changes to unrelated decompiled Bethesda classes. Its `-EstablishExpectedHashes` mode is for explicit development of a changed patch only: outputs remain unstageable until reviewed hashes are pinned and a normal build succeeds. Reusable tooling and patch definitions live in `Tools` and `Scaleform`, not `.work`.
+`createPackages.ps1` reads Archive2 and staging target paths from `.env`, rejects overlapping package targets, verifies binary headers and exact BA2 inventories, and records hashes before replacing any deployed child file. A failed swap restores the prior child files without replacing the staging directory or junction.
 
-Use `stageConsumerDiscoveryProbe.ps1 -HostOnly` for this increment. It verifies the unchanged consumer ESMs, canonical consumer BA2 inventories, archive structure, and current entry hashes, but neither rebuilds nor installs those two packages. It deliberately does not compare an unselected consumer's existing PEX bytes with a fresh compiler run because Papyrus may reorder optimized bytecode without a source change. All three package targets must remain disjoint, and all three packages retain verification evidence. A Vortex-managed physical module directory and its repository Junction are immutable container objects: staging may copy, replace, or delete explicitly selected package files inside that existing directory, but must never move, delete, recreate, or retarget either directory object. The helper copies each candidate to a temporary file inside the existing target and then replaces only the matching ESM/BA2; rollback follows the same file-only rule. Back up the current Host ESM/BA2 and record junction targets before staging; rollback restores that Host payload only without renaming plugins or recreating junctions. The Host BA2 gains `Scripts/Venworks/Canvas/Enumerations.pex`, replaces `Registry.pex` and the Canvas host SWF, and carries forward the four verified Watch-disabled Player HUD variants; permanent ESMs and both consumer BA2s stay unchanged.
+## Validation
 
-Source-only CI checks all three profiles' typed `Consumers` seeds and quest/header contracts without game tools. Source and artifact verification permit the single guarded-reservation/post-guard Watch Alert submission site only in Registry; all other Canvas scripts remain forbidden from calling it. Focused wire/source tests live in `Tools/testConsumerDiscoveryUiLoad.ps1`. Compilation, PowerShell checks, and the retained parser fixtures are not Papyrus/Scaleform gameplay tests.
+Source-only validation, including all source-contract tests:
 
-`Tools/testConsumerDiscoveryUiReceive.ps1` uses the existing Node executable to execute extracted ActionScript subscription/receiver bodies with cached-ready and delayed providers, native-style indexed collections, malformed events, disposal, setup cleanup, and bounded diagnostics. It does not run Flash/Scaleform or demonstrate delivery. `Tools/testConsumerDiscoveryPackaging.ps1` also checks Host-only profile staging, standard package-variant selection contracts, canonical-key rejection, junction preservation, and replacement-only-after-success behavior. Run these alongside the guard, UUID, console, and UI-load checks, both `checkRepo.ps1` modes, and full artifact verification.
+```powershell
+.\Tools\verifyCanvas.ps1 -SourceOnly
+```
 
-The default packaging test remains source-only and does not require Archive2. Run `Tools/testConsumerDiscoveryPackaging.ps1 -ExerciseArchiveCreation` for the disposable Archive2 fixture that builds only Host, verifies that both consumer archives remain byte-identical, preserves every temporary Junction, and confirms that empty payloads and mismatched targets fail before replacement. It never points at the configured Vortex module folders.
+Individual contract tests:
 
-`Tools/testConsumerDiscoveryGuards.ps1` checks guard/lifecycle source contracts, follows local helper calls for logging/wait/subscription/scheduling hazards, and rejects deliberate unsafe source mutations held in memory. It is included in source verification and the UUID checks. It does not execute the Papyrus VM or establish lock behavior across save/load. `compileScripts.ps1` writes the profile compiler's standard `.work/consumer-discovery/scripts` output; pass that directory as `-ScriptsDirectory` when explicitly overriding subsequent artifact, staging, or full verification commands.
+```powershell
+.\Tools\testConsole.ps1
+.\Tools\testGuards.ps1
+.\Tools\testPackaging.ps1
+.\Tools\testUiLoad.ps1
+.\Tools\testUiReceive.ps1
+.\Tools\testUuid.ps1
+```
 
-`Tools/testConsumerDiscoveryConsole.ps1` checks the real `Global` declarations, permanent plugin/file-local record mappings, failure guards, unchanged UUID input and B ownership, separate recovery dispatch, and documented commands. Its negative mutations are in memory only. Source verification includes it; neither this check nor compilation proves that the game console can invoke the packaged functions or resolve these small-master records.
+Full artifact and deployed-staging validation:
 
-### Persistent UUID identity
+```powershell
+.\Tools\verifyCanvas.ps1 -Profile Production -VenworksCoreRepositoryPath $coreRepository -VwHudRepositoryPath $hudRepository
+```
 
-Every new consumer supplies a stable, non-nil UUID separately from its display name and safe asset namespace. Acceptable shapes are dashed D (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`), braced D, and compact 32-hex N, in any combination of upper/lower case. Whitespace, URNs and malformed values are rejected rather than repaired. Papyrus compares decoded UUID values because VM string interning may preserve earlier casing; ActionScript normalizes every external UUID intake to a lowercase dashed key. Asset folders are not renamed to UUIDs, and display labels are not registration identities.
+These commands validate source contracts, pinned inputs, generated evidence, ESM/BA2 signatures, hashes, archive inventories, and deployed child files. They do not establish Starfield runtime behavior.
 
-| Consumer | Permanent UUID | Existing asset namespace |
-| --- | --- | --- |
-| A | `a8098c1a-f86e-4b1e-9d7c-5a102bf38460` | `venworks.canvas.probe.consumer-a` |
-| B | `beef70b2-024e-4e9b-a8d5-70a0c882c431` | `venworks.canvas.probe.consumer-b` |
-| Missing-movie probe | `cad7cd56-217a-4e62-a98d-42c3adad07b5` | `venworks.canvas.probe.missing` |
+Prior PC gameplay established the registration, owner checking, bounded bridge path, and independent visible loading of two consumer movies without renewed Watch lag. Because this cleanup establishes the permanent plugin and package identities, a new disposable save created with the permanent names must repeat the Player HUD acceptance cases before runtime closure is claimed.
 
-Only those known legacy demo keys are explicitly translated by the registrars. The registry rekeys an existing row only for its current quest owner and never resets the array; this also covers new UUID VMAD defaults encountering saved legacy rows. Unknown legacy names fail closed. The Faults profile attempts A's uppercase UUID from a different quest owner, which must be rejected without changing A.
+## PC runtime acceptance
 
-Core exposes structural validation, parsing, formatting, value comparison and an explicit pure-Papyrus `GenerateV4()` helper. Structural validation permits nil; Canvas rejects nil as an identity. Generation uses the game's non-cryptographic random source: no cryptographic security or guaranteed uniqueness is claimed. Canvas never calls the generator or invents an identity when one is missing. An author may use any UUID source and must retain the result, not regenerate it on every load.
+Deploy through Vortex, confirm all three permanent packages are enabled, and start with a new disposable save. Run these cases in order:
 
-### PC test sequence
+1. Canvas only: the host initializes, Watch presentation remains disabled, no consumer load is submitted, and gameplay remains responsive.
+2. Canvas plus Example: registration is acknowledged, one UI load is queued/submitted, and the Example movie becomes visibly ready.
+3. Canvas plus both consumers: both UUIDs register and both movies become visibly ready without static slots.
+4. Save and reload: records remain unchanged and both consumers explicitly request and visibly restore their UI.
+5. Reopen the Player HUD ten times: both consumers reappear without duplicate loaders, guard errors, Watch animation activity, or growing input lag.
+6. Fault profile: the different-owner collision is rejected and the missing movie fails independently while the valid consumers continue working.
 
-1. Close Starfield and deploy all matching Baseline packages through Vortex. Verify deployed files match staging; retain permanent filenames. Use disposable saves and a separate pre-Canvas save for each package combination.
-2. Load directly from the main menu, with no console command required. Test Host only first: the Watch must be absent immediately and the host must report `WATCH SUBSCRIPTIONS RESTORED` followed by `WATCH PRESENTATION DISABLED`, with no consumer commands submitted. A visible Watch, `WATCH PATCH MISSING`, `WATCH SUBSCRIPTIONS NOT RESTORED`, or `WATCH PRESENTATION ACTIVE` means stop and check deployment before enabling consumers. Then test Host+A and Host+A+B. A should produce one load submission, and A+B two spaced submissions, followed by their visible panels. Require a numbered `PROVIDER CALLBACK`, a `PROVIDER ALERT ... UI LOAD` classification, `RX LOAD`, `LOAD`, then `READY` per consumer. Allow approximately 15 seconds of unpaused gameplay with the console closed; `SUBSCRIBED` alone is not a pass.
-3. Match `REGISTRATION_ACCEPTED` / `REGISTRATION_UNCHANGED` and `REGISTRATION_ACK` to separate `UI_LOAD_QUEUED` / `UI_LOAD_SUBMITTED` logs. The healthy Baseline count is zero, one, or two. A submitted command without a visible panel is not a pass; retain the host diagnostics and full Papyrus/Venworks logs.
-4. Stop on renewed lag/watch animation problems, native guard ownership/unlock errors, repeated submissions without a new HUD activation/descriptor, or repeated retry exhaustion. Busy/inactive/full-queue results are deferred, never registration rejection or UI readiness. There are no bridge heartbeats or whole-registry snapshots.
-5. Your earlier registration-only reload test was reported successful with `REGISTRATION_UNCHANGED`. For this build, save/reload with the same packages and exercise repeated HUD teardown/recreation: retain the registered records and restore both panels without duplicate loaders. Record a missed initial HUD callback or event as a failure, even if reopening the HUD recovers it.
-6. After Baseline works, test normal/large selection, then UpdatedA (version 2 visible and persistent) and Faults (owner collision logged in Papyrus; missing movie fails in the host while A/B remain visible). Change one profile at a time; never rename plugins in a save. Ship HUD, pilot-seat delivery, and PS5 are deferred.
-7. Search the entire log, including initial load/revert, for `Cannot unlock`, `RegistryGuard`, and `AttemptGuard`. A native ownership error fails acceptance even if loading later succeeds. Build-time tests do not establish Papyrus VM scheduling or guard safety.
-8. Old saved quests without installed callbacks still use the separate recovery commands below. Replacing PEX is not claimed to repair orphaned guards or corrupted saved stacks. A normal fresh deployment must not depend on recovery commands.
+Capture the Papyrus log for each run. `REGISTRATION_ACK`, `UI_LOAD_QUEUED`, and `UI_LOAD_SUBMITTED` are intermediate evidence; the visible consumer `READY` state is required for UI acceptance.
 
-### Global console diagnostics: resolve first
+## PC console diagnostics
 
-These diagnostics are optional for UI loading. PC console echo requires the user's debug-logging configuration; use `[Papyrus] bEnableLogging=1` and `bEnableTrace=1`. The exact individually required flag has not been isolated. Neither gameplay registration nor UI loading depends on these flags. To check the deployed utility, run:
+These optional commands call functions explicitly declared `Global`. They use fully qualified Papyrus function names, never load-order prefixes, FormIDs, or quest display titles.
 
 ```text
-cgf "Venworks:Core:Utilities:Console.ConsoleEcho" "VWCANVAS: echo smoke test"
-cgf "Venworks:Core:Tests:ConsoleOutputTests.Run"
+cgf "Venworks:Canvas:Registry.ConsoleResolve"
+cgf "Venworks:Canvas:Registry.ConsoleEnsureStorage"
+cgf "Venworks:Canvas:ComponentGalleryRegistrar.ConsoleResolve"
+cgf "Venworks:Canvas:ComponentGalleryRegistrar.ConsoleCheckUiLoadRequest" "beef70b2-024e-4e9b-a8d5-70a0c882c431"
+help "VWCANVAS_ComponentGalleryRegistrar" 4 QUST
 ```
 
-Require visible `RM> VWCANVAS: echo smoke test` before continuing. The Core probe submits eleven lines covering single/block output, blank lines, None/empty arrays and two controlled LF rejection messages, ending in `CONSOLE_TEST_END`; see [Core console output documentation](https://github.com/monster-cookie/starfield-venworks-core/blob/fce6fadcb110f8a462c41680a1147d3c36e8421f/Documentation/ConsoleOutput.md) for the exact sequence. The end marker is not an automatic PASS. The compiler rejects `\r` literals, so CR/CRLF rejection is source-checked but not exercised by this VM probe. Capture actual console decoration/errors and stop if the `RM> ` prefix behaves unexpectedly. No visible-output acceptance is claimed by build checks.
+Canvas console functions print one final result through Venworks Core `ConsoleEcho` and also write bounded `VWCANVAS_CONSOLE/1` diagnostics. Visible echo requires the Starfield Papyrus debug logging configuration used by mod authors. Resolution proves only that the packaged global function found its permanent quest and attached script; it does not prove registration, bridge delivery, or rendering.
 
-Each Canvas command below explicitly calls the shared helper and prints one final `RM> VWCANVAS: <script>.<function> | <status>` line, including `CONSOLE_RESOLVE_FAILED`. Existing Papyrus return values remain for script callers; CGF return values are not themselves console feedback. The detailed begin/resolution/result logs remain separate. Echoing occurs only on explicit console wrapper paths, outside guarded work, and does not mirror ordinary logging or use the watch bridge.
+## Current limits
 
-These commands target functions explicitly declared `Global` in the existing packaged scripts. Their first console argument is a qualified function name, never a FormID. Inside Papyrus, each wrapper resolves its own quest using `Game.GetFormFromFile` with the permanent plugin name and file-local record ID, then checks both the form and attached-script cast for `None`. The diagnostic mappings are Host registry `0x000800`, Consumer B registrar `0x000800`, and UpdatedA migration `0x000801` in their respective ESMs. Bethesda's installed `SQ_FollowersScript.GetScript()` uses this lookup/cast pattern; that source precedent does not establish runtime acceptance for these small-master fixtures. Do not copy runtime load-order prefixes from LOOT, xEdit or the Creation Kit.
-
-After both consumers are confirmed registered, run only the resolution gate first:
-
-```text
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleResolve"
-```
-
-Inspect the Papyrus/Venworks log for `VWCANVAS_CONSOLE/1 | CONSOLE_BEGIN`, then `CONSOLE_RESOLVED | Form=... | RuntimeFormId=...`. This proves only that the packaged function ran and resolved its quest/script, not registration or UI readiness. No begin marker means invocation/loading is not confirmed. `CONSOLE_TARGET_NOT_FOUND` or `CONSOLE_SCRIPT_NOT_BOUND` means stop and capture the console output and logs; the wrapper returns `CONSOLE_RESOLVE_FAILED` without forwarding work. The resolution-only command does not initialize storage, register consumers, or schedule retries. The migration quest exists only in UpdatedA: its missing-target result under Baseline or Faults is expected.
-
-Optional in-game quest discovery uses the **Editor ID**, not the display title: `help "VWCANVAS9_ConsumerBRegistrar" 4 QUST`. This is a diagnostic aid, not an input requirement for the global wrappers.
-
-Once resolution succeeds, these explicit probes exercise the UI-request boundary as Consumer B. Each forwards the input unchanged through B's existing instance method and passes B as the owner. They do not register another consumer, transmit UI data, or schedule retries; the existing registry request path can initialize missing storage and prune invalid owners. Read `CONSOLE_RESULT | Status=...` and the host's result in the logs:
-
-```text
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "BEEF70B2-024E-4E9B-A8D5-70A0C882C431"
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "a8098c1a-f86e-4b1e-9d7c-5a102bf38460"
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerBRegistrar.ConsoleCheckUiLoadRequest" "ea1d08f2-80a9-454a-8051-bd24b99650fc"
-```
-
-Expected visible results are respectively `REGISTERED_UI_LOAD_ELIGIBLE`, `REJECTED_OWNER_MISMATCH`, and `REJECTED_NOT_REGISTERED`, each with the `VWCANVAS: ConsumerBRegistrar.ConsoleCheckUiLoadRequest` label. Compare each printed result with `CONSOLE_RESULT | Status=...` in the logs. `DEFERRED_REGISTRY_BUSY` is inconclusive, not acceptance or rejection: let gameplay advance and manually retry the same command. These console probes and save-recovery behavior require human PC execution; build-time checks do not establish their runtime success. Manual lookup wrappers for owned fixture quests do not replace dynamic consumer registration or introduce coordinated consumer slots.
-
-Repeat B's request with `{BeEf70B2-024e-4e9b-A8D5-70A0c882C431}` and `beef70b2024e4e9ba8d570a0c882c431`: both must find B. Nil, whitespace and malformed UUIDs must return `REJECTED_CONSUMER_ID`. To run the included Core probes explicitly:
-
-```text
-cgf "Venworks:Core:Tests:UUIDTests.Run"
-cgf "Venworks:Core:Tests:UUIDTests.RunGeneration"
-```
-
-Inspect Papyrus logs for the UUID test results; compilation alone does not establish their success. For migration, keep a disposable copy of the previously tested legacy-ID save, replace all three packages without renaming plugins, load it and look for `LEGACY_ID_MIGRATED`, A+B registration and a count of two after reload. For UpdatedA, first save Baseline A+B, exit, deploy the verified UpdatedA profile, and load that same disposable save. Expect `DESCRIPTOR_UPDATE_APPLIED`, version 2, and version 2 retained across subsequent HUD openings and save/reload. Exercise rapid repeated menu openings during startup/update and the Faults profile's mixed-case ownership collision; collect logs if updates revert, duplicate rows appear or counts change unexpectedly. These manual checks do not by themselves force every VM interleaving: deterministic simultaneous-owner and unavailable-registry/save-during-update stress remain explicit runtime acceptance cases.
-
-### Separate, explicit saved-quest recovery
-
-For the affected host-only save, resolve first and continue only on `CONSOLE_RESOLVED`:
-
-```text
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:Registry.ConsoleResolve"
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:Registry.ConsoleEnsureStorage"
-```
-
-The second command restores menu subscriptions, makes one nonblocking storage attempt, and logs its actual result outside the guard. Expect `REGISTRY_READY`, or manually retry an inconclusive `DEFERRED_REGISTRY_BUSY` after gameplay advances. Reopen the HUD and inspect recovery/count logs; valid registry records must be retained.
-
-For an affected **UpdatedA** save only, resolve its separate migration quest before requesting recovery:
-
-```text
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration.ConsoleResolve"
-cgf "Venworks:Canvas:Probes:ConsumerDiscovery:ConsumerAUpdateMigration.ConsoleRetryUpdate"
-```
-
-`CONSOLE_RETRY_REQUESTED` means the existing recovery method was called, not that an update succeeded. It restores subscriptions and schedules the retained request only if the saved update is not already acknowledged. The migration quest reports `DESCRIPTOR_UPDATE_ACK | Version=2` only after registration acceptance. `DESCRIPTOR_UPDATE_RETRY_EXHAUSTED` retains its request for a later HUD opening. No acknowledged update is reset. Replacing PEX is not claimed to repair already-corrupted saved stacks or orphaned native guard ownership; test older saves separately from a clean pre-Canvas baseline.
-
-### Papyrus guard investigation and modding-notes gate
-
-The preceding UUID build produced three native guard unlock/ownership errors on `OnInit` call paths during a user-confirmed direct main-menu save load. Registration continued afterward, so the log did not prove a permanent deadlock, but that path failed runtime acceptance. It entered registry guards during initialization and held registrar guards across unavailable-registry waits; registry workers also logged and registered menu callbacks. The exact engine-level cause of the ownership errors has not been established.
-
-Bethesda's installed `SQ_ParentScript.HandleCriticalHit` uses `TryLockGuard` / `EndTryLockGuard` and explicitly skips overlapping work. That is source evidence for the nonblocking pattern, not proof that arbitrary save/load or nested-guard use is safe. The current Canvas implementation instead returns a deferred receipt so required registration/update work is retained and can be retried. No C# monitor, reentrancy, fairness, thread-affinity, or automatic recovery semantics are assumed.
-
-After direct PC evidence validates the path, prepare the community modding-notes article with a minimal reproducible example, tested game/compiler versions, the failed pattern, observed guard behavior, startup/save-load constraints, busy-result handling and unresolved limits. Until those tests pass this is a diagnostic implementation, not a verified community recipe. Site publication is a separate handoff using the actual site repository/workflow; no site content has been published by this change.
-
-The matrix separates registration checks from visible loading cases. Player HUD A/B, normal/large selection, update/failure isolation, and UI recreation are this increment's PC gates. Ship/pilot-seat delivery and PS5 remain deferred. Neither compilation nor source/reference-parser tests establish those runtime outcomes. Do not claim VWCANVAS-9 or the broader VWCANVAS-16 lifecycle complete from this build.
+- The Watch presentation is deliberately disabled while its subscriptions remain available to Canvas.
+- Ship HUD and pilot-seat delivery are not runtime accepted.
+- PS5 work waits for the first player-facing HUD implementation and hardware-friendly test package.
+- Consumer UI-data subscription metadata and host-to-child fanout remain separate lifecycle work.
+- The Example's player-facing UTC/local time panel and the full component catalog remain follow-up implementation work.

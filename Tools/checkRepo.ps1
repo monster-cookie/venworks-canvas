@@ -21,7 +21,7 @@ param(
 $PSNativeCommandUseErrorActionPreference = $true
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConsumerDiscoveryProbe.ps1')
+. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $loadedConfigurationRoot = Get-Variable -Name SharedConfigurationRepositoryRoot -Scope Global -ErrorAction SilentlyContinue
@@ -77,8 +77,8 @@ function Test-SamePath {
 }
 
 $moduleVariants = @($Global:ModuleVariants)
-if ($moduleVariants.Count -ne 3) {
-  throw "ModuleVariants must contain the Host and two demo consumers; found $($moduleVariants.Count)."
+if ($moduleVariants.Count -eq 0) {
+  throw 'ModuleVariants must define at least one Canvas package variant.'
 }
 
 $requiredUniqueProperties = @(
@@ -86,7 +86,9 @@ $requiredUniqueProperties = @(
   "VariantName",
   "PackageBaseName",
   "StagingFolderPath",
-  "EnvironmentVariableName"
+  "EnvironmentVariableName",
+  "ScaleformManifest",
+  "ScaleformOutput"
 )
 foreach ($propertyName in $requiredUniqueProperties) {
   $values = @($moduleVariants | ForEach-Object { [string]$_.$propertyName })
@@ -98,43 +100,15 @@ foreach ($propertyName in $requiredUniqueProperties) {
   }
 }
 
-$expectedDefinitions = @(
-  [pscustomobject]@{
-    VariantKey = "HOST"
-    VariantName = "Venworks Canvas Host"
-    PackageBaseName = "Venworks-Canvas-Host"
-    StagingFolderName = "Staging-Host"
-    EnvironmentVariableName = "MODULE_VARIANT_HOST_PATH"
+foreach ($variant in $moduleVariants) {
+  if (@($variant.PapyrusScripts).Count -eq 0 -or
+      @($variant.PapyrusScripts | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0) {
+    throw "Module variant '$($variant.VariantKey)' must declare at least one Papyrus source."
   }
-  [pscustomobject]@{
-    VariantKey = "CONSUMERA"
-    VariantName = "Venworks Canvas Demo Consumer A"
-    PackageBaseName = "Venworks-Canvas-ConsumerA"
-    StagingFolderName = "Staging-ConsumerA"
-    EnvironmentVariableName = "MODULE_VARIANT_CONSUMER_A_PATH"
-  }
-  [pscustomobject]@{
-    VariantKey = "CONSUMERB"
-    VariantName = "Venworks Canvas Demo Consumer B"
-    PackageBaseName = "Venworks-Canvas-ConsumerB"
-    StagingFolderName = "Staging-ConsumerB"
-    EnvironmentVariableName = "MODULE_VARIANT_CONSUMER_B_PATH"
-  }
-)
-
-foreach ($expectedDefinition in $expectedDefinitions) {
-  $variantMatches = @($moduleVariants | Where-Object { $_.VariantKey -ceq $expectedDefinition.VariantKey })
-  if ($variantMatches.Count -ne 1) {
-    throw "Expected exactly one $($expectedDefinition.VariantKey) module variant."
-  }
-
-  $variant = $variantMatches[0]
-  $expectedStagingPath = Join-Path $repositoryRoot $expectedDefinition.StagingFolderName
-  if ($variant.VariantName -cne $expectedDefinition.VariantName -or
-      $variant.PackageBaseName -cne $expectedDefinition.PackageBaseName -or
-      $variant.EnvironmentVariableName -cne $expectedDefinition.EnvironmentVariableName -or
-      !(Test-SamePath -Left $variant.StagingFolderPath -Right $expectedStagingPath)) {
-    throw "Module variant '$($expectedDefinition.VariantKey)' does not match the canonical Canvas package definition."
+  if (![System.IO.Path]::GetFullPath([string]$variant.StagingFolderPath).StartsWith(
+      $repositoryRoot + [System.IO.Path]::DirectorySeparatorChar,
+      [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Module variant '$($variant.VariantKey)' staging path must remain inside the repository."
   }
 }
 
@@ -194,7 +168,7 @@ foreach ($variant in $variants) {
     if (!(Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
       throw "$($variant.VariantName) is missing expected artifact: $artifactPath"
     }
-    Assert-ConsumerDiscoveryArtifactHeader -Path $artifactPath
+    Assert-CanvasArtifactHeader -Path $artifactPath
   }
 
   Write-Host -ForegroundColor Green "$($variant.VariantName) staging and artifacts are valid."

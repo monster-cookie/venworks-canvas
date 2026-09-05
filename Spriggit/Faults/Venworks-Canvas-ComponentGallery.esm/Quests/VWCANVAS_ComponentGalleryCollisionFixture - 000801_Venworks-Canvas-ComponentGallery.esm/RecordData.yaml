@@ -1,0 +1,43 @@
+FormKey: 000801:Venworks-Canvas-ComponentGallery.esm
+EditorID: VWCANVAS_ComponentGalleryCollisionFixture
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:ComponentGalleryRegistrar
+    Properties:
+    - MutagenObjectType: ScriptStringProperty
+      Name: ConsumerId
+      Data: A8098C1A-F86E-4B1E-9D7C-5A102BF38460
+    - MutagenObjectType: ScriptIntProperty
+      Name: DescriptorVersion
+      Data: 1
+    - MutagenObjectType: ScriptStringProperty
+      Name: DisplayName
+      Data: VWCANVAS Duplicate Example
+    - MutagenObjectType: ScriptBoolProperty
+      Name: ExpectedRegistration
+    - MutagenObjectType: ScriptFloatProperty
+      Name: InitialDelaySeconds
+      Data: 2
+    - MutagenObjectType: ScriptStringProperty
+      Name: LargeMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/large.swf
+    - MutagenObjectType: ScriptStringProperty
+      Name: NormalMoviePath
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/normal.swf
+    - MutagenObjectType: ScriptObjectProperty
+      Name: Registry
+      Object: 000800:Venworks-Canvas.esm
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS Component Gallery Collision Fixture
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  Unused: 0x000000

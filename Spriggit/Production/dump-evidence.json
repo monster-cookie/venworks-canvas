@@ -1,0 +1,37 @@
+{
+  "Schema": "VWCANVAS_SPRIGGIT_DUMP/1",
+  "Profile": "Production",
+  "Variants": [
+    "CANVAS",
+    "EXAMPLE",
+    "COMPONENTGALLERY"
+  ],
+  "PackageName": "Spriggit.Yaml.Starfield",
+  "SpriggitVersion": "0.40.1",
+  "SpriggitCliSha256": "01E71FC882061F7387A5DC25022940A9A79892B81292C6B47F4DA2437649DCA5",
+  "SpriggitTranslatorSha256": "E4358BFFA6E79723824764A5255A1ECA3A4FC14F10478FA42BA81ED58D7F1036",
+  "PluginGenerationEvidenceSha256": "7AA4400EB8C872EF4FA92A11C0792A77E671D0CDA7F1D673669919DF74D0A601",
+  "Plugins": [
+    {
+      "Key": "CANVAS",
+      "FileName": "Venworks-Canvas.esm",
+      "EsmSha256": "DE3B4E4203FA3C1E8B499E5B801DDA15B6C9E73CB1566838BB139540333E221E",
+      "Directory": "Venworks-Canvas.esm",
+      "YamlSha256": "3AB265A14EECD7B5E36199578063396CBF7BE4A21CB715400BDE8950ECD644C1"
+    },
+    {
+      "Key": "EXAMPLE",
+      "FileName": "Venworks-Canvas-Example.esm",
+      "EsmSha256": "8F402192BEFF0C1E3982587F6F25C6134C32A71F98B05E75CC1C8642821E59EF",
+      "Directory": "Venworks-Canvas-Example.esm",
+      "YamlSha256": "3F745DEAA63C727EC5B1E8002E3805226C145AECFB84D05DD80075354D48F593"
+    },
+    {
+      "Key": "COMPONENTGALLERY",
+      "FileName": "Venworks-Canvas-ComponentGallery.esm",
+      "EsmSha256": "87821A7A806D984AD86E1FB1D417A6552D84D6C34C181B5B25A5C6E6A5280A6A",
+      "Directory": "Venworks-Canvas-ComponentGallery.esm",
+      "YamlSha256": "8209E4C6EF015695DAADE6319643B755FDFAD746EAA5BE9D0224B18B2F2863BF"
+    }
+  ]
+}

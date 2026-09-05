@@ -27,9 +27,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate consumer discovery probe sources
+      - name: Validate Canvas sources
         shell: pwsh
-        run: ./Tools/verifyConsumerDiscoveryProbe.ps1 -SourceOnly
+        run: ./Tools/verifyCanvas.ps1 -SourceOnly
 
       - name: Install PSScriptAnalyzer
         shell: pwsh

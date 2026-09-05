@@ -4,4 +4,4 @@ Refuses unsafe YAML-to-ESM assembly. Canvas uses verified binary inputs and Spri
 #>
 [CmdletBinding()]
 param()
-throw 'Spriggit assembly is disabled for Canvas. Use verified Mutagen/CK binary inputs, then Tools/SpriggitDumpDatabaseToYaml.ps1 -PluginsDirectory <profile-directory> -ProbeProfile <profile> for review-only YAML.'
+throw 'Spriggit assembly is disabled for Canvas. Use verified Mutagen/CK binary inputs, then Tools/SpriggitDumpDatabaseToYaml.ps1 -PluginsDirectory <profile-directory> -Profile <profile> for review-only YAML.'

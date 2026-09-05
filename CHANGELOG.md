@@ -2,10 +2,15 @@
 
 ## Version 1.0.0 (UNRELEASED)
 
-- Requires Venworks Core Library 2.1.8 or higher
-- Added initial registration system for modders/creators to hook in their creations
-- Reworked the PC registration diagnostic to defer startup and retry busy Papyrus guards without waiting inside them.
-- Added Canvas-owned struct-as-enum selectors for the supported events and packet types so consumer callers cannot supply invalid values breaking the watch.
-- Made the Player HUD receiver accept ASCII case changes in the fixed event header and packet type while preserving the original framed payload for strict parsing.
-- Restored `createPackages.ps1` to a standard variant-oriented interface that builds only the selected Host, Consumer A, or Consumer B PC Main archive and never replaces a Vortex staging junction.
-- Changed profile staging to replace only selected ESM/BA2 files so Vortex physical module directories and their repository Junctions are never moved, deleted, recreated, or retargeted.
+- Requires Venworks Core Library 2.1.8 or higher.
+- Added a persistent, owner-checked UUID registry for independently packaged Canvas consumers.
+- Added explicit registration receipts and a separate UI-load request step so registration remains Papyrus-side until a consumer asks to load its movie.
+- Added bounded, nonblocking guard and timer handling that keeps logging, scheduling, subscriptions, waits, and UI bridge calls outside acquired guards.
+- Added Canvas-owned event-header and packet-type selectors with strict framed-packet validation and ASCII case handling at UI intake.
+- Added dynamic Player HUD loading for multiple namespaced consumer movies without static slots.
+- Restored the Watch data subscriptions while disabling its presentation before Canvas bridge traffic begins.
+- Established permanent Canvas, Example, and Component Gallery plugin, archive, staging, script, and Scaleform identities.
+- Consolidated the production build pipeline into `compileScripts.ps1`, `buildScaleform.ps1`, and `createPackages.ps1`.
+- Centralized all package variant definitions in `sharedConfig.ps1`.
+- Made Spriggit YAML dumping variant-aware while retaining assembly as an explicit fail-closed operation.
+- Made packaging replace only exact ESM and BA2 child files beneath verified Vortex junctions.

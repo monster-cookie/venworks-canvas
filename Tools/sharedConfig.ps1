@@ -14,6 +14,12 @@ class CanvasModuleVariant {
   [string]$StagingFolderPath
   [string]$EnvironmentVariableName
   [string]$PluginModulePath
+  [string[]]$PapyrusScripts
+  [string]$ScaleformManifest
+  [string]$ScaleformOutput
+  [string]$UiNamespace
+  [bool]$IncludesPlayerHud
+  [bool]$IncludesShipHud
 
   CanvasModuleVariant(
     [string]$variantKey,
@@ -21,7 +27,13 @@ class CanvasModuleVariant {
     [string]$packageBaseName,
     [string]$stagingFolderPath,
     [string]$environmentVariableName,
-    [string]$pluginModulePath
+    [string]$pluginModulePath,
+    [string[]]$papyrusScripts,
+    [string]$scaleformManifest,
+    [string]$scaleformOutput,
+    [string]$uiNamespace,
+    [bool]$includesPlayerHud,
+    [bool]$includesShipHud
   ) {
     $this.VariantKey = $variantKey
     $this.VariantName = $variantName
@@ -29,6 +41,12 @@ class CanvasModuleVariant {
     $this.StagingFolderPath = $stagingFolderPath
     $this.EnvironmentVariableName = $environmentVariableName
     $this.PluginModulePath = $pluginModulePath
+    $this.PapyrusScripts = $papyrusScripts
+    $this.ScaleformManifest = $scaleformManifest
+    $this.ScaleformOutput = $scaleformOutput
+    $this.UiNamespace = $uiNamespace
+    $this.IncludesPlayerHud = $includesPlayerHud
+    $this.IncludesShipHud = $includesShipHud
   }
 }
 
@@ -79,39 +97,62 @@ if (!$SkipEnvironment) {
   Write-Host -ForegroundColor Yellow "BGS Papyrus Source path is $ENV:PAPYRUS_SCRIPTS_SOURCE_PATH"
   Write-Host -ForegroundColor Yellow "`nModule Settings:"
   Write-Host -ForegroundColor Yellow "Legacy Module Database Folder is $ENV:MODULE_DATABASE_PATH"
-  Write-Host -ForegroundColor Yellow "Host Module Folder is $ENV:MODULE_VARIANT_HOST_PATH"
-  Write-Host -ForegroundColor Yellow "Demo Consumer A Module Folder is $ENV:MODULE_VARIANT_CONSUMER_A_PATH"
-  Write-Host -ForegroundColor Yellow "Demo Consumer B Module Folder is $ENV:MODULE_VARIANT_CONSUMER_B_PATH"
+  Write-Host -ForegroundColor Yellow "Canvas Module Folder is $ENV:MODULE_VARIANT_CANVAS_PATH"
+  Write-Host -ForegroundColor Yellow "Example Module Folder is $ENV:MODULE_VARIANT_EXAMPLE_PATH"
+  Write-Host -ForegroundColor Yellow "Component Gallery Module Folder is $ENV:MODULE_VARIANT_COMPONENT_GALLERY_PATH"
   Write-Host -ForegroundColor Yellow "Module Scripting Folder is $ENV:MODULE_SCRIPTS_PATH"
   Write-Host -ForegroundColor Yellow "Module Scripting Source Folder is $ENV:MODULE_SCRIPTS_SOURCE_PATH"
 }
 
 $Global:ModuleVariants = @(
   [CanvasModuleVariant]::new(
-    "HOST",
-    "Venworks Canvas Host",
-    "Venworks-Canvas-Host",
-    (Join-Path $repositoryRoot "Staging-Host"),
-    "MODULE_VARIANT_HOST_PATH",
-    "$ENV:MODULE_VARIANT_HOST_PATH"
+    "CANVAS",
+    "Venworks Canvas",
+    "Venworks-Canvas",
+    (Join-Path $repositoryRoot "Staging-Canvas"),
+    "MODULE_VARIANT_CANVAS_PATH",
+    "$ENV:MODULE_VARIANT_CANVAS_PATH",
+    @(
+      "Venworks\Canvas\GlobalConfig.psc"
+      "Venworks\Canvas\Enumerations.psc"
+      "Venworks\Canvas\Base\BaseQuest.psc"
+      "Venworks\Canvas\Registry.psc"
+    ),
+    "build\canvas.build.xml",
+    "CanvasHost.swf",
+    "",
+    $true,
+    $true
   )
 
   [CanvasModuleVariant]::new(
-    "CONSUMERA",
-    "Venworks Canvas Demo Consumer A",
-    "Venworks-Canvas-ConsumerA",
-    (Join-Path $repositoryRoot "Staging-ConsumerA"),
-    "MODULE_VARIANT_CONSUMER_A_PATH",
-    "$ENV:MODULE_VARIANT_CONSUMER_A_PATH"
+    "EXAMPLE",
+    "Venworks Canvas Example",
+    "Venworks-Canvas-Example",
+    (Join-Path $repositoryRoot "Staging-Example"),
+    "MODULE_VARIANT_EXAMPLE_PATH",
+    "$ENV:MODULE_VARIANT_EXAMPLE_PATH",
+    @("Venworks\Canvas\ExampleRegistrar.psc"),
+    "build\example.build.xml",
+    "CanvasExample.swf",
+    "venworks.canvas.example",
+    $false,
+    $false
   )
 
   [CanvasModuleVariant]::new(
-    "CONSUMERB",
-    "Venworks Canvas Demo Consumer B",
-    "Venworks-Canvas-ConsumerB",
-    (Join-Path $repositoryRoot "Staging-ConsumerB"),
-    "MODULE_VARIANT_CONSUMER_B_PATH",
-    "$ENV:MODULE_VARIANT_CONSUMER_B_PATH"
+    "COMPONENTGALLERY",
+    "Venworks Canvas Component Gallery",
+    "Venworks-Canvas-ComponentGallery",
+    (Join-Path $repositoryRoot "Staging-ComponentGallery"),
+    "MODULE_VARIANT_COMPONENT_GALLERY_PATH",
+    "$ENV:MODULE_VARIANT_COMPONENT_GALLERY_PATH",
+    @("Venworks\Canvas\ComponentGalleryRegistrar.psc"),
+    "build\component-gallery.build.xml",
+    "CanvasComponentGallery.swf",
+    "venworks.canvas.component-gallery",
+    $false,
+    $false
   )
 )
 
@@ -149,9 +190,7 @@ function Global:Get-ModuleVariants {
   return @($selectedVariants)
 }
 
-$Global:Databases = @(
-  "Venworks-Canvas.esm"
-)
+$Global:Databases = @($Global:ModuleVariants | ForEach-Object { "$($_.PackageBaseName).esm" })
 
 $Global:ScriptingNamespaceModuleCompany = "Venworks"
 $Global:ScriptingNamespaceModuleName = "Canvas"

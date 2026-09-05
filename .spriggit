@@ -3,7 +3,7 @@
   [
     {"ModKey": "Starfield.esm", "Style": "Full"},
     {"ModKey": "Venworks-Core.esm", "Style": "Small"},
-    {"ModKey": "Venworks-Canvas-Host.esm", "Style": "Small"},
+    {"ModKey": "Venworks-Canvas.esm", "Style": "Small"},
     {"ModKey": "sfbgs007.esm", "Style": "Small"},
     {"ModKey": "sfbgs00d.esm", "Style": "Full"}
   ]
