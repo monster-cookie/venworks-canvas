@@ -26,6 +26,9 @@
     <token>EXPLICIT UI LOAD TEST</token>
     <token>canvas.ui.load</token>
     <token>MAX_UI_LOAD_CHARACTERS</token>
+    <token>matchAsciiPrefix</token>
+    <token>ASCII CASE-FOLDED</token>
+    <token>invalid UI load envelope</token>
     <token>LOAD BRIDGE SUBSCRIBED</token>
     <token>getCanvasWatchDataManager</token>
     <token>getCanvasWatchDisabled</token>

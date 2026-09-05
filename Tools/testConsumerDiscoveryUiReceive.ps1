@@ -19,6 +19,9 @@ foreach ($name in @('subscribe', 'onCustomAlertsData', 'receiveNote', 'appendCal
   if (!$match.Success) { throw "Missing receiver method: $name" }
   $functions[$name] = $match.Groups['body'].Value -replace ':(Object|Number|String|int|Error)\b', ''
 }
+$prefixMatch = [regex]::Match($source, '(?ms)      private function matchAsciiPrefix\([^\r\n]*\) : int\s*\{(?<body>.*?)^      \}')
+if (!$prefixMatch.Success) { throw 'Missing receiver method: matchAsciiPrefix' }
+$functions.matchAsciiPrefix = $prefixMatch.Groups['body'].Value -replace ':(Object|Number|String|int|Boolean|Error)\b', ''
 if ($functions.onCustomAlertsData -match '\bas\s+Array\b' -or $functions.subscribe -match 'getDefinitionByName') {
   throw 'Receiver must use the patched Watch class reference and indexed native collections.'
 }
@@ -38,6 +41,7 @@ const ENVELOPE_PREFIX = 'VWC_EVT/1|';
 const UI_LOAD_PREFIX = ENVELOPE_PREFIX + 'canvas.ui.load|';
 const first = UI_LOAD_PREFIX + 'fixture-a';
 const second = UI_LOAD_PREFIX + 'fixture-b';
+const folded = 'vwc_evt/1|CANVAS.UI.LOAD|fixture-folded';
 function makeHost(disabled = true, ready = true, subscriptionsRestored = true) {
   const host = { disposed: false, subscribed: false, receiveNotes: {}, logs: [], received: [],
     callbackCount: 0, alertDiagnosticCount: 0,
@@ -48,6 +52,7 @@ function makeHost(disabled = true, ready = true, subscriptionsRestored = true) {
   const appendAlertDiagnostic = new Function('classification', 'characterCount', 'MAX_ALERT_DIAGNOSTICS', functions.appendAlertDiagnostic);
   host.appendCallbackDiagnostic = message => appendCallbackDiagnostic.call(host, message, 8);
   host.appendAlertDiagnostic = (classification, characterCount = -1) => appendAlertDiagnostic.call(host, classification, characterCount, 16);
+  host.matchAsciiPrefix = new Function('value', 'prefix', functions.matchAsciiPrefix);
   host.onCustomAlertsData = new Function('param1', 'UI_LOAD_PREFIX', 'ENVELOPE_PREFIX', functions.onCustomAlertsData);
   host.callback = value => host.onCustomAlertsData(value, UI_LOAD_PREFIX, ENVELOPE_PREFIX);
   const manager = { gets: 0, subscribes: 0, unsubscribes: 0, listener: null,
@@ -70,7 +75,7 @@ function makeHost(disabled = true, ready = true, subscriptionsRestored = true) {
 let checks = 0;
 function check(action) { action(); checks++; }
 check(() => { const {host,manager} = makeHost(); host.subscribe(); host.subscribe(); assert.deepEqual(host.received,[first]); assert.equal(manager.subscribes,1); assert(host.logs.includes('WATCH SUBSCRIPTIONS RESTORED')); assert(host.logs.includes('WATCH PRESENTATION DISABLED')); });
-check(() => { const {host,manager} = makeHost(true,false); host.subscribe(); assert.equal(host.received.length,0); manager.listener({data:{aAlerts:[{sAlertText:'vanilla'}]}}); manager.listener({data:{aAlerts:[{sAlertText:second}]}}); assert.deepEqual(host.received,[second]); assert(host.logs.includes('PROVIDER CALLBACK #2 | ALERTS 1')); assert(host.logs.some(x=>x.includes('UI LOAD | LENGTH ' + second.length))); });
+check(() => { const {host,manager} = makeHost(true,false); host.subscribe(); assert.equal(host.received.length,0); manager.listener({data:{aAlerts:[{sAlertText:'vanilla'}]}}); manager.listener({data:{aAlerts:[{sAlertText:second}]}}); assert.deepEqual(host.received,[second]); assert(host.logs.includes('PROVIDER CALLBACK #2 | ALERTS 1')); assert(host.logs.some(x=>x.includes('UI LOAD | PREFIX EXACT | LENGTH ' + second.length))); });
 check(() => { const {host,manager} = makeHost(false); host.subscribe(); assert.equal(manager.subscribes,0); assert(host.logs.some(x=>x.includes('WATCH PRESENTATION ACTIVE'))); });
 check(() => { const {host,manager} = makeHost(true,true,false); host.subscribe(); assert.equal(manager.subscribes,0); assert(host.logs.some(x=>x.includes('WATCH SUBSCRIPTIONS NOT RESTORED'))); });
 check(() => { const {host,manager} = makeHost(); host.owner = {}; host.subscribe(); assert.equal(manager.gets,0); });
@@ -91,6 +96,8 @@ for (const data of [null, {}, {aAlerts:null}, {aAlerts:'bad'}, {aAlerts:{length:
 check(() => { const {host}=makeHost(); host.callback({get data(){throw Error('getter failure');}}); assert(host.logs.some(x=>x.includes('PAYLOAD REJECTED'))); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:[null,42,{}, {sAlertText:5}, {sAlertText:first}]}); assert.deepEqual(host.received,[first]); assert.equal(host.logs.filter(x=>x.includes('INVALID ENTRY')).length,4); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:[{sAlertText:'vanilla-private-text'},{sAlertText:'VWC_EVT/1|canvas.registry.snapshot|old'},{sAlertText:first}]}); assert.deepEqual(host.received,[first]); assert(!host.logs.join('').includes('vanilla-private-text')); assert(host.logs.some(x=>x.includes('OTHER | LENGTH 20'))); assert(host.logs.some(x=>x.includes('CANVAS OTHER'))); assert(host.logs.some(x=>x.includes('UI LOAD'))); });
+check(() => { const {host}=makeHost(); host.callback({aAlerts:[{sAlertText:folded}]}); assert.deepEqual(host.received,[folded]); assert(host.logs.some(x=>x.includes('UI LOAD | PREFIX ASCII CASE-FOLDED | LENGTH ' + folded.length))); });
+check(() => { const {host}=makeHost(); assert.equal(host.matchAsciiPrefix(first,UI_LOAD_PREFIX),1); assert.equal(host.matchAsciiPrefix(folded,UI_LOAD_PREFIX),2); assert.equal(host.matchAsciiPrefix('VWC_ÉVT/1|canvas.ui.load|fixture',UI_LOAD_PREFIX),0); assert.equal(host.matchAsciiPrefix('VWC_EVT/1|canvas.ui.other|fixture',UI_LOAD_PREFIX),0); });
 check(() => { const {host}=makeHost(); for(let i=0;i<1000;i++) host.callback({aAlerts:[]}); assert.equal(host.logs.filter(x=>x.includes('PROVIDER CALLBACK #')).length,8); assert.equal(host.logs.filter(x=>x.includes('CALLBACK DIAGNOSTICS SUPPRESSED')).length,1); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:Array.from({length:100},()=>({sAlertText:'vanilla-private-text'}))}); assert.equal(host.logs.filter(x=>x.includes('PROVIDER ALERT #')).length,16); assert.equal(host.logs.filter(x=>x.includes('ALERT DIAGNOSTICS SUPPRESSED')).length,1); assert(!host.logs.join('').includes('vanilla-private-text')); });
 check(() => { const {host}=makeHost(); host.disposed=true; host.callback({aAlerts:[{sAlertText:first}]}); host.subscribe(); assert.equal(host.logs.length,0); assert.equal(host.received.length,0); });

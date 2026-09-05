@@ -231,6 +231,8 @@ package
          var alerts:Object = null;
          var alert:Object = null;
          var text:String = null;
+         var uiLoadPrefixMatch:int = 0;
+         var envelopePrefixMatch:int = 0;
          if(this.disposed)
          {
             return;
@@ -269,18 +271,23 @@ package
                   continue;
                }
                text = alert.sAlertText;
-               if(text.indexOf(UI_LOAD_PREFIX) == 0)
+               uiLoadPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_PREFIX);
+               if(uiLoadPrefixMatch > 0)
                {
-                  this.appendAlertDiagnostic("UI LOAD",text.length);
+                  this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
                   this.receiveEnvelope(text);
-               }
-               else if(text.indexOf(ENVELOPE_PREFIX) == 0)
-               {
-                  this.appendAlertDiagnostic("CANVAS OTHER",text.length);
                }
                else
                {
-                  this.appendAlertDiagnostic("OTHER",text.length);
+                  envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
+                  if(envelopePrefixMatch > 0)
+                  {
+                     this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                  }
+                  else
+                  {
+                     this.appendAlertDiagnostic("OTHER",text.length);
+                  }
                }
             }
          }
@@ -329,10 +336,41 @@ package
          }
       }
 
+      private function matchAsciiPrefix(value:String, prefix:String) : int
+      {
+         if(value == null || prefix == null || value.length < prefix.length)
+         {
+            return 0;
+         }
+         var exact:Boolean = true;
+         for(var index:int = 0; index < prefix.length; index++)
+         {
+            var actual:int = value.charCodeAt(index);
+            var expected:int = prefix.charCodeAt(index);
+            if(actual != expected)
+            {
+               exact = false;
+               if(actual >= 65 && actual <= 90)
+               {
+                  actual += 32;
+               }
+               if(expected >= 65 && expected <= 90)
+               {
+                  expected += 32;
+               }
+               if(actual != expected)
+               {
+                  return 0;
+               }
+            }
+         }
+         return exact ? 1 : 2;
+      }
+
       private function receiveEnvelope(param1:String) : void
       {
          // Legacy snapshot/diagnostic ingress remains disabled. One request only upserts its own consumer.
-         if(param1.indexOf(UI_LOAD_PREFIX) == 0)
+         if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
          {
             try
             {
@@ -351,9 +389,13 @@ package
 
       private function parseUiLoad(packet:String) : Object
       {
-         if(packet.length > MAX_UI_LOAD_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
+         if(packet == null || packet.length > MAX_UI_LOAD_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
          {
             throw new Error("invalid UI load packet size or characters");
+         }
+         if(this.matchAsciiPrefix(packet,UI_LOAD_PREFIX) == 0)
+         {
+            throw new Error("invalid UI load envelope");
          }
          var cursor:int = UI_LOAD_PREFIX.length;
          var protocol:Object = this.readFrame(packet,cursor,1);

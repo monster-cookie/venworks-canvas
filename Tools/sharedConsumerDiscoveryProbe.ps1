@@ -69,7 +69,7 @@ function ConvertFrom-ConsumerDiscoveryUiLoadPacket {
   [CmdletBinding()]
   param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Packet)
   $prefix = 'VWC_EVT/1|canvas.ui.load|'
-  if ($Packet.Length -gt 512 -or $Packet -cnotmatch '\A[\x20-\x7e]+\z' -or !$Packet.StartsWith($prefix, [StringComparison]::Ordinal)) {
+  if ($Packet.Length -gt 512 -or $Packet -cnotmatch '\A[\x20-\x7e]+\z' -or !$Packet.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Invalid UI load envelope.'
   }
   $cursor = $prefix.Length

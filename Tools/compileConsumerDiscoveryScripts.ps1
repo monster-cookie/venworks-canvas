@@ -52,6 +52,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $sources = @(
   'Venworks\Canvas\GlobalConfig.psc'
+  'Venworks\Canvas\Enumerations.psc'
   'Venworks\Canvas\Base\BaseQuest.psc'
   'Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc'
   'Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'

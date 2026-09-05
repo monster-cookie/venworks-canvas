@@ -331,9 +331,22 @@ Function RefreshUiActivation(Int timerId)
   EndIf
 EndFunction
 
+; Maps validated enum selectors to Canvas-owned wire text; callers cannot supply a raw header or packet type.
+String Function BuildEventPacket(Int eventHeader, Int packetType, String payload)
+  String eventHeaderText = Venworks:Canvas:Enumerations.ResolveEventHeader(eventHeader)
+  String packetTypeText = Venworks:Canvas:Enumerations.ResolvePacketType(packetType)
+  If (eventHeaderText == "" || packetTypeText == "")
+    Return ""
+  EndIf
+  Return eventHeaderText + packetTypeText + "|" + payload
+EndFunction
+
 ; Copies only the current validated descriptor into a bounded packet; display names are not bridge data.
 String Function BuildUiLoadPacket(ConsumerRegistration registration)
-  Return "VWC_EVT/1|canvas.ui.load|" + EncodeField("1") + EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+  Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
+  Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
+  String payload = EncodeField("1") + EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+  Return BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)
 EndFunction
 
 ; Caller holds RegistryGuard. Coalesce one entry per UUID, cap pending work rather than registrations.
@@ -353,6 +366,10 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
     Return
   EndIf
   String packet = BuildUiLoadPacket(registration)
+  If (packet == "")
+    result.Status = "REJECTED_UI_PROTOCOL"
+    Return
+  EndIf
   If (!IsPrintableAscii(packet, 1, 512))
     result.Status = "REJECTED_UI_PACKET"
     Return

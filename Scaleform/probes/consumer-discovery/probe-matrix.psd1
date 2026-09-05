@@ -5,7 +5,7 @@
   Protocol = 'VWCANVAS_REGISTRY_PROBE/3'
   TestMode = 'ExplicitConsumerUiLoad'
   UiLoadResult = 'UI_LOAD_QUEUED'
-  UiLoadTransport = @{ Protocol = 'canvas.ui.load'; Version = 1; MaxCharacters = 512; MaxPending = 32; MinimumIntervalSeconds = 1; MaxBusyAttempts = 20; Target = 'PlayerHud' }
+  UiLoadTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 1; Wire = 'canvas.ui.load' }; Protocol = 'canvas.ui.load'; Version = 1; MaxCharacters = 512; MaxPending = 32; MinimumIntervalSeconds = 1; MaxBusyAttempts = 20; Target = 'PlayerHud' }
   DefaultProfile = 'Baseline'
   Spriggit = @{
     PackageName = 'Spriggit.Yaml'
@@ -62,7 +62,7 @@
     @{ Key = 'ConsumerB'; Manifest = 'build/consumer-b.build.xml'; Output = 'CanvasDiscoveryConsumerB.swf' }
   )
   Plugins = @(
-    @{ Key = 'Host'; FileName = 'Venworks-Canvas-Host.esm'; Scripts = @('Venworks/Canvas/GlobalConfig.pex', 'Venworks/Canvas/Base/BaseQuest.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex') }
+    @{ Key = 'Host'; FileName = 'Venworks-Canvas-Host.esm'; Scripts = @('Venworks/Canvas/GlobalConfig.pex', 'Venworks/Canvas/Enumerations.pex', 'Venworks/Canvas/Base/BaseQuest.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/Registry.pex') }
     @{ Key = 'ConsumerA'; FileName = 'Venworks-Canvas-ConsumerA.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerARegistrar.pex', 'Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerAUpdateMigration.pex') }
     @{ Key = 'ConsumerB'; FileName = 'Venworks-Canvas-ConsumerB.esm'; Scripts = @('Venworks/Canvas/Probes/ConsumerDiscovery/ConsumerBRegistrar.pex') }
   )

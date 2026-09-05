@@ -730,6 +730,13 @@ if ([string]$matrix.Spriggit.PackageName -cne 'Spriggit.Yaml' -or
     [string]$matrix.Spriggit.OutputRoot -cne 'Spriggit/ConsumerDiscovery') {
   throw 'Consumer discovery must pin the approved Spriggit YAML-only review contract.'
 }
+if ([int]$matrix.UiLoadTransport.EventHeader.Selector -ne 1 -or
+    [string]$matrix.UiLoadTransport.EventHeader.Wire -cne 'VWC_EVT/1|' -or
+    [int]$matrix.UiLoadTransport.PacketType.Selector -ne 1 -or
+    [string]$matrix.UiLoadTransport.PacketType.Wire -cne 'canvas.ui.load' -or
+    [string]$matrix.UiLoadTransport.Protocol -cne [string]$matrix.UiLoadTransport.PacketType.Wire) {
+  throw 'Consumer discovery must pin the Canvas enum selector-to-wire mapping.'
+}
 
 $expectedPackageKeys = [string[]]@('Host', 'ConsumerA', 'ConsumerB')
 $expectedMovieKeys = [string[]]@('Host', 'ConsumerA', 'ConsumerAUpdated', 'ConsumerB')
@@ -885,6 +892,7 @@ foreach ($runtimeCase in $runtimeCases) {
 }
 
 $requiredFiles = @(
+  'Papyrus\Venworks\Canvas\Enumerations.psc'
   'Papyrus\Venworks\Canvas\Base\BaseQuest.psc'
   'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc'
   'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc'
@@ -938,6 +946,28 @@ foreach ($token in @(
   }
 }
 
+$enumerationsPath = Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Enumerations.psc'
+$enumerationsSource = [System.IO.File]::ReadAllText($enumerationsPath)
+foreach ($token in @(
+  'Struct EventHeader'
+  'Int V1 = 1'
+  'Struct PacketType'
+  'Int UiLoad = 1'
+  'String Function ResolveEventHeader(Int eventHeader) Global'
+  'String Function ResolvePacketType(Int packetType) Global'
+  'Return "VWC_EVT/1|"'
+  'Return "canvas.ui.load"'
+  'Return ""'
+)) {
+  if (!$enumerationsSource.Contains($token)) {
+    throw "Canvas protocol enumerations are missing token '$token'."
+  }
+}
+if ([regex]::Matches($enumerationsSource, [regex]::Escape('VWC_EVT/1|')).Count -ne 1 -or
+    [regex]::Matches($enumerationsSource, [regex]::Escape('canvas.ui.load')).Count -ne 1) {
+  throw 'Canvas protocol wire text must have exactly one Papyrus owner in Enumerations.'
+}
+
 $registrySource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc'))
 foreach ($token in @(
   'Extends Venworks:Canvas:Base:BaseQuest'
@@ -963,6 +993,11 @@ foreach ($token in @(
   'GetDescriptorRejectionReason('
   'GetConsumerIdRejectionReason('
   'GetPrintableAsciiRejectionReason('
+  'String Function BuildEventPacket(Int eventHeader, Int packetType, String payload)'
+  'Venworks:Canvas:Enumerations.ResolveEventHeader(eventHeader)'
+  'Venworks:Canvas:Enumerations.ResolvePacketType(packetType)'
+  'BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)'
+  'REJECTED_UI_PROTOCOL'
   'REGISTRATION_REJECTED'
   'REGISTRATION_UNCHANGED'
   'Function EnsureMenuSubscriptions()'
@@ -1026,6 +1061,7 @@ foreach ($consumerName in @('ConsumerARegistrar.psc', 'ConsumerBRegistrar.psc'))
 }
 
 foreach ($papyrusPath in @(
+  $enumerationsPath
   $baseQuestPath
   (Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\Registry.psc')
   (Join-Path $repositoryRoot 'Papyrus\Venworks\Canvas\Probes\ConsumerDiscovery\ConsumerARegistrar.psc')
@@ -1143,6 +1179,7 @@ $toolPaths = @(
   'Tools\buildConsumerDiscoveryShipMovies.ps1'
   'Tools\buildConsumerDiscoveryWatchMovies.ps1'
   'Tools\testConsumerDiscoveryUiReceive.ps1'
+  'Tools\createPackages.ps1'
   'Tools\compileConsumerDiscoveryScripts.ps1'
   'Tools\dumpConsumerDiscoveryPluginsToYaml.ps1'
   'Tools\stageConsumerDiscoveryProbe.ps1'
@@ -1475,6 +1512,7 @@ $payloadHashes = @{
     'interface/spaceshiphudmenu.swf' = $shipMovieHashes['spaceshiphudmenu.swf']
     'interface/spaceshiphudmenu_lrg.swf' = $shipMovieHashes['spaceshiphudmenu_lrg.swf']
     'scripts/venworks/canvas/globalconfig.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\GlobalConfig.pex'))
+    'scripts/venworks/canvas/enumerations.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Enumerations.pex'))
     'scripts/venworks/canvas/base/basequest.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Base\BaseQuest.pex'))
     'scripts/venworks/canvas/probes/consumerdiscovery/registry.pex' = (Get-FileSha256 -Path (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Probes\ConsumerDiscovery\Registry.pex'))
   }
@@ -1527,7 +1565,7 @@ $stagingEvidencePath = Resolve-ConsumerDiscoveryRequiredFile `
   -Path (Join-Path $repositoryRoot '.work\consumer-discovery\staging-evidence.json') `
   -Description 'Consumer-discovery staging evidence'
 $stagingEvidence = Get-Content -LiteralPath $stagingEvidencePath -Raw | ConvertFrom-Json
-if ([string]$stagingEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_STAGING/3' -or
+if ([string]$stagingEvidence.Schema -cne 'VWCANVAS9_CONSUMER_DISCOVERY_STAGING/4' -or
     [string]$stagingEvidence.Profile -cne [string]$resolvedProfile.Key -or
     [string]$stagingEvidence.VwHudRevision -cne [string]$matrix.VwHudFixture.Revision -or
     [string]$stagingEvidence.VenworksCoreRevision -cne [string]$matrix.VenworksCoreFixture.Revision -or
@@ -1542,6 +1580,9 @@ foreach ($staging in @($matrix.Staging)) {
     throw "Staging evidence does not contain exactly one '$key' package."
   }
   $packageEvidence = $stagingEvidenceMatches[0]
+  if ($packageEvidence.Selected -isnot [bool]) {
+    throw "$key staging evidence does not declare whether the package was selected for replacement."
+  }
   $stagingPath = Resolve-ConsumerDiscoveryRequiredDirectory `
     -Path (Join-Path $repositoryRoot ([string]$staging.Directory)) `
     -Description "$key staging root"
@@ -1573,13 +1614,23 @@ foreach ($staging in @($matrix.Staging)) {
       [string]::Join("`n", $actualEntryNames) -cne [string]::Join("`n", $expectedEntryNames)) {
     throw "$key staged archive inventory does not match its exact owner payload."
   }
+  $evidenceEntries = @($packageEvidence.Archive.Entries)
+  $evidenceEntryNames = @($evidenceEntries.Path | ForEach-Object { ([string]$_).ToLowerInvariant() } | Sort-Object)
+  if ($evidenceEntryNames.Count -ne $actualEntryNames.Count -or
+      [string]::Join("`n", $evidenceEntryNames) -cne [string]::Join("`n", $actualEntryNames)) {
+    throw "$key staging evidence does not describe the exact archive inventory."
+  }
   foreach ($entry in $entries) {
     $entryName = ([string]$entry.Name).Replace('\', '/').ToLowerInvariant()
     $entryHash = Get-BytesSha256 -Bytes (Read-ConsumerDiscoveryGeneralBa2EntryBytes -Entry $entry)
-    if ($entryHash -cne [string]$payloadHashes[$key][$entryName]) {
+    $entryEvidenceMatches = @($evidenceEntries | Where-Object { ([string]$_.Path).ToLowerInvariant() -ceq $entryName })
+    if ($entryEvidenceMatches.Count -ne 1 -or $entryHash -cne [string]$entryEvidenceMatches[0].Sha256) {
+      throw "$key staged archive entry '$entryName' differs from its staging evidence."
+    }
+    if ($packageEvidence.Selected -and $entryHash -cne [string]$payloadHashes[$key][$entryName]) {
       throw "$key staged archive entry '$entryName' differs from its verified source artifact."
     }
   }
 }
 
-Write-Host -ForegroundColor Green "Verified deterministic movies, profile '$($resolvedProfile.Key)' Mutagen plugins, compiled scripts, patched Ship HUD movies, and all three exact archive-only staging roots."
+Write-Host -ForegroundColor Green "Verified deterministic movies, profile '$($resolvedProfile.Key)' Mutagen plugins, compiled scripts, patched Ship HUD movies, selected source-bound packages, and exact unselected package evidence."

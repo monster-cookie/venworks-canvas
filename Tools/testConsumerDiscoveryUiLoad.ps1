@@ -11,8 +11,9 @@ Set-StrictMode -Version Latest
 function New-TestUiPacket {
   param([string]$Id = 'beef70b2-024e-4e9b-a8d5-70a0c882c431', [string]$Version = '1',
     [string]$Normal = 'VenworksCanvas/Consumers/probe.demo/normal.swf',
-    [string]$Large = 'VenworksCanvas/Consumers/probe.demo/large.swf', [string]$Protocol = '1')
-  $packet = 'VWC_EVT/1|canvas.ui.load|'
+    [string]$Large = 'VenworksCanvas/Consumers/probe.demo/large.swf', [string]$Protocol = '1',
+    [string]$EventHeader = 'VWC_EVT/1|', [string]$PacketType = 'canvas.ui.load')
+  $packet = $EventHeader + $PacketType + '|'
   foreach ($value in @($Protocol, $Id, $Version, $Normal, $Large)) { $packet += $value.Length.ToString() + ':' + $value }
   return $packet
 }
@@ -25,7 +26,30 @@ function Get-TestPapyrusBody {
 }
 
 function Assert-UiLoadSourceContract {
-  param([string]$Registry, [string]$Movie)
+  param([string]$Enumerations, [string]$Registry, [string]$Movie)
+  foreach ($token in @(
+    'Struct EventHeader', 'Int V1 = 1', 'Struct PacketType', 'Int UiLoad = 1',
+    'String Function ResolveEventHeader(Int eventHeader) Global',
+    'String Function ResolvePacketType(Int packetType) Global',
+    'Return "VWC_EVT/1|"', 'Return "canvas.ui.load"', 'Return ""'
+  )) {
+    if (!$Enumerations.Contains($token)) { throw "Missing Canvas protocol enumeration invariant: $token" }
+  }
+  if ([regex]::Matches($Enumerations, [regex]::Escape('VWC_EVT/1|')).Count -ne 1 -or
+      [regex]::Matches($Enumerations, [regex]::Escape('canvas.ui.load')).Count -ne 1) {
+    throw 'Protocol wire strings must each have exactly one Papyrus owner.'
+  }
+  $eventBuilder = Get-TestPapyrusBody $Registry 'BuildEventPacket'
+  if ($eventBuilder -notmatch '(?s)ResolveEventHeader\(eventHeader\).*ResolvePacketType\(packetType\).*If \(eventHeaderText == "" \|\| packetTypeText == ""\).*Return "".*Return eventHeaderText \+ packetTypeText \+ "\|" \+ payload' -or
+      $eventBuilder -match 'VWC_EVT/1|canvas\.ui\.load') {
+    throw 'The event builder must resolve and reject enum selectors without accepting or owning raw wire text.'
+  }
+  $uiPacketBuilder = Get-TestPapyrusBody $Registry 'BuildUiLoadPacket'
+  if ($uiPacketBuilder -notmatch '(?s)new Venworks:Canvas:Enumerations:EventHeader.*new Venworks:Canvas:Enumerations:PacketType.*BuildEventPacket\(headers\.V1, packetTypes\.UiLoad, payload\)' -or
+      $Registry.Contains('"VWC_EVT/1|"') -or $Registry.Contains('"canvas.ui.load"') -or
+      $Registry -match '(?im)^\s*(?:\w+\s+)?Function\s+\w+\([^\r\n]*String\s+(?:eventHeader|packetType)\b') {
+    throw 'UI-load construction must use enum selectors and expose no raw-string header or packet-type argument.'
+  }
   $request = Get-TestPapyrusBody $Registry 'TryRequestUiLoad'
   if ($request -notmatch '(?s)TryLockGuard RegistryGuard.*RequestUiLoadLocked.*QueueUiLoadLocked.*EndTryLockGuard\s+ScheduleUiPump\(result\)') {
     throw 'The second step must validate and enqueue under a guard, then schedule after release.'
@@ -36,7 +60,7 @@ function Assert-UiLoadSourceContract {
     }
   }
   foreach ($token in @(
-    'pending >= 32', 'IsPrintableAscii(packet, 1, 512)', 'UiLoads[existing].Packet == packet',
+    'pending >= 32', 'packet == ""', 'REJECTED_UI_PROTOCOL', 'IsPrintableAscii(packet, 1, 512)', 'UiLoads[existing].Packet == packet',
     'UiLoads[existing].Owner == owner', 'UI_LOAD_ALREADY_REQUESTED', 'UI_LOAD_QUEUED',
     'ticket == UiPumpBase', 'now < UiNextSubmitTime', 'UiNextSubmitTime = now + 1.0',
     'registration.Owner == entry.Owner', 'BuildUiLoadPacket(registration) == entry.Packet',
@@ -55,6 +79,9 @@ function Assert-UiLoadSourceContract {
   if ((Get-TestPapyrusBody $Registry 'RefreshUiActivation') -match '\bConsumers\s*=') { throw 'UI recreation must preserve registration storage.' }
   foreach ($token in @(
     'MAX_UI_LOAD_CHARACTERS:int = 512', 'packet.length > MAX_UI_LOAD_CHARACTERS',
+    'this.matchAsciiPrefix(text,UI_LOAD_PREFIX)', 'this.matchAsciiPrefix(param1,UI_LOAD_PREFIX)',
+    'this.matchAsciiPrefix(packet,UI_LOAD_PREFIX)', 'ASCII CASE-FOLDED',
+    'actual >= 65 && actual <= 90', 'expected >= 65 && expected <= 90',
     'this.parseUiLoad(param1)', 'this.reconcile(desired,false)', 'this.resolveHostKind() == "PLAYER HUD"',
     'protocol.value != "1"', 'cursor != packet.length', 'this.validateDescriptor(descriptor)',
     'this.normalizeUuid(String(id.value))', 'this.removeLoaderListeners(loader)',
@@ -64,6 +91,10 @@ function Assert-UiLoadSourceContract {
   )) {
     if (!$Movie.Contains($token)) { throw "Missing host load invariant: $token" }
   }
+  $prefixMatcher = [regex]::Match($Movie, '(?ms)      private function matchAsciiPrefix\([^\r\n]*\) : int\s*\{(?<body>.*?)^      \}')
+  if (!$prefixMatcher.Success -or $prefixMatcher.Groups['body'].Value -match 'toLowerCase|toUpperCase') {
+    throw 'The receiver must compare only the ASCII prefix without normalizing the complete packet.'
+  }
   if ($Movie.Contains('this.receiveSnapshot(') -or $Movie.Contains('this.receiveDiagnostic(')) { throw 'Legacy ingress must stay unreachable.' }
 }
 
@@ -72,6 +103,15 @@ $canonical = 'beef70b2-024e-4e9b-a8d5-70a0c882c431'
 foreach ($id in @($canonical, $canonical.ToUpperInvariant(), '{BeEf70B2-024e-4e9b-A8d5-70A0c882c431}', $canonical.Replace('-', ''))) {
   $record = ConvertFrom-ConsumerDiscoveryUiLoadPacket -Packet (New-TestUiPacket -Id $id)
   if ($record.ConsumerId -cne $canonical -or $record.Version -ne 1) { throw 'UI load UUID normalization failed.' }
+}
+foreach ($caseVariant in @(
+  @{ EventHeader = 'vwc_evt/1|'; PacketType = 'CANVAS.UI.LOAD' },
+  @{ EventHeader = 'VwC_EvT/1|'; PacketType = 'CaNvAs.Ui.LoAd' }
+)) {
+  $record = ConvertFrom-ConsumerDiscoveryUiLoadPacket -Packet (New-TestUiPacket -EventHeader $caseVariant.EventHeader -PacketType $caseVariant.PacketType)
+  if ($record.ConsumerId -cne $canonical -or $record.NormalPath -cne 'VenworksCanvas/Consumers/probe.demo/normal.swf') {
+    throw 'Case-folded envelope acceptance changed framed payload data.'
+  }
 }
 $mixed = ConvertFrom-ConsumerDiscoveryUiLoadPacket -Packet (New-TestUiPacket -Normal 'VenworksCanvas/Consumers/PROBE.Demo/normal.swf' -Large 'VENWORKSCANVAS/CONSUMERS/probe.demo/LARGE.SWF' -Version '9999')
 if ($mixed.NormalPath -cne 'VenworksCanvas/Consumers/probe.demo/normal.swf' -or $mixed.Version -ne 9999) { throw 'Path/version normalization failed.' }
@@ -96,11 +136,18 @@ foreach ($packet in $invalid) {
   if (!$caught) { throw 'Invalid UI packet was accepted.' }
   $rejected += 1
 }
+$enumerations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Enumerations.psc') -Raw
 $registry = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Probes/ConsumerDiscovery/Registry.psc') -Raw
 $movie = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/probes/consumer-discovery/actionscript/CanvasConsumerDiscoveryHost.as') -Raw
-Assert-UiLoadSourceContract -Registry $registry -Movie $movie
+Assert-UiLoadSourceContract -Enumerations $enumerations -Registry $registry -Movie $movie
 $mutations = @(
+  @('Enumerations', 'Int V1 = 1', 'Int V1 = 2'),
+  @('Enumerations', 'Int UiLoad = 1', 'Int UiLoad = 2'),
+  @('Enumerations', 'Return "VWC_EVT/1|"', 'Return "CUSTOM|"'),
+  @('Enumerations', 'Return "canvas.ui.load"', 'Return "custom.type"'),
+  @('Registry', 'BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)', 'BuildEventPacket(99, 99, payload)'),
   @('Registry', 'pending >= 32', 'pending >= 320'),
+  @('Registry', 'packet == ""', 'False'),
   @('Registry', 'IsPrintableAscii(packet, 1, 512)', 'IsPrintableAscii(packet, 1, 4096)'),
   @('Registry', 'UiLoads[existing].Packet == packet', 'False'),
   @('Registry', 'UiLoads[existing].Owner == owner', 'True'),
@@ -122,23 +169,29 @@ $mutations = @(
   @('Movie', 'protocol.value != "1"', 'false'),
   @('Movie', 'cursor != packet.length', 'false'),
   @('Movie', 'this.normalizeUuid(String(id.value))', 'String(id.value)'),
-  @('Movie', 'this.parseUiLoad(param1)', 'this.receiveSnapshot(param1)')
+  @('Movie', 'this.parseUiLoad(param1)', 'this.receiveSnapshot(param1)'),
+  @('Movie', 'this.matchAsciiPrefix(packet,UI_LOAD_PREFIX)', '1')
 )
 $mutated = 0
 foreach ($mutation in $mutations) {
+  $candidateEnumerations = $enumerations
   $candidateRegistry = $registry
   $candidateMovie = $movie
-  $original = if ($mutation[0] -eq 'Registry') { $registry } else { $movie }
+  $original = if ($mutation[0] -eq 'Enumerations') { $enumerations } elseif ($mutation[0] -eq 'Registry') { $registry } else { $movie }
   if (!$original.Contains($mutation[1])) { throw "Mutation did not match: $($mutation[1])" }
-  if ($mutation[0] -eq 'Registry') { $candidateRegistry = $registry.Replace($mutation[1], $mutation[2]) }
+  if ($mutation[0] -eq 'Enumerations') { $candidateEnumerations = $enumerations.Replace($mutation[1], $mutation[2]) }
+  elseif ($mutation[0] -eq 'Registry') { $candidateRegistry = $registry.Replace($mutation[1], $mutation[2]) }
   else { $candidateMovie = $movie.Replace($mutation[1], $mutation[2]) }
   $caught = $false
-  try { Assert-UiLoadSourceContract $candidateRegistry $candidateMovie } catch { $caught = $true }
+  try { Assert-UiLoadSourceContract $candidateEnumerations $candidateRegistry $candidateMovie } catch { $caught = $true }
   if (!$caught) { throw "Unsafe source mutation accepted: $($mutation[1])" }
   $mutated += 1
 }
 $matrix = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/probes/consumer-discovery/probe-matrix.psd1')
-if ($matrix.UiLoadTransport.MaxCharacters -ne 512 -or $matrix.UiLoadTransport.MaxPending -ne 32 -or
+if ($matrix.UiLoadTransport.EventHeader.Selector -ne 1 -or $matrix.UiLoadTransport.EventHeader.Wire -cne 'VWC_EVT/1|' -or
+    $matrix.UiLoadTransport.PacketType.Selector -ne 1 -or $matrix.UiLoadTransport.PacketType.Wire -cne 'canvas.ui.load' -or
+    $matrix.UiLoadTransport.Protocol -cne $matrix.UiLoadTransport.PacketType.Wire -or
+    $matrix.UiLoadTransport.MaxCharacters -ne 512 -or $matrix.UiLoadTransport.MaxPending -ne 32 -or
     $matrix.UiLoadTransport.MinimumIntervalSeconds -ne 1 -or $matrix.UiLoadTransport.MaxBusyAttempts -ne 20 -or
     $matrix.UiLoadTransport.Target -cne 'PlayerHud') { throw 'Matrix load budgets differ from source.' }
 Write-Output "UI load reference vectors passed; $rejected malformed packets and $mutated unsafe source mutations rejected. No Papyrus/Scaleform VM or delivery acceptance is implied."
