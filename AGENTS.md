@@ -124,6 +124,16 @@ Do not commit `.work`.
 
 Never use `$env:TEMP`, `$env:TMP`, `%TEMP%`, `/tmp`, or another system-wide temporary directory for project work when the repository-local `.work` directory can be used instead.
 
+## Report Output Rules
+
+When writing multi-line reports:
+
+- Do not build the report with one large shell command containing repeated `echo`, `printf`, or redirection.
+- Prefer the file write/edit tool for report content.
+- If shell output is unavoidable, split the work into small commands.
+- Keep any individual permission-requiring shell command short enough to review comfortably in the OpenCode permission dialog.
+- Write temporary review artifacts under the repository-local `.work` directory, not the system TEMP directory.
+
 ## Delivery and commit-message handoff
 
 - If the approved plan authorizes working-branch delivery, stage only approved paths, create the commit, push the same-named working branch, and create or update its draft pull request.
