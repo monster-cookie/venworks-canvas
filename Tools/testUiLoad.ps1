@@ -55,6 +55,10 @@ function Assert-UiLoadSourceContract {
   if ($request -notmatch '(?s)TryLockGuard RegistryGuard.*RequestUiLoadLocked.*QueueUiLoadLocked.*EndTryLockGuard\s+ScheduleUiPump\(result\)') {
     throw 'The second step must validate and enqueue under a guard, then schedule after release.'
   }
+  $queue = Get-TestPapyrusBody $Registry 'QueueUiLoadLocked'
+  if ($queue -notmatch '(?s)If \(pending >= 32 && \(existing < 0 \|\| UiLoads\[existing\]\.Submitted\)\)\s+result\.Status = "DEFERRED_UI_QUEUE_FULL"\s+;[^\r\n]*\s+If \(UiPumpBase == 0\)\s+result\.TimerId = StartUiPumpLocked\(now\)\s+EndIf\s+Return') {
+    throw 'A full pending queue must restart an inactive pump before returning its deferred result.'
+  }
   foreach ($name in @('TryRegisterConsumer', 'RegisterConsumerLocked', 'TryCheckUiLoadRequest', 'RequestUiLoadLocked')) {
     if ((Get-TestPapyrusBody $Registry $name) -match 'ShowCustomWatchAlert|QueueUiLoadLocked|ScheduleUiPump|TryRequestUiLoad') {
       throw "$name must not request, schedule or submit a UI load."
@@ -152,6 +156,7 @@ $mutations = @(
   @('Registry', 'IsPrintableAscii(packet, 1, 512)', 'IsPrintableAscii(packet, 1, 4096)'),
   @('Registry', 'UiLoads[existing].Packet == packet', 'False'),
   @('Registry', 'UiLoads[existing].Owner == owner', 'True'),
+  @('Registry', 'result.TimerId = StartUiPumpLocked(now)', 'result.TimerId = 0'),
   @('Registry', 'ticket == UiPumpBase', 'True'),
   @('Registry', 'now < UiNextSubmitTime', 'False'),
   @('Registry', 'UiNextSubmitTime = now + 1.0', 'UiNextSubmitTime = now'),

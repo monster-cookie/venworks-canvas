@@ -73,6 +73,25 @@ $sharedSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'sharedCanvas.
 $packageSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'createPackages.ps1') -Raw
 $setupSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'setupRepo.ps1') -Raw
 $checkSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'checkRepo.ps1') -Raw
+
+function Assert-PackageSwapVerificationContract {
+  param([Parameter(Mandatory = $true)][string]$Source)
+
+  foreach ($pattern in @(
+    '(?s)New-Item -ItemType Directory -Path \$operation\.BackupPath.*?\$backedUpOperations\.Add\(\$operation\).*?\$originalHashBefore = Get-CanvasFileSha256 -Path \$installItem\.FullName.*?Copy-Item -LiteralPath \$installItem\.FullName -Destination \$backupFilePath.*?\$originalHashAfter = Get-CanvasFileSha256 -Path \$installItem\.FullName.*?\$backupHash = Get-CanvasFileSha256 -Path \$backupFilePath.*?\$originalHashBefore -cne \$originalHashAfter -or \$backupHash -cne \$originalHashBefore.*?\$originalHashes\[\$installItem\.Name\] = \$originalHashBefore',
+    '(?s)\$backupNames\.Count -ne \$installNames\.Count.*?backup inventory differs from its installed originals.*?foreach \(\$candidateItem in \$candidateItems\)',
+    '(?s)\$candidateHashBefore = Get-CanvasFileSha256 -Path \$candidateItem\.FullName.*?Copy-Item -LiteralPath \$candidateItem\.FullName -Destination \$temporaryPath.*?\$temporaryHash = Get-CanvasFileSha256 -Path \$temporaryPath.*?\$candidateHashAfter = Get-CanvasFileSha256 -Path \$candidateItem\.FullName.*?\$temporaryHash -cne \$candidateHashBefore -or \$candidateHashAfter -cne \$candidateHashBefore.*?File\]::Move\(\$temporaryPath, \$destinationPath, \$true\).*?Get-CanvasFileSha256 -Path \$destinationPath\) -cne \$candidateHashBefore',
+    '(?s)backup inventory no longer matches its installed originals.*?\$operation\.OriginalHashes\.ContainsKey\(\$originalName\).*?backup verification failed for.*?foreach \(\$candidateName in @\(\$operation\.CandidateNames\)\)',
+    '(?s)Get-CanvasFileSha256 -Path \$backupFile\.FullName\) -cne \$originalHash.*?Copy-Item -LiteralPath \$backupFile\.FullName -Destination \$temporaryPath.*?Get-CanvasFileSha256 -Path \$temporaryPath\) -cne \$originalHash.*?File\]::Move\(\$temporaryPath, \$destinationPath, \$true\).*?Get-CanvasFileSha256 -Path \$destinationPath\) -cne \$originalHash',
+    '(?s)\$restoredNames\.Count -ne @\(\$operation\.OriginalNames\)\.Count.*?restored package inventory differs from its installed originals.*?Get-CanvasFileSha256 -Path \(Join-Path \$operation\.InstallPath \$originalName\)\) -cne.*?\$operation\.OriginalHashes\[\$originalName\]'
+  )) {
+    if ($Source -notmatch $pattern) {
+      throw 'Package swap verification no longer proves backup, candidate, or restored content integrity.'
+    }
+  }
+}
+
+Assert-PackageSwapVerificationContract -Source $packageSource
 if ($sharedSource -notmatch '(?m)^function Test-CanvasOverlappingPaths\s*\{') {
   throw 'Shared Canvas helpers do not define the path overlap predicate.'
 }
@@ -139,6 +158,33 @@ foreach ($forbiddenContract in @(
   }
 }
 
+$verificationMutations = @(
+  @('$backedUpOperations.Add($operation)', '$null = $operation'),
+  @('$backupHash -cne $originalHashBefore', '$false'),
+  @('$backupNames.Count -ne $installNames.Count', '$false'),
+  @('$temporaryHash -cne $candidateHashBefore', '$false'),
+  @('(Get-CanvasFileSha256 -Path $destinationPath) -cne $candidateHashBefore', '$false'),
+  @('!$operation.OriginalHashes.ContainsKey($originalName)', '$false'),
+  @('(Get-CanvasFileSha256 -Path $backupFile.FullName) -cne $originalHash', '$false'),
+  @('(Get-CanvasFileSha256 -Path $temporaryPath) -cne $originalHash', '$false'),
+  @('(Get-CanvasFileSha256 -Path $destinationPath) -cne $originalHash', '$false'),
+  @('$restoredNames.Count -ne @($operation.OriginalNames).Count', '$false'),
+  @('(Get-CanvasFileSha256 -Path (Join-Path $operation.InstallPath $originalName)) -cne', '$false -and')
+)
+$verificationMutationsRejected = 0
+foreach ($mutation in $verificationMutations) {
+  if (!$packageSource.Contains($mutation[0])) {
+    throw "Package verification mutation did not match: $($mutation[0])"
+  }
+  $candidateSource = $packageSource.Replace($mutation[0], $mutation[1])
+  $caught = $false
+  try { Assert-PackageSwapVerificationContract -Source $candidateSource } catch { $caught = $true }
+  if (!$caught) {
+    throw "Unsafe package verification mutation was accepted: $($mutation[0])"
+  }
+  $verificationMutationsRejected += 1
+}
+
 $testWorkRoot = Join-Path $repositoryRoot '.work\canvas'
 $fixtureRoot = Join-Path $testWorkRoot ('test-packaging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
@@ -172,4 +218,4 @@ $assemblyRejected = $false
 try { & (Join-Path $PSScriptRoot 'SpriggitAssembleDatabaseFromYaml.ps1') } catch { $assemblyRejected = $_.Exception.Message -like 'Spriggit assembly is disabled*' }
 if (!$assemblyRejected) { throw 'Spriggit assembly did not fail closed.' }
 
-Write-Output "Packaging contracts passed: shared variant selection, path topology validation, junction-preserving child-file replacement, eight binary rejections, and disabled Spriggit assembly."
+Write-Output "Packaging contracts passed: shared variant selection, path topology validation, junction-preserving verified child-file replacement, $verificationMutationsRejected unsafe verification mutations, eight binary rejections, and disabled Spriggit assembly."

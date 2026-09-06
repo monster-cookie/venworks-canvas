@@ -392,6 +392,10 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndIf
   If (pending >= 32 && (existing < 0 || UiLoads[existing].Submitted))
     result.Status = "DEFERRED_UI_QUEUE_FULL"
+    ; A full queue still needs an active pump to make room for a deferred caller.
+    If (UiPumpBase == 0)
+      result.TimerId = StartUiPumpLocked(now)
+    EndIf
     Return
   EndIf
   UiLoadEntry entry = new UiLoadEntry

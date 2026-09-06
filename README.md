@@ -66,7 +66,11 @@ $hudRepository = 'C:\Repositories\Venworks\venworks-honkcore-ta-ui'
 
 Use `-VariantKeys CANVAS`, `-VariantKeys EXAMPLE`, or `-VariantKeys COMPONENTGALLERY` to select a subset. An omitted variant list means all variants. Unselected staging packages must already contain exactly their expected ESM and BA2 because full verification checks the complete deployed set.
 
-`createPackages.ps1` reads Archive2 and staging target paths from `.env`, rejects overlapping package targets, verifies binary headers and exact BA2 inventories, and records hashes before replacing any deployed child file. A failed swap restores the prior child files without replacing the staging directory or junction.
+`createPackages.ps1` reads Archive2 and staging target paths from `.env`, rejects overlapping package targets, and verifies binary headers and exact BA2 inventories. Before the swap, it validates candidate input and copied archive-entry hashes, verifies each installed original against its backup inventory and hashes, and checks each candidate temporary file hash before replacing its destination.
+
+After each candidate replacement, it verifies the installed destination hash. For a handled swap failure, it rechecks the backup inventory and hashes, rolls back backed-up packages in reverse order through temporary restore files, verifies each restored temporary and final destination hash, and verifies the final original inventory and hashes without replacing the staging directory or Junction; an empty installed package is valid.
+
+If restoration is incomplete, the scratch backup directory is preserved and the command reports the error. A process or power interruption bypasses this automatic handled-error recovery: a retained `.work\canvas\staging-backups` directory causes the next package run to stop for manual inspection, so do not delete it blindly or rerun packaging to clear the condition.
 
 ## Validation
 

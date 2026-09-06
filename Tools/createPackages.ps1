@@ -549,23 +549,47 @@ try {
     }
     $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue @($installNames) -Force
     $operation | Add-Member -NotePropertyName CandidateNames -NotePropertyValue @($candidateNames) -Force
+    $originalHashes = @{}
+    $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
 
     New-Item -ItemType Directory -Path $operation.BackupPath | Out-Null
-    foreach ($installItem in $installItems) {
-      Copy-Item -LiteralPath $installItem.FullName -Destination (Join-Path $operation.BackupPath $installItem.Name)
-    }
     $backedUpOperations.Add($operation)
+    foreach ($installItem in $installItems) {
+      $backupFilePath = Join-Path $operation.BackupPath $installItem.Name
+      $originalHashBefore = Get-CanvasFileSha256 -Path $installItem.FullName
+      Copy-Item -LiteralPath $installItem.FullName -Destination $backupFilePath
+      $originalHashAfter = Get-CanvasFileSha256 -Path $installItem.FullName
+      $backupHash = Get-CanvasFileSha256 -Path $backupFilePath
+      if ($originalHashBefore -cne $originalHashAfter -or $backupHash -cne $originalHashBefore) {
+        throw "$($operation.Key) installed source or backup failed hash verification while backing up '$($installItem.Name)'."
+      }
+      $originalHashes[$installItem.Name] = $originalHashBefore
+    }
+    $backupItems = @(Get-ChildItem -LiteralPath $operation.BackupPath -Force)
+    if (@($backupItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+      throw "$($operation.Key) backup contains an unexpected directory."
+    }
+    $backupNames = @($backupItems | ForEach-Object { $_.Name } | Sort-Object)
+    if ($backupNames.Count -ne $installNames.Count -or
+        [string]::Join("`n", $backupNames) -cne [string]::Join("`n", $installNames)) {
+      throw "$($operation.Key) backup inventory differs from its installed originals."
+    }
 
     foreach ($candidateItem in $candidateItems) {
       $destinationPath = Join-Path $operation.InstallPath $candidateItem.Name
       $temporaryPath = Join-Path $operation.InstallPath ".$($candidateItem.Name).$PID-$([guid]::NewGuid().ToString('N')).new"
       try {
+        $candidateHashBefore = Get-CanvasFileSha256 -Path $candidateItem.FullName
         Copy-Item -LiteralPath $candidateItem.FullName -Destination $temporaryPath
-        if ((Get-FileHash -LiteralPath $temporaryPath -Algorithm SHA256).Hash -cne
-            (Get-FileHash -LiteralPath $candidateItem.FullName -Algorithm SHA256).Hash) {
+        $temporaryHash = Get-CanvasFileSha256 -Path $temporaryPath
+        $candidateHashAfter = Get-CanvasFileSha256 -Path $candidateItem.FullName
+        if ($temporaryHash -cne $candidateHashBefore -or $candidateHashAfter -cne $candidateHashBefore) {
           throw "$($operation.Key) candidate changed while copying '$($candidateItem.Name)' into its package folder."
         }
         [System.IO.File]::Move($temporaryPath, $destinationPath, $true)
+        if ((Get-CanvasFileSha256 -Path $destinationPath) -cne $candidateHashBefore) {
+          throw "$($operation.Key) installed candidate differs after replacing '$($candidateItem.Name)'."
+        }
       }
       finally {
         if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
@@ -589,6 +613,23 @@ catch {
         Assert-CanvasJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
       }
       Assert-CanvasStagingTarget -Path $operation.InstallPath -AllowedPaths $allowedInstallPaths
+      $backupItems = @(Get-ChildItem -LiteralPath $operation.BackupPath -Force)
+      if (@($backupItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+        throw "$($operation.Key) backup contains an unexpected directory during restoration."
+      }
+      $backupNames = @($backupItems | ForEach-Object { $_.Name } | Sort-Object)
+      if ($backupNames.Count -ne @($operation.OriginalNames).Count -or
+          [string]::Join("`n", $backupNames) -cne [string]::Join("`n", @($operation.OriginalNames))) {
+        throw "$($operation.Key) backup inventory no longer matches its installed originals."
+      }
+      foreach ($originalName in @($operation.OriginalNames)) {
+        $backupFilePath = Join-Path $operation.BackupPath $originalName
+        if (!$operation.OriginalHashes.ContainsKey($originalName) -or
+            !(Test-Path -LiteralPath $backupFilePath -PathType Leaf) -or
+            (Get-CanvasFileSha256 -Path $backupFilePath) -cne [string]$operation.OriginalHashes[$originalName]) {
+          throw "$($operation.Key) backup verification failed for '$originalName'."
+        }
+      }
       foreach ($candidateName in @($operation.CandidateNames)) {
         if ($candidateName -cnotin @($operation.OriginalNames)) {
           $candidateInstallPath = Join-Path $operation.InstallPath $candidateName
@@ -597,17 +638,42 @@ catch {
           }
         }
       }
-      foreach ($backupFile in @(Get-ChildItem -LiteralPath $operation.BackupPath -File)) {
+      foreach ($backupFile in $backupItems) {
         $destinationPath = Join-Path $operation.InstallPath $backupFile.Name
         $temporaryPath = Join-Path $operation.InstallPath ".$($backupFile.Name).$PID-$([guid]::NewGuid().ToString('N')).restore"
+        $originalHash = [string]$operation.OriginalHashes[$backupFile.Name]
         try {
+          if ((Get-CanvasFileSha256 -Path $backupFile.FullName) -cne $originalHash) {
+            throw "$($operation.Key) backup changed before restoring '$($backupFile.Name)'."
+          }
           Copy-Item -LiteralPath $backupFile.FullName -Destination $temporaryPath
+          if ((Get-CanvasFileSha256 -Path $temporaryPath) -cne $originalHash) {
+            throw "$($operation.Key) restore copy differs for '$($backupFile.Name)'."
+          }
           [System.IO.File]::Move($temporaryPath, $destinationPath, $true)
+          if ((Get-CanvasFileSha256 -Path $destinationPath) -cne $originalHash) {
+            throw "$($operation.Key) restored destination differs for '$($backupFile.Name)'."
+          }
         }
         finally {
           if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
             Remove-Item -LiteralPath $temporaryPath -Force
           }
+        }
+      }
+      $restoredItems = @(Get-ChildItem -LiteralPath $operation.InstallPath -Force)
+      if (@($restoredItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+        throw "$($operation.Key) restored package contains an unexpected directory."
+      }
+      $restoredNames = @($restoredItems | ForEach-Object { $_.Name } | Sort-Object)
+      if ($restoredNames.Count -ne @($operation.OriginalNames).Count -or
+          [string]::Join("`n", $restoredNames) -cne [string]::Join("`n", @($operation.OriginalNames))) {
+        throw "$($operation.Key) restored package inventory differs from its installed originals."
+      }
+      foreach ($originalName in @($operation.OriginalNames)) {
+        if ((Get-CanvasFileSha256 -Path (Join-Path $operation.InstallPath $originalName)) -cne
+            [string]$operation.OriginalHashes[$originalName]) {
+          throw "$($operation.Key) restored package hash differs for '$originalName'."
         }
       }
     }
