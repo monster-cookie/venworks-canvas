@@ -102,6 +102,28 @@ These rules apply throughout the repository.
 - Preserve unrelated staged, unstaged, and untracked user changes.
 - If any required branch or destination check fails, stop before mutation and report the exact blocker.
 
+## Temporary and Working Files
+
+Use the repository-local `.work` directory for all temporary, generated, intermediate, scratch, downloaded, extracted, and diagnostic files.
+
+Do not write temporary project artifacts to the system TEMP directory unless a tool requires it and provides no configurable alternative.
+
+Before creating temporary files, ensure that `.work/` exists at the repository root.  
+
+Examples:
+
+- build intermediates -> `.work/build/`
+- downloaded files -> `.work/downloads/`
+- extracted archives -> `.work/extracted/`
+- generated reports -> `.work/reports/`
+- scratch scripts -> `.work/scratch/`
+- temporary logs -> `.work/logs/`
+- temporary files -> `.work/tmp/`
+
+Do not commit `.work`.
+
+Never use `$env:TEMP`, `$env:TMP`, `%TEMP%`, `/tmp`, or another system-wide temporary directory for project work when the repository-local `.work` directory can be used instead.
+
 ## Delivery and commit-message handoff
 
 - If the approved plan authorizes working-branch delivery, stage only approved paths, create the commit, push the same-named working branch, and create or update its draft pull request.
