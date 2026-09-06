@@ -1,0 +1,40 @@
+FormKey: 000800:Venworks-Canvas.esm
+EditorID: VWCANVAS_Registry
+FormVersion: 582
+VirtualMachineAdapter:
+  Scripts:
+  - Name: Venworks:Canvas:Registry
+    Properties:
+    - MutagenObjectType: ScriptStructListProperty
+      Name: Consumers
+      Structs:
+      - Members:
+        - MutagenObjectType: ScriptObjectProperty
+          Name: Owner
+        - MutagenObjectType: ScriptStringProperty
+          Name: ConsumerId
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: DisplayName
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: NormalMovieUrl
+          Data: ''
+        - MutagenObjectType: ScriptStringProperty
+          Name: LargeMovieUrl
+          Data: ''
+        - MutagenObjectType: ScriptIntProperty
+          Name: DescriptorVersion
+  Versioning:
+  - Break0
+  ExtraBindDataVersion: 0
+  Script:
+    Name: ''
+Name:
+  TargetLanguage: English
+  Value: VWCANVAS Registry
+Data:
+  Flags:
+  - StartGameEnabled
+  - StartsEnabled
+  Unused: 0x000000
