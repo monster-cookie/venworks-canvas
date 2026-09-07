@@ -102,7 +102,8 @@ function Get-ChildDiagnosticText {
   )
 
   $diagnosticText = [string]::Join([Environment]::NewLine, @($Result.Output))
-  return [regex]::Replace($diagnosticText, '(?m)^[\t ]*\|[\t ]?', '')
+  $diagnosticText = [regex]::Replace($diagnosticText, '(?m)^[\t ]*\|[\t ]?', '')
+  return [regex]::Replace($diagnosticText, '[\t ]{2,}\|[\t ]+', ' ')
 }
 
 function Test-ChildDiagnosticExitCode {
@@ -170,14 +171,22 @@ $splitDiagnosticFixture = [pscustomobject]@{
     "     | 23."
   )
 }
+$collapsedDiagnosticFixture = [pscustomobject]@{
+  Output = @("Exception: Spriggit serialization failed for 'Venworks-Canvas.esm' with exit code      | 23.")
+}
 $wrongDiagnosticFixture = [pscustomobject]@{
-  Output = @("Spriggit test failure with exit code 24.")
+  Output = @("Spriggit test failure with exit code      | 24.")
+}
+$prefixDiagnosticFixture = [pscustomobject]@{
+  Output = @("Spriggit test failure with exit code      | 230.")
 }
 $missingDiagnosticFixture = [pscustomobject]@{
   Output = @("Spriggit test failure without a reported native code.")
 }
 Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $splitDiagnosticFixture -ExpectedExitCode 23) 'Wrapped child diagnostics did not preserve the expected native exit code.'
+Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $collapsedDiagnosticFixture -ExpectedExitCode 23) 'Collapsed child diagnostics did not preserve the expected native exit code.'
 Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $wrongDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted the wrong native exit code.'
+Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $prefixDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted an exit code with the expected code as a prefix.'
 Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $missingDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted a missing native exit code.'
 
 New-Item -ItemType Directory -Force -Path $fixtureTools, $stubRoot, (Join-Path $fixtureRoot 'starfield-data') | Out-Null
