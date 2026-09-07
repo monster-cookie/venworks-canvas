@@ -102,6 +102,7 @@ function Get-ChildDiagnosticText {
   )
 
   $diagnosticText = [string]::Join([Environment]::NewLine, @($Result.Output))
+  $diagnosticText = [regex]::Replace($diagnosticText, "$([char]27)\[[0-9;]*m", '')
   $diagnosticText = [regex]::Replace($diagnosticText, '(?m)^[\t ]*\|[\t ]?', '')
   return [regex]::Replace($diagnosticText, '[\t ]{2,}\|[\t ]+', ' ')
 }
@@ -165,23 +166,26 @@ function Assert-SafeFixturePath {
   }
 }
 
+$ansiRed = "$([char]27)[31;1m"
+$ansiCyan = "$([char]27)[36;1m"
+$ansiReset = "$([char]27)[0m"
 $splitDiagnosticFixture = [pscustomobject]@{
   Output = @(
-    "Spriggit test failure with exit code"
-    "     | 23."
+    "${ansiRed}Spriggit test failure with exit code${ansiReset}"
+    "${ansiCyan}     | ${ansiRed}23.${ansiReset}"
   )
 }
 $collapsedDiagnosticFixture = [pscustomobject]@{
-  Output = @("Exception: Spriggit serialization failed for 'Venworks-Canvas.esm' with exit code      | 23.")
+  Output = @("${ansiRed}Exception: Spriggit serialization failed for 'Venworks-Canvas.esm' with exit code${ansiReset} ${ansiRed}${ansiReset}${ansiCyan}     | ${ansiRed}23.${ansiReset}")
 }
 $wrongDiagnosticFixture = [pscustomobject]@{
-  Output = @("Spriggit test failure with exit code      | 24.")
+  Output = @("${ansiRed}Spriggit test failure with exit code${ansiReset} ${ansiCyan}     | ${ansiRed}24.${ansiReset}")
 }
 $prefixDiagnosticFixture = [pscustomobject]@{
-  Output = @("Spriggit test failure with exit code      | 230.")
+  Output = @("${ansiRed}Spriggit test failure with exit code${ansiReset} ${ansiCyan}     | ${ansiRed}230.${ansiReset}")
 }
 $missingDiagnosticFixture = [pscustomobject]@{
-  Output = @("Spriggit test failure without a reported native code.")
+  Output = @("${ansiRed}Spriggit test failure without a reported native code.${ansiReset}")
 }
 Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $splitDiagnosticFixture -ExpectedExitCode 23) 'Wrapped child diagnostics did not preserve the expected native exit code.'
 Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $collapsedDiagnosticFixture -ExpectedExitCode 23) 'Collapsed child diagnostics did not preserve the expected native exit code.'
