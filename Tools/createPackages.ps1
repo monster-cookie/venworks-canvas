@@ -1,25 +1,20 @@
+<#
+.SYNOPSIS
+Builds and installs selected Canvas packages from current staging ESMs and source-bound build outputs.
+.DESCRIPTION
+The maintainer must prepare each staging path as an exact Junction to its configured physical module folder.
+Packaging holds one process-owned lock across candidate creation, installation, and receipt publication. Failed
+transactions retain their unique directory beneath .work/canvas for recovery inspection.
+#>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)]
-  [string]$VwHudRepositoryPath,
-
-  [Parameter(Mandatory = $true)]
-  [string]$VenworksCoreRepositoryPath,
-
-  [Alias('Profile')]
-  [string]$BuildProfile = 'Production',
-
+  [Parameter(Mandatory = $true)][string]$VwHudRepositoryPath,
+  [Parameter(Mandatory = $true)][string]$VenworksCoreRepositoryPath,
   [string[]]$VariantKeys,
-
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
-
-  [string]$PluginsDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\plugins'),
-
   [string]$ScriptsDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\scripts'),
-
   [string]$ScaleformDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\scaleform'),
-
-  [string]$ArchiveRootsDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\archive-roots')
+  [string]$ArchiveRootsDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\package-transactions')
 )
 
 $PSNativeCommandUseErrorActionPreference = $true
@@ -28,97 +23,36 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
 . (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 
-function Assert-CanvasStagingTarget {
+function Copy-CanvasVerifiedFile {
   param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path,
-
-    [Parameter(Mandatory = $true)]
-    [string[]]$AllowedPaths
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Destination,
+    [Parameter(Mandatory = $true)][string]$ExpectedSha256,
+    [Parameter(Mandatory = $true)][string]$Description
   )
-
-  $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
-  $allowed = @($AllowedPaths | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\', '/') })
-  if ($fullPath -notin $allowed) {
-    throw "Refusing to replace unexpected package directory: $fullPath"
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
+  Copy-Item -LiteralPath $Source -Destination $Destination
+  if ((Get-CanvasFileSha256 -Path $Source) -cne $ExpectedSha256 -or (Get-CanvasFileSha256 -Path $Destination) -cne $ExpectedSha256) {
+    throw "$Description changed while it was copied."
   }
 }
 
-function Test-CanvasSamePath {
+function Install-CanvasVerifiedFile {
   param(
-    [Parameter(Mandatory = $true)]
-    [string]$Left,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Right
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Destination,
+    [Parameter(Mandatory = $true)][string]$ExpectedSha256,
+    [Parameter(Mandatory = $true)][string]$Description
   )
-
-  return [string]::Equals(
-    [System.IO.Path]::GetFullPath($Left).TrimEnd('\', '/'),
-    [System.IO.Path]::GetFullPath($Right).TrimEnd('\', '/'),
-    [System.StringComparison]::OrdinalIgnoreCase
-  )
-}
-
-function Get-CanvasJunctionTarget {
-  param(
-    [Parameter(Mandatory = $true)]
-    [System.IO.DirectoryInfo]$Item
-  )
-
-  $targets = @($Item.Target)
-  if ($targets.Count -ne 1) {
-    return $null
+  $temporaryPath = "$Destination.$PID-$([guid]::NewGuid().ToString('N')).new"
+  try {
+    Copy-CanvasVerifiedFile -Source $Source -Destination $temporaryPath -ExpectedSha256 $ExpectedSha256 -Description $Description
+    [System.IO.File]::Move($temporaryPath, $Destination, $true)
+    if ((Get-CanvasFileSha256 -Path $Destination) -cne $ExpectedSha256) { throw "$Description differs after installation." }
   }
-  return [System.IO.Path]::GetFullPath([string]$targets[0]).TrimEnd('\', '/')
-}
-
-function Assert-CanvasJunctionTarget {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$StagingPath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$ExpectedTargetPath
-  )
-
-  $stagingItem = Get-Item -LiteralPath $StagingPath -Force
-  if ($stagingItem.LinkType -cne 'Junction') {
-    throw "Staging path is not a Junction: $StagingPath"
+  finally {
+    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
   }
-  $actualTargetPath = Get-CanvasJunctionTarget -Item $stagingItem
-  if ($null -eq $actualTargetPath -or
-      !(Test-CanvasSamePath -Left $actualTargetPath -Right $ExpectedTargetPath)) {
-    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
-  }
-}
-
-function Resolve-CanvasArchiveTarget {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Root,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Target
-  )
-
-  if ([string]::IsNullOrWhiteSpace($Target) -or
-      [System.IO.Path]::IsPathRooted($Target) -or
-      $Target.Contains(':')) {
-    throw "Archive payload target must be a non-rooted relative path: '$Target'."
-  }
-  $segments = $Target.Split([char[]]@('\', '/'), [System.StringSplitOptions]::None)
-  if (@($segments | Where-Object { [string]::IsNullOrEmpty($_) -or $_ -ceq '.' -or $_ -ceq '..' }).Count -ne 0) {
-    throw "Archive payload target contains an empty or traversal segment: '$Target'."
-  }
-
-  $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
-  $fullTarget = [System.IO.Path]::GetFullPath((Join-Path $fullRoot $Target))
-  $rootPrefix = $fullRoot + [System.IO.Path]::DirectorySeparatorChar
-  if (!$fullTarget.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Archive payload target escapes its package root: '$Target'."
-  }
-  return $fullTarget
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -126,584 +60,274 @@ $workRoot = Join-Path $repositoryRoot '.work\canvas'
 $matrix = Get-CanvasMatrix -RepositoryRoot $repositoryRoot
 $allVariants = @(Get-ModuleVariants)
 $selectedVariants = @(Get-CanvasStagingSelection -VariantKeys $VariantKeys)
-$resolvedProfile = Resolve-CanvasProfile -Matrix $matrix -BuildProfile $BuildProfile
-$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
-$resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture `
-  -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath `
-  -Matrix $matrix
 Import-CanvasEnvironment -Path $EnvironmentPath
-if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) {
-  throw "TOOL_PATH_ARCHIVER must be configured in $EnvironmentPath."
-}
-$archive2Path = Resolve-CanvasExecutable `
-  -Path $env:TOOL_PATH_ARCHIVER `
-  -FileName 'Archive2.exe' `
-  -Description 'Archive2 executable'
-$resolvedPluginsDirectory = Resolve-CanvasRequiredDirectory -Path $PluginsDirectory -Description 'Generated plugin directory'
-$pluginGenerationEvidencePath = Resolve-CanvasRequiredFile `
-  -Path (Join-Path $resolvedPluginsDirectory 'generation-evidence.json') `
-  -Description 'Profile-bound plugin generation evidence'
-$pluginGenerationEvidence = Get-Content -LiteralPath $pluginGenerationEvidencePath -Raw | ConvertFrom-Json
-if ([string]$pluginGenerationEvidence.Schema -cne 'VWCANVAS_PLUGIN_SET/1' -or
-    [string]$pluginGenerationEvidence.Profile -cne [string]$resolvedProfile.Key -or
-    $pluginGenerationEvidence.BinaryReadback -ne $true -or
-    @($pluginGenerationEvidence.Plugins).Count -ne $allVariants.Count) {
-  throw "Plugin generation evidence does not match selected profile '$($resolvedProfile.Key)'."
-}
-$pluginPathsByKey = @{}
-foreach ($variant in $allVariants) {
-  $fileName = "$($variant.PackageBaseName).esm"
-  $evidenceMatches = @($pluginGenerationEvidence.Plugins | Where-Object { [string]$_.FileName -ceq $fileName })
-  if ($evidenceMatches.Count -ne 1) {
-    throw "Plugin generation evidence does not contain exactly one '$fileName' entry."
-  }
-  $pluginPath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $resolvedPluginsDirectory $fileName) `
-    -Description "Generated plugin '$fileName'"
-  $actualHash = (Get-FileHash -LiteralPath $pluginPath -Algorithm SHA256).Hash.ToUpperInvariant()
-  $expectedHash = [string]$resolvedProfile.PluginSha256[[string]$variant.VariantKey]
-  if ($expectedHash -notmatch '^[0-9A-F]{64}$' -or
-      [string]$evidenceMatches[0].Sha256 -cne $expectedHash -or
-      $actualHash -cne $expectedHash) {
-    throw "Generated plugin '$fileName' does not match its profile-bound generation evidence."
-  }
-  $pluginPathsByKey[[string]$variant.VariantKey] = $pluginPath
-}
-$spriggitDumpPath = Resolve-CanvasRequiredFile `
-  -Path (Join-Path $PSScriptRoot 'SpriggitDumpDatabaseToYaml.ps1') `
-  -Description 'Canvas Spriggit dump tool'
-& $spriggitDumpPath `
-  -Profile ([string]$resolvedProfile.Key) `
-  -VariantKeys @($allVariants.VariantKey) `
-  -EnvironmentPath $EnvironmentPath `
-  -PluginsDirectory $resolvedPluginsDirectory
+if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) { throw "TOOL_PATH_ARCHIVER must be configured in $EnvironmentPath." }
+$archive2Path = Resolve-CanvasExecutable -Path $env:TOOL_PATH_ARCHIVER -FileName 'Archive2.exe' -Description 'Archive2 executable'
+
+# Finish every staging/Junction/source-ESM check before creating candidates or acquiring shared write state.
+$operations = @(Get-CanvasPackageInstallOperations -SelectedVariants $selectedVariants -AllVariants $allVariants)
+$resolvedVwHudRoot = Assert-PinnedVwHudToolchainFixture -VwHudRepositoryPath $VwHudRepositoryPath -Matrix $matrix
+$resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath -Matrix $matrix
 $resolvedScriptsDirectory = Resolve-CanvasRequiredDirectory -Path $ScriptsDirectory -Description 'Compiled Papyrus script directory'
 $resolvedScaleformDirectory = Resolve-CanvasRequiredDirectory -Path $ScaleformDirectory -Description 'Built Scaleform output directory'
 $resolvedMoviesDirectory = Resolve-CanvasRequiredDirectory -Path (Join-Path $resolvedScaleformDirectory 'movies') -Description 'Built Canvas movie directory'
-$resolvedPlayerHudDirectory = Resolve-CanvasRequiredDirectory -Path (Join-Path $resolvedScaleformDirectory 'player-hud') -Description 'Built Player HUD movie directory'
-$resolvedShipMoviesDirectory = Resolve-CanvasRequiredDirectory -Path (Join-Path $resolvedScaleformDirectory 'ship-hud') -Description 'Built Ship HUD movie directory'
-$resolvedArchiveRootsDirectory = [System.IO.Path]::GetFullPath($ArchiveRootsDirectory)
-$resolvedCandidateStagingDirectory = Join-Path $workRoot 'staging-candidates'
-$resolvedStagingBackupDirectory = Join-Path $workRoot 'staging-backups'
 
-$packages = @($allVariants | ForEach-Object {
-  [pscustomobject]@{
-    Key = [string]$_.VariantKey
-    Directory = Split-Path -Leaf ([string]$_.StagingFolderPath)
-    StagingPath = [System.IO.Path]::GetFullPath([string]$_.StagingFolderPath)
-    Plugin = "$($_.PackageBaseName).esm"
-    Archive = "$($_.PackageBaseName) - Main.ba2"
-    EnvironmentVariableName = [string]$_.EnvironmentVariableName
-  }
-})
-$packageByKey = @{}
-$expectedPhysicalTargetByKey = @{}
-foreach ($package in $packages) {
-  $packageByKey[$package.Key] = $package
-  $expectedPhysicalTargetByKey[$package.Key] = [Environment]::GetEnvironmentVariable($package.EnvironmentVariableName, 'Process')
+foreach ($name in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAGS')) {
+  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name, 'Process'))) { throw "$name must be configured in $EnvironmentPath." }
 }
-$allowedStagingPaths = @($packages.StagingPath)
-foreach ($package in $packages) {
-  $stagingPath = [string]$package.StagingPath
-  Assert-CanvasStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
+$compilerPath = Resolve-CanvasExecutable -Path $env:TOOL_PATH_PAPYRUS_COMPILER -FileName 'PapyrusCompiler.exe' -Description 'Papyrus compiler'
+$flagsPath = $env:PAPYRUS_COMPILER_FLAGS
+if (Test-Path -LiteralPath $flagsPath -PathType Container) { $flagsPath = Join-Path $flagsPath 'Starfield_Papyrus_Flags.flg' }
+$compileToolchain = Get-CanvasCompileToolchainEvidence -RepositoryRoot $repositoryRoot -CompilerPath $compilerPath -FlagsPath $flagsPath -VenworksCoreRepositoryPath $resolvedVenworksCoreRoot -Matrix $matrix
+$compileEvidencePath = Resolve-CanvasRequiredFile -Path (Join-Path $resolvedScriptsDirectory 'compile-evidence.json') -Description 'Papyrus compile evidence'
+$compileEvidenceSnapshot = Get-CanvasJsonEvidenceSnapshot -Path $compileEvidencePath -Description 'Papyrus compile evidence' -TransactionFileName 'compile-evidence.json'
+$compileEvidence = $compileEvidenceSnapshot.Value
+Assert-CanvasCompileEvidence -Evidence $compileEvidence -RepositoryRoot $repositoryRoot -OutputDirectory $resolvedScriptsDirectory -Variants $selectedVariants -Toolchain $compileToolchain
+
+$javaPath = Join-Path $resolvedVwHudRoot '.work\tools\java\bin\java.exe'
+$jpexsPath = Join-Path $resolvedVwHudRoot '.work\tools\jpexs\ffdec.jar'
+$flexPath = Join-Path $resolvedVwHudRoot '.work\tools\flex'
+$scaleformToolchain = Get-CanvasScaleformToolchainEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -JavaPath $javaPath -JpexsJarPath $jpexsPath -FlexSdkPath $flexPath -Matrix $matrix
+$movieEvidencePath = Resolve-CanvasRequiredFile -Path (Join-Path $resolvedMoviesDirectory 'build-evidence.json') -Description 'Canvas movie evidence'
+$movieEvidenceSnapshot = Get-CanvasJsonEvidenceSnapshot -Path $movieEvidencePath -Description 'Canvas movie evidence' -TransactionFileName 'canvas-movies-evidence.json'
+$movieEvidence = $movieEvidenceSnapshot.Value
+Assert-CanvasMovieEvidence -Evidence $movieEvidence -RepositoryRoot $repositoryRoot -MoviesDirectory $resolvedMoviesDirectory -Variants $selectedVariants -Toolchain $scaleformToolchain
+$scaleformEvidencePath = Resolve-CanvasRequiredFile -Path (Join-Path $resolvedScaleformDirectory 'build-evidence.json') -Description 'Scaleform aggregate evidence'
+$scaleformEvidenceSnapshot = Get-CanvasJsonEvidenceSnapshot -Path $scaleformEvidencePath -Description 'Scaleform aggregate evidence' -TransactionFileName 'scaleform-evidence.json'
+$scaleformEvidence = $scaleformEvidenceSnapshot.Value
+$requiresPlayerHud = @($selectedVariants | Where-Object { $_.IncludesPlayerHud }).Count -gt 0
+$requiresShipHud = @($selectedVariants | Where-Object { $_.IncludesShipHud }).Count -gt 0
+$playerEvidence = $null
+$playerEvidenceSnapshot = $null
+$shipEvidence = $null
+$shipEvidenceSnapshot = $null
+$playerDirectory = $null
+$shipDirectory = $null
+if ($requiresPlayerHud) {
+  $playerDirectory = Resolve-CanvasRequiredDirectory -Path (Join-Path $resolvedScaleformDirectory 'player-hud') -Description 'Player HUD output directory'
+  $playerEvidenceSnapshot = Get-CanvasJsonEvidenceSnapshot -Path (Join-Path $playerDirectory 'build-evidence.json') -Description 'Player HUD evidence' -TransactionFileName 'player-hud-evidence.json'
+  $playerEvidence = $playerEvidenceSnapshot.Value
+  Assert-CanvasPlayerHudEvidence -Evidence $playerEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -PlayerDirectory $playerDirectory -Matrix $matrix
 }
-$configuredPhysicalTargets = [System.Collections.Generic.List[object]]::new()
-foreach ($package in $packages) {
-  $configuredTarget = [string]$expectedPhysicalTargetByKey[$package.Key]
-  if ([string]::IsNullOrWhiteSpace($configuredTarget)) {
-    continue
-  }
-
-  $configuredTargetPath = Get-CanvasNormalizedFullPath -Path $configuredTarget
-  $matchingTarget = @($configuredPhysicalTargets | Where-Object {
-    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
-  })
-  if ($matchingTarget.Count -ne 0) {
-    throw "$($package.Key) and $($matchingTarget[0].Key) cannot use identical or nested physical module folders: $configuredTargetPath"
-  }
-  $matchingStagingPath = @($allowedStagingPaths | Where-Object {
-    Test-CanvasOverlappingPaths -Left $_ -Right $configuredTargetPath
-  })
-  if ($matchingStagingPath.Count -ne 0) {
-    throw "$($package.Key) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0])"
-  }
-  $configuredPhysicalTargets.Add([pscustomobject]@{
-    Key = $package.Key
-    Path = $configuredTargetPath
-  })
+if ($requiresShipHud) {
+  $shipDirectory = Resolve-CanvasRequiredDirectory -Path (Join-Path $resolvedScaleformDirectory 'ship-hud') -Description 'Ship HUD output directory'
+  $shipEvidenceSnapshot = Get-CanvasJsonEvidenceSnapshot -Path (Join-Path $shipDirectory 'build-evidence.json') -Description 'Ship HUD evidence' -TransactionFileName 'ship-hud-evidence.json'
+  $shipEvidence = $shipEvidenceSnapshot.Value
+  Assert-CanvasShipHudEvidence -Evidence $shipEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -ShipDirectory $shipDirectory -Matrix $matrix
 }
-$allowedPhysicalTargetPaths = [System.Collections.Generic.List[string]]::new()
-
-# Validate disjoint targets for every package, including unselected variants.
-$allInstallPaths = @{}
-foreach ($package in $packages) {
-  $path = [string]$package.StagingPath
-  $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
-  if ($null -ne $item -and $item.LinkType -ceq 'Junction') {
-    $expectedTarget = [string]$expectedPhysicalTargetByKey[$package.Key]
-    if ([string]::IsNullOrWhiteSpace($expectedTarget)) { throw "Missing physical target for $($package.Key)." }
-    Assert-CanvasJunctionTarget -StagingPath $path -ExpectedTargetPath $expectedTarget
-    $path = [IO.Path]::GetFullPath($expectedTarget)
-  }
-  foreach ($otherPath in $allInstallPaths.Values) {
-    if (Test-CanvasOverlappingPaths -Left $path -Right $otherPath) { throw 'Selected and unselected package targets must be disjoint.' }
-  }
-  $allInstallPaths[$package.Key] = $path
+Assert-CanvasScaleformAggregateEvidence -Evidence $scaleformEvidence -ScaleformDirectory $resolvedScaleformDirectory -RequiredVariantKeys @($selectedVariants.VariantKey) -RequirePlayerHud $requiresPlayerHud -RequireShipHud $requiresShipHud
+if ([string]$scaleformEvidence.CanvasMoviesEvidenceSha256 -cne [string]$movieEvidenceSnapshot.Sha256 -or
+    ($requiresPlayerHud -and [string]$scaleformEvidence.PlayerHudEvidenceSha256 -cne [string]$playerEvidenceSnapshot.Sha256) -or
+    ($requiresShipHud -and [string]$scaleformEvidence.ShipHudEvidenceSha256 -cne [string]$shipEvidenceSnapshot.Sha256)) {
+  throw 'Admitted Scaleform aggregate evidence does not bind the admitted child evidence documents.'
 }
+$admittedEvidenceSnapshots = @($compileEvidenceSnapshot, $movieEvidenceSnapshot, $scaleformEvidenceSnapshot)
+if ($null -ne $playerEvidenceSnapshot) { $admittedEvidenceSnapshots += $playerEvidenceSnapshot }
+if ($null -ne $shipEvidenceSnapshot) { $admittedEvidenceSnapshots += $shipEvidenceSnapshot }
 
-$exampleVariant = @(Get-ModuleVariants -VariantKeys 'EXAMPLE')[0]
-$exampleMoviePath = Join-Path $resolvedMoviesDirectory $exampleVariant.ScaleformOutput
+$payloads = Get-CanvasPackagePayloads `
+  -SelectedVariants $selectedVariants `
+  -CompileEvidence $compileEvidence `
+  -MovieEvidence $movieEvidence `
+  -MoviesDirectory $resolvedMoviesDirectory `
+  -ScriptsDirectory $resolvedScriptsDirectory `
+  -VenworksCoreRepositoryPath $resolvedVenworksCoreRoot `
+  -Matrix $matrix `
+  -PlayerDirectory $playerDirectory `
+  -PlayerEvidence $playerEvidence `
+  -ShipDirectory $shipDirectory `
+  -ShipEvidence $shipEvidence
 
-$payloads = @{
-  CANVAS = @(
-    @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasHost.swf'); Target = 'Interface\venworkscui.swf' }
-    @{ Source = (Join-Path $resolvedShipMoviesDirectory 'spaceshiphudmenu.swf'); Target = 'Interface\spaceshiphudmenu.swf' }
-    @{ Source = (Join-Path $resolvedShipMoviesDirectory 'spaceshiphudmenu_lrg.swf'); Target = 'Interface\spaceshiphudmenu_lrg.swf' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\GlobalConfig.pex'); Target = 'Scripts\Venworks\Canvas\GlobalConfig.pex' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Enumerations.pex'); Target = 'Scripts\Venworks\Canvas\Enumerations.pex' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Base\BaseQuest.pex'); Target = 'Scripts\Venworks\Canvas\Base\BaseQuest.pex' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\Registry.pex'); Target = 'Scripts\Venworks\Canvas\Registry.pex' }
-  )
-  EXAMPLE = @(
-    @{ Source = $exampleMoviePath; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\normal.swf' }
-    @{ Source = $exampleMoviePath; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\large.swf' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\ExampleRegistrar.pex'); Target = 'Scripts\Venworks\Canvas\ExampleRegistrar.pex' }
-  )
-  COMPONENTGALLERY = @(
-    @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasComponentGallery.swf'); Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\normal.swf' }
-    @{ Source = (Join-Path $resolvedMoviesDirectory 'CanvasComponentGallery.swf'); Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\large.swf' }
-    @{ Source = (Join-Path $resolvedScriptsDirectory 'Venworks\Canvas\ComponentGalleryRegistrar.pex'); Target = 'Scripts\Venworks\Canvas\ComponentGalleryRegistrar.pex' }
-  )
-}
-
-foreach ($coreScript in @($matrix.VenworksCoreFixture.RuntimeScripts)) {
-  $payloads.CANVAS += @{
-    Source = (Join-Path $resolvedVenworksCoreRoot ([string]$coreScript.Source))
-    Target = ([string]$coreScript.Target).Replace('/', '\')
-  }
-}
-
-$resolvedPayloads = @{}
-$playerHudEvidence = Get-Content -LiteralPath (Join-Path $resolvedPlayerHudDirectory 'build-evidence.json') -Raw | ConvertFrom-Json
-if ([string]$playerHudEvidence.Schema -cne 'VWCANVAS_PLAYER_HUD_BUILD/1' -or
-    [string]$playerHudEvidence.VwHudRevision -cne [string]$matrix.VwHudFixture.Revision -or
-    $playerHudEvidence.PinnedOutputs -ne $true) {
-  throw 'Player HUD build evidence is not pinned to the expected VWHUD revision.'
-}
-foreach ($movie in @($playerHudEvidence.Movies)) {
-  $payloads.CANVAS += @{
-    Source = (Join-Path $resolvedPlayerHudDirectory ([string]$movie.File))
-    Target = "Interface\$($movie.File)"
-  }
-}
-foreach ($package in $packages) {
-  $key = [string]$package.Key
-  $keyPayloads = [System.Collections.Generic.List[object]]::new()
-  foreach ($payload in @($payloads[$key])) {
-    $sourcePath = Resolve-CanvasRequiredFile `
-      -Path ([string]$payload.Source) `
-      -Description "$key payload '$($payload.Target)'"
-    $keyPayloads.Add([pscustomobject]@{
-      Source = $sourcePath
-      Target = [string]$payload.Target
-    })
-  }
-  $resolvedPayloads[$key] = @($keyPayloads)
-}
-
-$artifactVerifierPath = Resolve-CanvasRequiredFile `
-  -Path (Join-Path $PSScriptRoot 'verifyCanvas.ps1') `
-  -Description 'Canvas artifact verifier'
-$artifactVerificationArguments = @{
-  ArtifactsOnly = $true
-  Profile = [string]$resolvedProfile.Key
-  VwHudRepositoryPath = $resolvedVwHudRoot
-  VenworksCoreRepositoryPath = $resolvedVenworksCoreRoot
-  ScaleformDirectory = $resolvedScaleformDirectory
-  PluginsDirectory = $resolvedPluginsDirectory
-  ScriptsDirectory = $resolvedScriptsDirectory
-}
-& $artifactVerifierPath @artifactVerificationArguments
-
-foreach ($generatedDirectory in @($resolvedArchiveRootsDirectory, $resolvedCandidateStagingDirectory)) {
-  if (Test-Path -LiteralPath $generatedDirectory -PathType Container) {
-    Assert-CanvasRemovalPath -Path $generatedDirectory -AllowedRoot $workRoot
-    Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $generatedDirectory | Out-Null
-}
-if (Test-Path -LiteralPath $resolvedStagingBackupDirectory) {
-  throw "A prior staging swap backup requires inspection before another stage: $resolvedStagingBackupDirectory"
-}
-
-$stageEvidence = [System.Collections.Generic.List[object]]::new()
-$candidateInputs = [System.Collections.Generic.List[object]]::new()
-foreach ($package in $packages) {
-  $key = [string]$package.Key
-  $selected = @($selectedVariants | Where-Object { $_.VariantKey -ceq $key }).Count -eq 1
-  $archiveRoot = Join-Path $resolvedArchiveRootsDirectory $key
-  $candidateStagingPath = if ($selected) { Join-Path $resolvedCandidateStagingDirectory ([string]$package.Directory) } else { [string]$package.StagingPath }
-  if ($selected) {
-    New-Item -ItemType Directory -Force -Path $archiveRoot, $candidateStagingPath | Out-Null
-  }
-  else {
-    $existingNames = @(Get-ChildItem -LiteralPath $candidateStagingPath -Force | Select-Object -ExpandProperty Name | Sort-Object)
-    $expectedNames = @([string]$package.Plugin, [string]$package.Archive | Sort-Object)
-    if (($existingNames -join '|') -cne ($expectedNames -join '|')) {
-      throw "$key unselected package must already contain exactly its ESM and BA2."
-    }
-  }
-  $entries = [System.Collections.Generic.List[object]]::new()
-  foreach ($payload in @($resolvedPayloads[$key])) {
-    $sourcePath = [string]$payload.Source
-    $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
-    $targetPath = Resolve-CanvasArchiveTarget -Root $archiveRoot -Target ([string]$payload.Target)
-    $targetHash = $sourceHash
-    if ($selected) {
-      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $targetPath) | Out-Null
-      Copy-Item -LiteralPath $sourcePath -Destination $targetPath
-      $targetHash = (Get-FileHash -LiteralPath $targetPath -Algorithm SHA256).Hash.ToUpperInvariant()
-    }
-    if ($targetHash -cne $sourceHash) {
-      throw "$key payload '$($payload.Target)' changed while it was copied into the archive root."
-    }
-    if ($selected) {
-      $candidateInputs.Add([pscustomobject]@{ Path = $sourcePath; Sha256 = $sourceHash })
-    }
-    $entries.Add([ordered]@{
-      Path = ([string]$payload.Target).Replace('\', '/')
-      Sha256 = if ($selected) { $targetHash } else { $null }
-    })
-  }
-
-  $pluginSource = [string]$pluginPathsByKey[$key]
-  $pluginSourceHash = (Get-FileHash -LiteralPath $pluginSource -Algorithm SHA256).Hash.ToUpperInvariant()
-  $pluginTarget = Join-Path $candidateStagingPath ([string]$package.Plugin)
-  if ($selected) { Copy-Item -LiteralPath $pluginSource -Destination $pluginTarget }
-  $pluginTargetHash = (Get-FileHash -LiteralPath $pluginTarget -Algorithm SHA256).Hash.ToUpperInvariant()
-  if ($pluginTargetHash -cne $pluginSourceHash) {
-    throw "$key plugin changed while it was copied into the candidate staging root."
-  }
-  $candidateInputs.Add([pscustomobject]@{ Path = $pluginSource; Sha256 = $pluginSourceHash })
-
-  $archiveTarget = Join-Path $candidateStagingPath ([string]$package.Archive)
-  $archiveArguments = @(
-    "$archiveRoot\"
-    "-root=$archiveRoot\"
-    "-create=$archiveTarget"
-    '-format=General'
-    '-compression=None'
-    '-maxSizeMB=2048'
-    '-excludeFilters=.*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2'
-  )
-  if ($selected) {
-    & $archive2Path @archiveArguments
-    if ($LASTEXITCODE -ne 0) {
-      throw "Archive2 failed to build the $key archive with exit code $LASTEXITCODE."
-    }
-  }
-  [void](Resolve-CanvasRequiredFile -Path $archiveTarget -Description "$key staged archive")
-  $archiveEntries = @(Get-CanvasGeneralBa2Entries -Path $archiveTarget)
-  if (@($archiveEntries | Where-Object { [uint32]$_.PackedSize -ne 0 }).Count -ne 0) {
-    throw "$key staged archive contains compressed entries."
-  }
-  $actualArchivePaths = @($archiveEntries.Name | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
-  $expectedArchivePaths = @($entries.Path | ForEach-Object { ([string]$_).ToLowerInvariant() } | Sort-Object)
-  if ($actualArchivePaths.Count -ne $expectedArchivePaths.Count -or
-      [string]::Join("`n", $actualArchivePaths) -cne [string]::Join("`n", $expectedArchivePaths)) {
-    throw "$key candidate archive inventory differs from its exact payload."
-  }
-  $entryRecordsByPath = @{}
-  foreach ($entry in @($entries)) {
-    $entryRecordsByPath[([string]$entry.Path).ToLowerInvariant()] = $entry
-  }
-  foreach ($archiveEntry in $archiveEntries) {
-    $entryPath = ([string]$archiveEntry.Name).Replace('\', '/').ToLowerInvariant()
-    $entryBytes = Read-CanvasGeneralBa2EntryBytes -Entry $archiveEntry
-    $algorithm = [System.Security.Cryptography.SHA256]::Create()
-    try {
-      $entryHash = [Convert]::ToHexString($algorithm.ComputeHash($entryBytes))
-    }
-    finally {
-      $algorithm.Dispose()
-    }
-    if ($selected -and $entryHash -cne [string]$entryRecordsByPath[$entryPath].Sha256) {
-      throw "$key candidate archive entry '$entryPath' differs from its copied payload."
-    }
-    if (!$selected) {
-      $entryRecordsByPath[$entryPath].Sha256 = $entryHash
-    }
-  }
-
-  $stageEvidence.Add([ordered]@{
-    Key = $key
-    Selected = $selected
-    Directory = [string]$package.Directory
-    Plugin = [ordered]@{
-      File = [string]$package.Plugin
-      Sha256 = $pluginTargetHash
-    }
-    Archive = [ordered]@{
-      File = [string]$package.Archive
-      Sha256 = (Get-FileHash -LiteralPath $archiveTarget -Algorithm SHA256).Hash.ToUpperInvariant()
-      Entries = @($entries)
-    }
-  })
-}
-
-& $artifactVerifierPath @artifactVerificationArguments
-foreach ($candidateInput in @($candidateInputs)) {
-  $currentHash = (Get-FileHash -LiteralPath ([string]$candidateInput.Path) -Algorithm SHA256).Hash.ToUpperInvariant()
-  if ($currentHash -cne [string]$candidateInput.Sha256) {
-    throw "A candidate package input changed before the staging swap: $($candidateInput.Path)"
-  }
-}
-
-$allowedInstallPaths = @($allowedStagingPaths)
-$swapOperations = [System.Collections.Generic.List[object]]::new()
-foreach ($variant in $selectedVariants) {
-  $key = [string]$variant.VariantKey
-  $package = $packageByKey[$key]
-  $directoryName = [string]$package.Directory
-  $stagingPath = [string]$package.StagingPath
-  $candidateStagingPath = Join-Path $resolvedCandidateStagingDirectory $directoryName
-  $backupStagingPath = Join-Path $resolvedStagingBackupDirectory $directoryName
-  Assert-CanvasStagingTarget -Path $stagingPath -AllowedPaths $allowedStagingPaths
-  Assert-CanvasRemovalPath -Path $candidateStagingPath -AllowedRoot $workRoot
-  Assert-CanvasRemovalPath -Path $backupStagingPath -AllowedRoot $workRoot
-  [void](Resolve-CanvasRequiredDirectory -Path $candidateStagingPath -Description "$key candidate staging directory")
-
-  $mode = 'Directory'
-  $installPath = $stagingPath
-  $stagingItem = Get-Item -LiteralPath $stagingPath -Force -ErrorAction SilentlyContinue
-  if ($null -ne $stagingItem) {
-    if (!$stagingItem.PSIsContainer) {
-      throw "$key staging path is not a directory: $stagingPath"
-    }
-    if ($stagingItem.LinkType -eq 'Junction') {
-      $mode = 'Junction'
-      $physicalTargetPath = [string]$expectedPhysicalTargetByKey[$key]
-      if ([string]::IsNullOrWhiteSpace($physicalTargetPath)) {
-        throw "The physical module folder for '$key' is not configured in $EnvironmentPath."
-      }
-      $installPath = [System.IO.Path]::GetFullPath($physicalTargetPath).TrimEnd('\', '/')
-      if (@($allowedPhysicalTargetPaths | Where-Object {
-        Test-CanvasOverlappingPaths -Left $_ -Right $installPath
-      }).Count -ne 0) {
-        throw "Physical module folders must be disjoint, not identical or nested: $installPath"
-      }
-      if (@($allowedStagingPaths | Where-Object {
-        Test-CanvasOverlappingPaths -Left $_ -Right $installPath
-      }).Count -ne 0) {
-        throw "A physical module folder cannot overlap a repository staging path: $installPath"
-      }
-      $expectedPhysicalTargetByKey[$key] = $installPath
-      $allowedPhysicalTargetPaths.Add($installPath)
-      $allowedInstallPaths += $installPath
-      Assert-CanvasJunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $installPath
-      if (!(Test-Path -LiteralPath $installPath -PathType Container)) {
-        throw "$key physical module target is not a directory: $installPath"
-      }
-      $installItem = Get-Item -LiteralPath $installPath -Force
-      if ($null -ne $installItem.LinkType) {
-        throw "$key physical module target must be a real directory: $installPath"
-      }
-    }
-    elseif ($null -ne $stagingItem.LinkType) {
-      throw "$key staging path uses an unsupported link type '$($stagingItem.LinkType)': $stagingPath"
-    }
-  }
-
-  Assert-CanvasStagingTarget -Path $installPath -AllowedPaths $allowedInstallPaths
-  if (@($swapOperations | Where-Object {
-    Test-CanvasOverlappingPaths -Left ([string]$_.InstallPath) -Right $installPath
-  }).Count -ne 0) {
-    throw "Package installation paths must be disjoint, not identical or nested: $installPath"
-  }
-  $swapOperations.Add([pscustomobject]@{
-    Key = $key
-    Mode = $mode
-    StagingPath = $stagingPath
-    InstallPath = $installPath
-    CandidatePath = $candidateStagingPath
-    BackupPath = $backupStagingPath
-  })
-}
-
-New-Item -ItemType Directory -Path $resolvedStagingBackupDirectory | Out-Null
-$backedUpOperations = [System.Collections.Generic.List[object]]::new()
+$transactionId = [guid]::NewGuid().ToString('N')
+$transactionBase = [System.IO.Path]::GetFullPath($ArchiveRootsDirectory)
+Assert-CanvasRemovalPath -Path $transactionBase -AllowedRoot $workRoot
+$transactionPath = Join-Path $transactionBase $transactionId
+$lockPath = Join-Path $workRoot 'package.lock'
+$receiptDirectory = Join-Path $workRoot 'package-receipts'
+$packageLock = $null
+$installedOperations = [System.Collections.Generic.List[object]]::new()
+$publishedReceipts = [System.Collections.Generic.List[object]]::new()
+$completed = $false
+$transactionCreated = $false
 try {
-  foreach ($operation in @($swapOperations)) {
-    $installItems = @(Get-ChildItem -LiteralPath $operation.InstallPath -Force)
-    $candidateItems = @(Get-ChildItem -LiteralPath $operation.CandidatePath -Force)
-    if (@($installItems | Where-Object { $_.PSIsContainer }).Count -ne 0 -or
-        @($candidateItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
-      throw "$($operation.Key) package swap accepts only the canonical root ESM and BA2 files."
-    }
-    $installNames = @($installItems | ForEach-Object { $_.Name } | Sort-Object)
-    $candidateNames = @($candidateItems | ForEach-Object { $_.Name } | Sort-Object)
-    $matchingFileSet = $installNames.Count -eq $candidateNames.Count -and
-      [string]::Join("`n", $installNames) -ceq [string]::Join("`n", $candidateNames)
-    if ($installNames.Count -ne 0 -and !$matchingFileSet) {
-      throw "$($operation.Key) installed package must be empty or contain exactly the candidate ESM and BA2 file set."
-    }
-    $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue @($installNames) -Force
-    $operation | Add-Member -NotePropertyName CandidateNames -NotePropertyValue @($candidateNames) -Force
-    $originalHashes = @{}
-    $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
-
-    New-Item -ItemType Directory -Path $operation.BackupPath | Out-Null
-    $backedUpOperations.Add($operation)
-    foreach ($installItem in $installItems) {
-      $backupFilePath = Join-Path $operation.BackupPath $installItem.Name
-      $originalHashBefore = Get-CanvasFileSha256 -Path $installItem.FullName
-      Copy-Item -LiteralPath $installItem.FullName -Destination $backupFilePath
-      $originalHashAfter = Get-CanvasFileSha256 -Path $installItem.FullName
-      $backupHash = Get-CanvasFileSha256 -Path $backupFilePath
-      if ($originalHashBefore -cne $originalHashAfter -or $backupHash -cne $originalHashBefore) {
-        throw "$($operation.Key) installed source or backup failed hash verification while backing up '$($installItem.Name)'."
-      }
-      $originalHashes[$installItem.Name] = $originalHashBefore
-    }
-    $backupItems = @(Get-ChildItem -LiteralPath $operation.BackupPath -Force)
-    if (@($backupItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
-      throw "$($operation.Key) backup contains an unexpected directory."
-    }
-    $backupNames = @($backupItems | ForEach-Object { $_.Name } | Sort-Object)
-    if ($backupNames.Count -ne $installNames.Count -or
-        [string]::Join("`n", $backupNames) -cne [string]::Join("`n", $installNames)) {
-      throw "$($operation.Key) backup inventory differs from its installed originals."
-    }
-
-    foreach ($candidateItem in $candidateItems) {
-      $destinationPath = Join-Path $operation.InstallPath $candidateItem.Name
-      $temporaryPath = Join-Path $operation.InstallPath ".$($candidateItem.Name).$PID-$([guid]::NewGuid().ToString('N')).new"
-      try {
-        $candidateHashBefore = Get-CanvasFileSha256 -Path $candidateItem.FullName
-        Copy-Item -LiteralPath $candidateItem.FullName -Destination $temporaryPath
-        $temporaryHash = Get-CanvasFileSha256 -Path $temporaryPath
-        $candidateHashAfter = Get-CanvasFileSha256 -Path $candidateItem.FullName
-        if ($temporaryHash -cne $candidateHashBefore -or $candidateHashAfter -cne $candidateHashBefore) {
-          throw "$($operation.Key) candidate changed while copying '$($candidateItem.Name)' into its package folder."
-        }
-        [System.IO.File]::Move($temporaryPath, $destinationPath, $true)
-        if ((Get-CanvasFileSha256 -Path $destinationPath) -cne $candidateHashBefore) {
-          throw "$($operation.Key) installed candidate differs after replacing '$($candidateItem.Name)'."
-        }
-      }
-      finally {
-        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-          Remove-Item -LiteralPath $temporaryPath -Force
-        }
-      }
-    }
-
-    if ($operation.Mode -ceq 'Junction') {
-      Assert-CanvasJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+  $packageLock = Enter-CanvasPackageLock -Path $lockPath -TransactionId $transactionId
+  New-Item -ItemType Directory -Force -Path $transactionBase | Out-Null
+  Assert-CanvasNoIncompletePackageTransactions -TransactionBase $transactionBase
+  New-Item -ItemType Directory -Path $transactionPath | Out-Null
+  $transactionCreated = $true
+  Write-CanvasPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Active' -VariantKeys @($selectedVariants.VariantKey)
+  $candidateRoot = Join-Path $transactionPath 'candidates'
+  $archiveRootBase = Join-Path $transactionPath 'archive-roots'
+  $backupRoot = Join-Path $transactionPath 'installed-backups'
+  $receiptCandidateRoot = Join-Path $transactionPath 'receipt-candidates'
+  $admittedEvidenceRoot = Join-Path $transactionPath 'admitted-evidence'
+  New-Item -ItemType Directory -Path $candidateRoot, $archiveRootBase, $backupRoot, $receiptCandidateRoot, $admittedEvidenceRoot | Out-Null
+  foreach ($snapshot in $admittedEvidenceSnapshots) {
+    Write-CanvasJsonEvidenceSnapshot -Snapshot $snapshot -Directory $admittedEvidenceRoot
+    if ((Get-CanvasFileSha256 -Path ([string]$snapshot.SourcePath)) -cne [string]$snapshot.Sha256) {
+      throw "Admitted evidence changed before transaction snapshot: $($snapshot.SourcePath)"
     }
   }
+
+  $candidateRecords = [System.Collections.Generic.List[object]]::new()
+  foreach ($operation in $operations) {
+    $key = [string]$operation.Key
+    $candidateDirectory = Join-Path $candidateRoot $key
+    $archiveRoot = Join-Path $archiveRootBase $key
+    New-Item -ItemType Directory -Path $candidateDirectory, $archiveRoot | Out-Null
+    $sourceEsmSha = Get-CanvasFileSha256 -Path $operation.SourcePluginPath
+    $candidateEsmPath = Join-Path $candidateDirectory $operation.PluginName
+    Copy-CanvasVerifiedFile -Source $operation.SourcePluginPath -Destination $candidateEsmPath -ExpectedSha256 $sourceEsmSha -Description "$key live ESM snapshot"
+    $inputRows = [System.Collections.Generic.List[object]]::new()
+    $expectedEntries = [System.Collections.Generic.List[object]]::new()
+    foreach ($payload in @($payloads[$key])) {
+      $sourceSha = [string]$payload.ExpectedSha256
+      $archivePath = Resolve-CanvasArchiveTarget -Root $archiveRoot -Target ([string]$payload.Target)
+      Copy-CanvasVerifiedFile -Source $payload.Source -Destination $archivePath -ExpectedSha256 $sourceSha -Description "$key payload '$($payload.Target)'"
+      $canonicalTarget = ([string]$payload.Target).Replace('\', '/').ToLowerInvariant()
+      $inputRows.Add([ordered]@{ Target = $canonicalTarget; SourceSha256 = $sourceSha })
+      $expectedEntries.Add([ordered]@{ Path = $canonicalTarget; Sha256 = $sourceSha })
+    }
+    $candidateArchivePath = Join-Path $candidateDirectory $operation.ArchiveName
+    & $archive2Path "$archiveRoot\" "-root=$archiveRoot\" "-create=$candidateArchivePath" '-format=General' '-compression=None' '-maxSizeMB=2048' '-excludeFilters=.*\\meta\.ini|.*\\.*\.dds|.*\\.*\.btc|.*\\.*\.esp|.*\\.*\.esm|.*\\.*\.ba2'
+    if ($LASTEXITCODE -ne 0) { throw "Archive2 failed to build the $key archive with exit code $LASTEXITCODE." }
+    [void](Resolve-CanvasRequiredFile -Path $candidateArchivePath -Description "$key candidate BA2")
+    Assert-CanvasArtifactHeader -Path $candidateArchivePath
+    $archiveEntries = @(Get-CanvasGeneralBa2Evidence -Path $candidateArchivePath)
+    Assert-CanvasArchiveEvidenceRows -Actual $archiveEntries -Expected @($expectedEntries) -Description "$key candidate archive"
+    $operation | Add-Member -NotePropertyName CandidatePath -NotePropertyValue $candidateDirectory -Force
+    $operation | Add-Member -NotePropertyName CandidateNames -NotePropertyValue @($operation.PluginName, $operation.ArchiveName) -Force
+    $candidateRecords.Add([pscustomobject]@{
+      Operation = $operation
+      SourceEsmSha256 = $sourceEsmSha
+      CandidateEsmPath = $candidateEsmPath
+      CandidateEsmSha256 = Get-CanvasFileSha256 -Path $candidateEsmPath
+      CandidateArchivePath = $candidateArchivePath
+      CandidateArchiveSha256 = Get-CanvasFileSha256 -Path $candidateArchivePath
+      Entries = @($archiveEntries)
+      Inputs = @($inputRows)
+    })
+  }
+
+  foreach ($snapshot in $admittedEvidenceSnapshots) {
+    if ((Get-CanvasFileSha256 -Path ([string]$snapshot.SourcePath)) -cne [string]$snapshot.Sha256 -or
+        (Get-CanvasFileSha256 -Path ([string]$snapshot.TransactionPath)) -cne [string]$snapshot.Sha256) {
+      throw "Admitted evidence changed before package installation: $($snapshot.SourcePath)"
+    }
+  }
+  foreach ($record in $candidateRecords) {
+    if ((Get-CanvasFileSha256 -Path $record.Operation.SourcePluginPath) -cne [string]$record.SourceEsmSha256 -or
+        (Get-CanvasFileSha256 -Path $record.CandidateEsmPath) -cne [string]$record.CandidateEsmSha256 -or
+        (Get-CanvasFileSha256 -Path $record.CandidateArchivePath) -cne [string]$record.CandidateArchiveSha256) {
+      throw "$($record.Operation.Key) validated input or candidate changed before installation."
+    }
+    $payloadRows = @($payloads[[string]$record.Operation.Key])
+    for ($index = 0; $index -lt $payloadRows.Count; $index++) {
+      if ([string]$record.Inputs[$index].SourceSha256 -cne [string]$payloadRows[$index].ExpectedSha256 -or
+          (Get-CanvasFileSha256 -Path $payloadRows[$index].Source) -cne [string]$payloadRows[$index].ExpectedSha256) {
+        throw "$($record.Operation.Key) package payload changed before installation: $($record.Inputs[$index].Target)"
+      }
+    }
+    Assert-CanvasArchiveEvidenceRows -Actual @(Get-CanvasGeneralBa2Evidence -Path $record.CandidateArchivePath) -Expected @($record.Entries) -Description "$($record.Operation.Key) immediate candidate archive"
+  }
+
+  foreach ($record in $candidateRecords) {
+    $operation = $record.Operation
+    Assert-CanvasJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+    $backupPath = Join-Path $backupRoot $operation.Key
+    New-Item -ItemType Directory -Path $backupPath | Out-Null
+    $originalItems = @(Get-ChildItem -LiteralPath $operation.InstallPath -Force)
+    $originalHashes = @{}
+    foreach ($item in $originalItems) {
+      $hash = Get-CanvasFileSha256 -Path $item.FullName
+      Copy-CanvasVerifiedFile -Source $item.FullName -Destination (Join-Path $backupPath $item.Name) -ExpectedSha256 $hash -Description "$($operation.Key) installed backup '$($item.Name)'"
+      $originalHashes[$item.Name] = $hash
+    }
+    $operation | Add-Member -NotePropertyName BackupPath -NotePropertyValue $backupPath -Force
+    $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue @($originalItems.Name) -Force
+    $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
+    $installedOperations.Add($operation)
+    Install-CanvasVerifiedFile -Source $record.CandidateEsmPath -Destination (Join-Path $operation.InstallPath $operation.PluginName) -ExpectedSha256 $record.CandidateEsmSha256 -Description "$($operation.Key) candidate ESM"
+    Install-CanvasVerifiedFile -Source $record.CandidateArchivePath -Destination (Join-Path $operation.InstallPath $operation.ArchiveName) -ExpectedSha256 $record.CandidateArchiveSha256 -Description "$($operation.Key) candidate BA2"
+    Assert-CanvasJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
+    $receipt = [ordered]@{
+      Schema = 'VWCANVAS_PACKAGE_RECEIPT/2'
+      TransactionId = $transactionId
+      VariantKey = [string]$operation.Key
+      PackageBaseName = [string]$operation.Variant.PackageBaseName
+      SourceEsm = [ordered]@{ File = [string]$operation.PluginName; Sha256 = [string]$record.SourceEsmSha256 }
+      BuildEvidence = [ordered]@{
+        CompileEvidenceSha256 = [string]$compileEvidenceSnapshot.Sha256
+        ScaleformEvidenceSha256 = [string]$scaleformEvidenceSnapshot.Sha256
+        VenworksCoreRevision = [string]$matrix.VenworksCoreFixture.Revision
+        VwHudRevision = [string]$matrix.VwHudFixture.Revision
+      }
+      Candidate = [ordered]@{
+        Plugin = [ordered]@{ File = [string]$operation.PluginName; Sha256 = [string]$record.CandidateEsmSha256 }
+        Archive = [ordered]@{ File = [string]$operation.ArchiveName; Sha256 = [string]$record.CandidateArchiveSha256; Entries = @($record.Entries) }
+      }
+      Installed = [ordered]@{
+        Plugin = [ordered]@{ File = [string]$operation.PluginName; Sha256 = Get-CanvasFileSha256 -Path (Join-Path $operation.InstallPath $operation.PluginName) }
+        Archive = [ordered]@{ File = [string]$operation.ArchiveName; Sha256 = Get-CanvasFileSha256 -Path (Join-Path $operation.InstallPath $operation.ArchiveName); Entries = @(Get-CanvasGeneralBa2Evidence -Path (Join-Path $operation.InstallPath $operation.ArchiveName)) }
+      }
+    }
+    $receiptPath = Join-Path $receiptCandidateRoot "$($operation.Key).json"
+    Write-CanvasUtf8WithoutBom -Path $receiptPath -Text (($receipt | ConvertTo-Json -Depth 12) + "`n")
+    Assert-CanvasPackageReceipt -Receipt (Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json) -Variant $operation.Variant -InstallPath $operation.InstallPath -ExpectedEntries @($record.Entries) -CompileEvidenceSha256 ([string]$compileEvidenceSnapshot.Sha256) -ScaleformEvidenceSha256 ([string]$scaleformEvidenceSnapshot.Sha256)
+    $record | Add-Member -NotePropertyName ReceiptPath -NotePropertyValue $receiptPath -Force
+  }
+
+  New-Item -ItemType Directory -Force -Path $receiptDirectory | Out-Null
+  foreach ($record in $candidateRecords) {
+    $destination = Join-Path $receiptDirectory "$($record.Operation.Key).json"
+    $publication = [pscustomobject]@{ Destination = $destination; Backup = $null; OriginalSha256 = $null }
+    if (Test-Path -LiteralPath $destination -PathType Leaf) {
+      $backup = Join-Path $transactionPath "receipt-backups\$($record.Operation.Key).json"
+      $hash = Get-CanvasFileSha256 -Path $destination
+      Copy-CanvasVerifiedFile -Source $destination -Destination $backup -ExpectedSha256 $hash -Description "$($record.Operation.Key) prior receipt backup"
+      $publication.Backup = $backup
+      $publication.OriginalSha256 = $hash
+    }
+    $publishedReceipts.Add($publication)
+    $receiptHash = Get-CanvasFileSha256 -Path $record.ReceiptPath
+    Install-CanvasVerifiedFile -Source $record.ReceiptPath -Destination $destination -ExpectedSha256 $receiptHash -Description "$($record.Operation.Key) package receipt"
+  }
+  $published = @(Get-CanvasPackageReceipts -ReceiptDirectory $receiptDirectory -RequiredVariantKeys @($selectedVariants.VariantKey))
+  foreach ($record in $candidateRecords) {
+    $receipt = @($published | Where-Object { [string]$_.VariantKey -ceq [string]$record.Operation.Key })[0]
+    Assert-CanvasPackageReceipt -Receipt $receipt -Variant $record.Operation.Variant -InstallPath $record.Operation.InstallPath -ExpectedEntries @($record.Entries) -CompileEvidenceSha256 ([string]$compileEvidenceSnapshot.Sha256) -ScaleformEvidenceSha256 ([string]$scaleformEvidenceSnapshot.Sha256)
+  }
+  Write-CanvasPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Complete' -VariantKeys @($selectedVariants.VariantKey)
+  $completed = $true
 }
 catch {
-  $swapError = $_
-  $rollbackErrors = [System.Collections.Generic.List[string]]::new()
-  for ($index = $backedUpOperations.Count - 1; $index -ge 0; $index--) {
-    $operation = $backedUpOperations[$index]
-    try {
-      if ($operation.Mode -ceq 'Junction') {
-        Assert-CanvasJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
-      }
-      Assert-CanvasStagingTarget -Path $operation.InstallPath -AllowedPaths $allowedInstallPaths
-      $backupItems = @(Get-ChildItem -LiteralPath $operation.BackupPath -Force)
-      if (@($backupItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
-        throw "$($operation.Key) backup contains an unexpected directory during restoration."
-      }
-      $backupNames = @($backupItems | ForEach-Object { $_.Name } | Sort-Object)
-      if ($backupNames.Count -ne @($operation.OriginalNames).Count -or
-          [string]::Join("`n", $backupNames) -cne [string]::Join("`n", @($operation.OriginalNames))) {
-        throw "$($operation.Key) backup inventory no longer matches its installed originals."
-      }
-      foreach ($originalName in @($operation.OriginalNames)) {
-        $backupFilePath = Join-Path $operation.BackupPath $originalName
-        if (!$operation.OriginalHashes.ContainsKey($originalName) -or
-            !(Test-Path -LiteralPath $backupFilePath -PathType Leaf) -or
-            (Get-CanvasFileSha256 -Path $backupFilePath) -cne [string]$operation.OriginalHashes[$originalName]) {
-          throw "$($operation.Key) backup verification failed for '$originalName'."
-        }
-      }
-      foreach ($candidateName in @($operation.CandidateNames)) {
-        if ($candidateName -cnotin @($operation.OriginalNames)) {
-          $candidateInstallPath = Join-Path $operation.InstallPath $candidateName
-          if (Test-Path -LiteralPath $candidateInstallPath -PathType Leaf) {
-            Remove-Item -LiteralPath $candidateInstallPath -Force
-          }
-        }
-      }
-      foreach ($backupFile in $backupItems) {
-        $destinationPath = Join-Path $operation.InstallPath $backupFile.Name
-        $temporaryPath = Join-Path $operation.InstallPath ".$($backupFile.Name).$PID-$([guid]::NewGuid().ToString('N')).restore"
-        $originalHash = [string]$operation.OriginalHashes[$backupFile.Name]
-        try {
-          if ((Get-CanvasFileSha256 -Path $backupFile.FullName) -cne $originalHash) {
-            throw "$($operation.Key) backup changed before restoring '$($backupFile.Name)'."
-          }
-          Copy-Item -LiteralPath $backupFile.FullName -Destination $temporaryPath
-          if ((Get-CanvasFileSha256 -Path $temporaryPath) -cne $originalHash) {
-            throw "$($operation.Key) restore copy differs for '$($backupFile.Name)'."
-          }
-          [System.IO.File]::Move($temporaryPath, $destinationPath, $true)
-          if ((Get-CanvasFileSha256 -Path $destinationPath) -cne $originalHash) {
-            throw "$($operation.Key) restored destination differs for '$($backupFile.Name)'."
-          }
-        }
-        finally {
-          if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-            Remove-Item -LiteralPath $temporaryPath -Force
-          }
-        }
-      }
-      $restoredItems = @(Get-ChildItem -LiteralPath $operation.InstallPath -Force)
-      if (@($restoredItems | Where-Object { $_.PSIsContainer }).Count -ne 0) {
-        throw "$($operation.Key) restored package contains an unexpected directory."
-      }
-      $restoredNames = @($restoredItems | ForEach-Object { $_.Name } | Sort-Object)
-      if ($restoredNames.Count -ne @($operation.OriginalNames).Count -or
-          [string]::Join("`n", $restoredNames) -cne [string]::Join("`n", @($operation.OriginalNames))) {
-        throw "$($operation.Key) restored package inventory differs from its installed originals."
-      }
-      foreach ($originalName in @($operation.OriginalNames)) {
-        if ((Get-CanvasFileSha256 -Path (Join-Path $operation.InstallPath $originalName)) -cne
-            [string]$operation.OriginalHashes[$originalName]) {
-          throw "$($operation.Key) restored package hash differs for '$originalName'."
-        }
-      }
-    }
-    catch {
-      $rollbackErrors.Add("Unable to restore files in '$($operation.InstallPath)': $($_.Exception.Message)")
-    }
+  $packageError = $_
+  $recoveryErrors = [System.Collections.Generic.List[string]]::new()
+  for ($index = $publishedReceipts.Count - 1; $index -ge 0; $index--) {
+    $publication = $publishedReceipts[$index]
+    try { Restore-CanvasReceiptPublication -Publication $publication }
+    catch { $recoveryErrors.Add("Receipt recovery failed for '$($publication.Destination)': $($_.Exception.Message)") }
   }
-  if ($rollbackErrors.Count -ne 0) {
-    throw "Unable to install selected package files, and automatic restoration was incomplete. $($swapError.Exception.Message) Rollback errors: $([string]::Join(' | ', $rollbackErrors))"
+  for ($index = $installedOperations.Count - 1; $index -ge 0; $index--) {
+    try { Restore-CanvasPackageOperation -Operation $installedOperations[$index] }
+    catch { $recoveryErrors.Add("Package recovery failed for '$($installedOperations[$index].Key)': $($_.Exception.Message)") }
   }
-  throw "Unable to install selected package files; prior ESM/BA2 files were restored without replacing their directory or Junction. $($swapError.Exception.Message)"
+  if (!$transactionCreated) { throw $packageError }
+  try {
+    Write-CanvasPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Failed' -VariantKeys @($selectedVariants.VariantKey) -Failure $packageError.Exception.Message
+  }
+  catch { $recoveryErrors.Add("Transaction journal update failed: $($_.Exception.Message)") }
+  if ($recoveryErrors.Count -ne 0) {
+    throw "Canvas package transaction $transactionId failed and recovery is incomplete. Recovery material remains at $transactionPath. $($packageError.Exception.Message) $([string]::Join(' | ', $recoveryErrors))"
+  }
+  throw "Canvas package transaction $transactionId failed; installed files and receipts were restored. Recovery material remains at $transactionPath. $($packageError.Exception.Message)"
+}
+finally {
+  if ($null -ne $packageLock) { $packageLock.Dispose() }
 }
 
-foreach ($generatedDirectory in @($resolvedCandidateStagingDirectory, $resolvedStagingBackupDirectory)) {
-  if (Test-Path -LiteralPath $generatedDirectory -PathType Container) {
-    Assert-CanvasRemovalPath -Path $generatedDirectory -AllowedRoot $workRoot
-    Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
-  }
+if ($completed -and (Test-Path -LiteralPath $transactionPath -PathType Container)) {
+  Assert-CanvasRemovalPath -Path $transactionPath -AllowedRoot $workRoot
+  Remove-Item -LiteralPath $transactionPath -Recurse -Force
 }
-
-$evidence = [ordered]@{
-  Schema = 'VWCANVAS_PACKAGES/1'
-  Profile = [string]$resolvedProfile.Key
-  VwHudRevision = [string]$matrix.VwHudFixture.Revision
-  VenworksCoreRevision = [string]$matrix.VenworksCoreFixture.Revision
-  PluginGenerationEvidenceSha256 = (Get-FileHash -LiteralPath $pluginGenerationEvidencePath -Algorithm SHA256).Hash.ToUpperInvariant()
-  Staging = @($stageEvidence)
-}
-Write-CanvasUtf8WithoutBom `
-  -Path (Join-Path $workRoot 'staging-evidence.json') `
-  -Text (($evidence | ConvertTo-Json -Depth 10) + "`n")
-
-Write-Host -ForegroundColor Green "Packaged $($selectedVariants.VariantKey -join ', ') without replacing any staging directory or Junction for profile '$($resolvedProfile.Key)'."
+Write-Host -ForegroundColor Green "Packaged $($selectedVariants.VariantKey -join ', ') from current staging ESM snapshots and published source-bound installed receipts."

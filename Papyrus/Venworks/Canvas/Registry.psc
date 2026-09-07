@@ -336,7 +336,8 @@ EndFunction
 
 ; Caller holds RegistryGuard. Coalesce one entry per UUID, cap pending work rather than registrations.
 Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
-  If (!UiActive || !PlayerHudRequested || UiLoads == None)
+  ; Do not let receipts from the previous HUD generation satisfy a request before its deferred reset.
+  If (UiAppliedActivationRequest != UiActivationRequest || !UiActive || !PlayerHudRequested || UiLoads == None)
     result.Status = "DEFERRED_UI_INACTIVE"
     Return
   EndIf
@@ -445,7 +446,7 @@ Function PumpUiLoad(Int timerId)
   Float now = Utility.GetCurrentRealTime()
   OperationResult result = TryTakeUiLoad(timerId - attempt, now)
   If (result.Status == "UI_LOAD_RESERVED")
-    If (PlayerHudRequested && result.Epoch == UiEpoch)
+    If (UiAppliedActivationRequest == UiActivationRequest && PlayerHudRequested && result.Epoch == UiEpoch)
       Game.ShowCustomWatchAlert(result.Packet)
       result.Status = "UI_LOAD_SUBMITTED"
     Else
@@ -470,7 +471,7 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
     result.Status = "UI_LOAD_IDLE"
-    If (UiActive && PlayerHudRequested && UiLoads != None && ticket == UiPumpBase)
+    If (UiAppliedActivationRequest == UiActivationRequest && UiActive && PlayerHudRequested && UiLoads != None && ticket == UiPumpBase)
       EnsureStorageLocked(result)
       If (now < UiNextSubmitTime && UiNextSubmitTime - now <= 1.0)
         result.Status = "DEFERRED_UI_RATE_LIMIT"
@@ -479,7 +480,9 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
         Int index = 0
         While (index < UiLoads.Length && result.Packet == "")
           UiLoadEntry entry = UiLoads[index]
-          If (entry != None && !entry.Submitted)
+          If (entry == None)
+            UiLoads.Remove(index)
+          ElseIf (!entry.Submitted)
             Int registeredIndex = FindConsumerIndexLocked(entry.ConsumerId)
             If (entry.Owner != None && registeredIndex >= 0)
               ConsumerRegistration registration = Consumers[registeredIndex]
@@ -492,11 +495,16 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
                 UiNextSubmitTime = now + 1.0
                 ; Keep an expiring ticket across submission so another caller cannot start a concurrent pump.
                 UiPumpBase = -ticket
+                entry.Submitted = True
+              Else
+                UiLoads.Remove(index)
               EndIf
+            Else
+              UiLoads.Remove(index)
             EndIf
-            entry.Submitted = True
+          Else
+            index += 1
           EndIf
-          index += 1
         EndWhile
       EndIf
     EndIf

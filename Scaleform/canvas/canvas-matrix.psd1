@@ -6,7 +6,6 @@
   TestMode = 'ExplicitConsumerUiLoad'
   UiLoadResult = 'UI_LOAD_QUEUED'
   UiLoadTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 1; Wire = 'canvas.ui.load' }; Protocol = 'canvas.ui.load'; Version = 1; MaxCharacters = 512; MaxPending = 32; MinimumIntervalSeconds = 1; MaxBusyAttempts = 20; Target = 'PlayerHud' }
-  DefaultProfile = 'Production'
   Spriggit = @{
     PackageName = 'Spriggit.Yaml'
     MetadataPackageName = 'Spriggit.Yaml.Starfield'
@@ -55,32 +54,6 @@
       @{ Source = 'Staging-PS5DBG/Interface/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
     )
   }
-  Profiles = @(
-    @{
-      Key = 'Production'
-      ExampleMovie = 'Example'
-      ExampleVersion = 1
-      ExampleDisplayName = 'Venworks Canvas Example'
-      ComponentGalleryFaults = $false
-      PluginSha256 = @{
-        CANVAS = 'DE3B4E4203FA3C1E8B499E5B801DDA15B6C9E73CB1566838BB139540333E221E'
-        EXAMPLE = '8F402192BEFF0C1E3982587F6F25C6134C32A71F98B05E75CC1C8642821E59EF'
-        COMPONENTGALLERY = '87821A7A806D984AD86E1FB1D417A6552D84D6C34C181B5B25A5C6E6A5280A6A'
-      }
-    }
-    @{
-      Key = 'Faults'
-      ExampleMovie = 'Example'
-      ExampleVersion = 1
-      ExampleDisplayName = 'Venworks Canvas Example'
-      ComponentGalleryFaults = $true
-      PluginSha256 = @{
-        CANVAS = 'DE3B4E4203FA3C1E8B499E5B801DDA15B6C9E73CB1566838BB139540333E221E'
-        EXAMPLE = '8F402192BEFF0C1E3982587F6F25C6134C32A71F98B05E75CC1C8642821E59EF'
-        COMPONENTGALLERY = '0E8CCDCECBDE51E0BAFBFF799406E4617A19E16F7D443E65F67664DD8AB26F97'
-      }
-    }
-  )
   ParserCases = @(
     @{ Id = 'delimiter-display-name'; Expected = 'accepted' }
     @{ Id = 'maximum-valid-descriptor'; Expected = 'accepted' }
@@ -114,17 +87,17 @@
   )
   # Player HUD cases are the current PC gate; ship/pilot and package-removal cases remain later controlled acceptance.
   RuntimeCases = @(
-    @{ Id = 'pc-archive-host-only'; Profile = 'Production'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST, WATCH SUBSCRIPTIONS RESTORED and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
-    @{ Id = 'pc-archive-example'; Profile = 'Production'; Packages = @('Canvas', 'Example'); Expected = 'Player HUD visibly reports Example READY from its namespaced normal movie.' }
-    @{ Id = 'pc-archive-two-consumers'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Player HUD visibly reports both independently registered consumers READY with no static slot.' }
-    @{ Id = 'pc-archive-reversed-consumer-order'; Profile = 'Production'; Packages = @('Canvas', 'ComponentGallery', 'Example'); Expected = 'Both consumers register regardless of consumer load order; Host remains their explicit master.' }
-    @{ Id = 'pc-archive-collision-and-missing'; Profile = 'Faults'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Example and Component Gallery remain READY while a different owner is rejected for the Example UUID in Papyrus logs and an intentionally missing consumer movie fails independently.' }
-    @{ Id = 'pc-archive-remove-component-gallery'; Profile = 'Production'; Packages = @('Canvas', 'Example'); Expected = 'After saving with both consumers, removing the Component Gallery package, and loading the save, the registry prunes Component Gallery and reports only Example.' }
-    @{ Id = 'pc-archive-id-reclamation'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'After the removal case, reinstalling Component Gallery allows its released ID to register and become READY again.' }
-    @{ Id = 'pc-archive-save-reload'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Closing/reopening the HUD after save reload preserves registration and the consumers explicitly request their UI again; both panels reappear.' }
-    @{ Id = 'pc-archive-menu-replay'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Ten repeated Player HUD close/open cycles visibly retain both consumers; any miss is recorded as a concrete one-way transport blocker.' }
-    @{ Id = 'pc-archive-normal-large'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Normal and large player HUD movies load the corresponding namespaced consumer paths.' }
-    @{ Id = 'pc-archive-ship-hud'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'DEFERRED: Ship HUD visibly identifies itself and loads both consumers outside the pilot seat.' }
-    @{ Id = 'pc-archive-pilot-seat'; Profile = 'Production'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'DEFERRED: While piloting, record whether the player HUD, ship HUD, both, or neither receives a new message ID without claiming guaranteed delivery.' }
+    @{ Id = 'pc-archive-host-only'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST, WATCH SUBSCRIPTIONS RESTORED and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
+    @{ Id = 'pc-archive-example'; Packages = @('Canvas', 'Example'); Expected = 'Player HUD visibly reports Example READY from its namespaced normal movie.' }
+    @{ Id = 'pc-archive-two-consumers'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Player HUD visibly reports both independently registered consumers READY with no static slot.' }
+    @{ Id = 'pc-archive-reversed-consumer-order'; Packages = @('Canvas', 'ComponentGallery', 'Example'); Expected = 'Both consumers register regardless of consumer load order; Host remains their explicit master.' }
+    @{ Id = 'pc-archive-collision-and-missing'; Fixture = 'Tests/Fixtures/Spriggit/Faults'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Example and Component Gallery remain READY while a different owner is rejected for the Example UUID in Papyrus logs and an intentionally missing consumer movie fails independently.' }
+    @{ Id = 'pc-archive-remove-component-gallery'; Packages = @('Canvas', 'Example'); Expected = 'After saving with both consumers, removing the Component Gallery package, and loading the save, the registry prunes Component Gallery and reports only Example.' }
+    @{ Id = 'pc-archive-id-reclamation'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'After the removal case, reinstalling Component Gallery allows its released ID to register and become READY again.' }
+    @{ Id = 'pc-archive-save-reload'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Closing/reopening the HUD after save reload preserves registration and the consumers explicitly request their UI again; both panels reappear.' }
+    @{ Id = 'pc-archive-menu-replay'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Ten repeated Player HUD close/open cycles visibly retain both consumers; any miss is recorded as a concrete one-way transport blocker.' }
+    @{ Id = 'pc-archive-normal-large'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Normal and large player HUD movies load the corresponding namespaced consumer paths.' }
+    @{ Id = 'pc-archive-ship-hud'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'DEFERRED: Ship HUD visibly identifies itself and loads both consumers outside the pilot seat.' }
+    @{ Id = 'pc-archive-pilot-seat'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'DEFERRED: While piloting, record whether the player HUD, ship HUD, both, or neither receives a new message ID without claiming guaranteed delivery.' }
   )
 }

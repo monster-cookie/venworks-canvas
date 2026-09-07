@@ -51,15 +51,15 @@ class CanvasModuleVariant {
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$environmentPath = Join-Path $repositoryRoot ".env"
+$sharedConfigEnvironmentPath = Join-Path $repositoryRoot ".env"
 
 if (!$SkipEnvironment) {
-  if (!(Test-Path -LiteralPath $environmentPath -PathType Leaf)) {
+  if (!(Test-Path -LiteralPath $sharedConfigEnvironmentPath -PathType Leaf)) {
     throw "ERROR: .env file must be created and configured to run this."
   }
 
   Write-Host -ForegroundColor Green "Importing ENV Settings from .env file"
-  foreach ($environmentLine in Get-Content -LiteralPath $environmentPath) {
+  foreach ($environmentLine in Get-Content -LiteralPath $sharedConfigEnvironmentPath) {
     $trimmedLine = $environmentLine.Trim()
     if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith("#")) {
       continue

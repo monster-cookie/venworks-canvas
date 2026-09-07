@@ -33,8 +33,13 @@ $expectedIds = @{
   VWCANVAS_ComponentGalleryMissingFixture = 'cad7cd56-217a-4e62-a98d-42c3adad07b5'
 }
 $yamlBindings = 0
-foreach ($uuidProfile in @('Production','Faults')) {
-  $root = Join-Path $PSScriptRoot "../Spriggit/$uuidProfile"
+foreach ($root in @(
+  (Join-Path $PSScriptRoot '../Spriggit'),
+  (Join-Path $PSScriptRoot '../Tests/Fixtures/Spriggit/Faults')
+)) {
+  if (!(Test-Path -LiteralPath $root -PathType Container)) {
+    throw "UUID binding root does not exist: $root"
+  }
   foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Filter RecordData.yaml) {
     $yaml = Get-Content -LiteralPath $file.FullName -Raw
     $editorId = [regex]::Match($yaml, '(?m)^EditorID: (\S+)').Groups[1].Value

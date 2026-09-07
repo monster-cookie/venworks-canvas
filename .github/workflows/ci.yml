@@ -13,6 +13,19 @@ permissions:
   contents: read
 
 jobs:
+  validate-windows:
+    name: Validate Windows build and staging contracts
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate Canvas sources and isolated Windows fixtures
+        shell: pwsh
+        run: ./Tools/verifyCanvas.ps1 -SourceOnly
+
   lint-powershell:
     name: Lint PowerShell
     runs-on: ubuntu-latest

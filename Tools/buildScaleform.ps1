@@ -59,34 +59,41 @@ $resolvedJpexsPath = Resolve-CanvasRequiredFile -Path $JpexsJarPath -Description
 $resolvedFlexSdkPath = Resolve-CanvasRequiredDirectory -Path $FlexSdkPath -Description 'Pinned Flex SDK'
 
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-$resolvedWorkDirectory = [System.IO.Path]::GetFullPath($WorkDirectory)
-foreach ($generatedDirectory in @($resolvedOutputDirectory, $resolvedWorkDirectory)) {
-  if (Test-Path -LiteralPath $generatedDirectory -PathType Container) {
-    Assert-CanvasRemovalPath -Path $generatedDirectory -AllowedRoot $canvasWorkRoot
-    Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $generatedDirectory | Out-Null
-}
+$workDirectoryRoot = [System.IO.Path]::GetFullPath($WorkDirectory)
+Assert-CanvasRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $canvasWorkRoot
+Assert-CanvasRemovalPath -Path $workDirectoryRoot -AllowedRoot $canvasWorkRoot
+New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory, $workDirectoryRoot | Out-Null
+$resolvedWorkDirectory = Join-Path $workDirectoryRoot ('build-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $resolvedWorkDirectory | Out-Null
 $env:APPDATA = Join-Path $repositoryRoot '.work\appdata'
 
-$pipelineEvidence = [System.Collections.Generic.List[object]]::new()
-foreach ($relativePath in @($matrix.VwHudFixture.AuxiliaryDerivedFiles)) {
-  $pipelinePath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $resolvedVwHudRoot ([string]$relativePath)) `
-    -Description "Pinned VWHUD toolchain file '$relativePath'"
-  $pipelineEvidence.Add([ordered]@{
-    Path = [string]$relativePath
-    Sha256 = (Get-FileHash -LiteralPath $pipelinePath -Algorithm SHA256).Hash.ToUpperInvariant()
-  })
-}
 $sharedMovieScript = Resolve-CanvasRequiredFile `
   -Path (Join-Path $resolvedVwHudRoot 'Tools\sharedScaleformMovies.ps1') `
   -Description 'Pinned VWHUD shared Scaleform movie helper used by the Canvas build'
 . $sharedMovieScript
+$toolchain = Get-CanvasScaleformToolchainEvidence `
+  -RepositoryRoot $repositoryRoot `
+  -VwHudRepositoryPath $resolvedVwHudRoot `
+  -JavaPath $resolvedJavaPath `
+  -JpexsJarPath $resolvedJpexsPath `
+  -FlexSdkPath $resolvedFlexSdkPath `
+  -Matrix $matrix
 
 $movieOutputDirectory = Join-Path $resolvedOutputDirectory 'movies'
 $movieWorkDirectory = Join-Path $resolvedWorkDirectory 'movies'
 New-Item -ItemType Directory -Force -Path $movieOutputDirectory, $movieWorkDirectory | Out-Null
+$existingMovieEvidence = $null
+$movieEvidencePath = Join-Path $movieOutputDirectory 'build-evidence.json'
+if (Test-Path -LiteralPath $movieEvidencePath -PathType Leaf) {
+  try { $existingMovieEvidence = Get-Content -LiteralPath $movieEvidencePath -Raw | ConvertFrom-Json }
+  catch { Write-Warning "Existing Canvas movie evidence could not be read and will not be retained: $($_.Exception.Message)" }
+}
+$retainedMovieRows = @(Get-CanvasValidRetainedMovieRows `
+  -Evidence $existingMovieEvidence `
+  -RepositoryRoot $repositoryRoot `
+  -MoviesDirectory $movieOutputDirectory `
+  -SelectedVariantKeys @($variants.VariantKey) `
+  -Toolchain $toolchain)
 $movieResults = [System.Collections.Generic.List[object]]::new()
 foreach ($variant in $variants) {
   if ([string]::IsNullOrWhiteSpace($variant.ScaleformManifest)) {
@@ -107,33 +114,33 @@ foreach ($variant in $variants) {
   if ($result.OutputFile -cne $variant.ScaleformOutput) {
     throw "Variant '$($variant.VariantKey)' emitted '$($result.OutputFile)' instead of '$($variant.ScaleformOutput)'."
   }
-  $movieResults.Add($result)
+  $movieResults.Add([pscustomobject]@{ VariantKey = [string]$variant.VariantKey; Result = $result })
 }
 
 $movieEvidence = [ordered]@{
-  Schema = 'VWCANVAS_SCALEFORM_MOVIES/1'
+  Schema = 'VWCANVAS_SCALEFORM_MOVIES/2'
   GeneratedAtUtc = [DateTime]::UtcNow.ToString('o')
-  Variants = @($variants.VariantKey)
   CanvasPipeline = 'VWCANVAS_OWNED_VWHUD_V2_DERIVED/1'
-  VwHudRevision = [string]$matrix.VwHudFixture.Revision
-  VwHudDerivedHelpers = @($pipelineEvidence)
-  Movies = @($movieResults | ForEach-Object {
+  Toolchain = $toolchain
+  Movies = @($retainedMovieRows + @($movieResults | ForEach-Object {
+    $result = $_.Result
     [ordered]@{
-      Name = $_.Name
-      Role = $_.Role
-      OutputFile = $_.OutputFile
-      Sha256 = $_.Sha256
-      Manifest = ([System.IO.Path]::GetRelativePath($canvasRoot, [string]$_.ManifestPath)).Replace('\', '/')
-      ManifestSha256 = $_.ManifestSha256
-      Source = ([System.IO.Path]::GetRelativePath($canvasRoot, [string]$_.SourcePath)).Replace('\', '/')
-      SourceSha256 = $_.SourceSha256
-      ClassInventory = @($_.ClassInventory)
-      BuildPasses = $_.BuildPasses
+      VariantKey = [string]$_.VariantKey
+      Name = $result.Name
+      Role = $result.Role
+      OutputFile = $result.OutputFile
+      Sha256 = $result.Sha256
+      Manifest = ([System.IO.Path]::GetRelativePath($canvasRoot, [string]$result.ManifestPath)).Replace('\', '/')
+      ManifestSha256 = $result.ManifestSha256
+      Source = ([System.IO.Path]::GetRelativePath($canvasRoot, [string]$result.SourcePath)).Replace('\', '/')
+      SourceSha256 = $result.SourceSha256
+      ClassInventory = @($result.ClassInventory)
+      BuildPasses = $result.BuildPasses
     }
-  })
+  }) | Sort-Object VariantKey)
 }
 Write-CanvasUtf8WithoutBom `
-  -Path (Join-Path $movieOutputDirectory 'build-evidence.json') `
+  -Path $movieEvidencePath `
   -Text (($movieEvidence | ConvertTo-Json -Depth 8) + "`n")
 
 if ($buildHostMovies) {
@@ -200,9 +207,11 @@ if (@($variants | Where-Object { $_.IncludesPlayerHud }).Count -gt 0) {
       @($definition.Movies | Where-Object { $_.File -cnotin $expectedNames }).Count -ne 0) {
     throw 'Player HUD Watch build definition must contain exactly the four normal/large SWF/GFX variants.'
   }
-  $playerInputs = @(@($definitionPath, $patchPath, $compileScript) | ForEach-Object {
-    [ordered]@{ Path = $_; Sha256 = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToUpperInvariant() }
-  })
+  $playerInputs = @(
+    (Get-CanvasEvidenceFileRow -Key 'Definition' -Path $definitionPath -DisplayPath 'Scaleform/canvas/build/player-hud-watch.build.psd1'),
+    (Get-CanvasEvidenceFileRow -Key 'Patch' -Path $patchPath -DisplayPath ([System.IO.Path]::GetRelativePath($repositoryRoot, $patchPath))),
+    (Get-CanvasEvidenceFileRow -Key 'Compiler' -Path $compileScript -DisplayPath 'Tools/compileScaleform.ps1')
+  )
   foreach ($movie in $definition.Movies) {
     $inputPath = Join-Path $vanillaMoviesPath $movie.File
     if ((Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $movie.VanillaSha256) {
@@ -250,21 +259,31 @@ if (@($variants | Where-Object { $_.IncludesPlayerHud }).Count -gt 0) {
       throw "Non-deterministic Player HUD Watch output: $($movie.File)"
     }
     Copy-Item -LiteralPath $second -Destination (Join-Path $playerOutputDirectory $movie.File)
-    $playerOutputs.Add([ordered]@{ File = [string]$movie.File; Role = 'WatchPresentationDisabled'; Sha256 = $hash })
+    $playerOutputs.Add([ordered]@{
+      File = [string]$movie.File
+      Role = 'WatchPresentationDisabled'
+      VanillaSha256 = [string]$movie.VanillaSha256
+      ExpectedSha256 = [string]$movie.OutputSha256
+      Sha256 = $hash
+    })
   }
   foreach ($hostMovie in @(Get-VwHudHostMovieEvidence -VwHudRepositoryPath $resolvedVwHudRoot -Matrix $matrix)) {
     $targetName = Split-Path -Leaf ([string]$hostMovie.Target)
     Copy-Item -LiteralPath (Join-Path $resolvedVwHudRoot ([string]$hostMovie.Source)) -Destination (Join-Path $playerOutputDirectory $targetName)
-    $playerOutputs.Add([ordered]@{ File = $targetName; Role = 'PlayerHudHost'; Sha256 = [string]$hostMovie.Sha256 })
+    $playerOutputs.Add([ordered]@{
+      File = $targetName
+      Role = 'PlayerHudHost'
+      Source = [string]$hostMovie.Source
+      SourceSha256 = [string]$hostMovie.Sha256
+      Sha256 = [string]$hostMovie.Sha256
+    })
   }
   $playerHudEvidence = [ordered]@{
-    Schema = 'VWCANVAS_PLAYER_HUD_BUILD/1'
+    Schema = 'VWCANVAS_PLAYER_HUD_BUILD/2'
     PinnedOutputs = !$EstablishExpectedHashes
     VwHudRevision = [string]$matrix.VwHudFixture.Revision
-    DefinitionSha256 = $playerInputs[0].Sha256
-    PatchSha256 = $playerInputs[1].Sha256
-    CompilerSha256 = $playerInputs[2].Sha256
-    Movies = @($playerOutputs)
+    Inputs = @($playerInputs)
+    Movies = @($playerOutputs | Sort-Object File)
   }
   Write-CanvasUtf8WithoutBom -Path (Join-Path $playerOutputDirectory 'build-evidence.json') -Text (($playerHudEvidence | ConvertTo-Json -Depth 5) + "`n")
 }
@@ -281,15 +300,18 @@ if (@($variants | Where-Object { $_.IncludesShipHud }).Count -gt 0) {
     (Join-Path $canvasRoot 'build\spaceshiphudmenu.build.xml'),
     (Join-Path $canvasRoot 'build\spaceshiphudmenu-lrg.build.xml')
   )
-  $shipInputPaths = @($manifestPaths) + @((Join-Path $canvasRoot 'patches\spaceship-hud-auxiliary-loader.xml'))
-  $shipInputs = @($shipInputPaths | ForEach-Object {
-    $inputPath = Resolve-CanvasRequiredFile -Path $_ -Description 'Ship HUD build input'
-    [ordered]@{
-      Path = ([System.IO.Path]::GetRelativePath($repositoryRoot, $inputPath)).Replace('\', '/')
-      Sha256 = (Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToUpperInvariant()
+  $shipInputs = [System.Collections.Generic.List[object]]::new()
+  foreach ($manifestPath in $manifestPaths) {
+    $manifestName = Split-Path -Leaf $manifestPath
+    $shipInputs.Add((Get-CanvasEvidenceFileRow -Key "Manifest/$manifestName" -Path $manifestPath -DisplayPath "Scaleform/canvas/build/$manifestName"))
+    [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+    foreach ($attribute in @('vanillaHashFile', 'expectedHashFile')) {
+      $hashName = [string]$manifest.scaleformBuild.$attribute
+      $shipInputs.Add((Get-CanvasEvidenceFileRow -Key "Hash/$hashName" -Path (Join-Path (Split-Path $manifestPath -Parent) $hashName) -DisplayPath "Scaleform/canvas/build/$hashName"))
     }
-  })
-  $compilerSha256 = (Get-FileHash -LiteralPath $compileScript -Algorithm SHA256).Hash.ToUpperInvariant()
+  }
+  $shipInputs.Add((Get-CanvasEvidenceFileRow -Key 'Patch' -Path (Join-Path $canvasRoot 'patches\spaceship-hud-auxiliary-loader.xml') -DisplayPath 'Scaleform/canvas/patches/spaceship-hud-auxiliary-loader.xml'))
+  $shipInputs.Add((Get-CanvasEvidenceFileRow -Key 'Compiler' -Path $compileScript -DisplayPath ([string]$matrix.VwHudFixture.ShipCompilerFile)))
   & $compileScript `
     -JavaPath $resolvedJavaPath `
     -JpexsJarPath $resolvedJpexsPath `
@@ -303,35 +325,82 @@ if (@($variants | Where-Object { $_.IncludesShipHud }).Count -gt 0) {
   if ($LASTEXITCODE -ne 0) {
     throw "VWHUD Ship HUD build failed with exit code $LASTEXITCODE."
   }
-  $shipOutputs = @(@('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf') | ForEach-Object {
-    $outputPath = Resolve-CanvasRequiredFile -Path (Join-Path $shipOutputDirectory $_) -Description "Patched Ship HUD movie '$_'"
-    [ordered]@{ File = $_; Sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToUpperInvariant() }
+  $shipOutputs = @($manifestPaths | ForEach-Object {
+    [xml]$manifest = Get-Content -LiteralPath $_ -Raw
+    $outputName = [string]$manifest.scaleformBuild.outputFile
+    $outputPath = Resolve-CanvasRequiredFile -Path (Join-Path $shipOutputDirectory $outputName) -Description "Patched Ship HUD movie '$outputName'"
+    [ordered]@{
+      File = $outputName
+      Manifest = "Scaleform/canvas/build/$(Split-Path -Leaf $_)"
+      VanillaSha256 = Get-CanvasPinnedHashFromFile -Path (Join-Path (Split-Path $_ -Parent) ([string]$manifest.scaleformBuild.vanillaHashFile))
+      ExpectedSha256 = Get-CanvasPinnedHashFromFile -Path (Join-Path (Split-Path $_ -Parent) ([string]$manifest.scaleformBuild.expectedHashFile))
+      Sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
   })
   $shipHudEvidence = [ordered]@{
-    Schema = 'VWCANVAS_SHIP_HUD_BUILD/1'
+    Schema = 'VWCANVAS_SHIP_HUD_BUILD/2'
+    PinnedOutputs = !$EstablishExpectedHashes
     VwHudRevision = [string]$matrix.VwHudFixture.Revision
-    VwHudCompiler = [ordered]@{ Path = [string]$matrix.VwHudFixture.ShipCompilerFile; Sha256 = $compilerSha256 }
-    Inputs = $shipInputs
-    Movies = $shipOutputs
+    Inputs = @($shipInputs)
+    Movies = @($shipOutputs | Sort-Object File)
   }
   Write-CanvasUtf8WithoutBom -Path (Join-Path $shipOutputDirectory 'build-evidence.json') -Text (($shipHudEvidence | ConvertTo-Json -Depth 6) + "`n")
 }
 
-foreach ($pipelineFile in @($pipelineEvidence)) {
-  $pipelinePath = Resolve-CanvasRequiredFile -Path (Join-Path $resolvedVwHudRoot ([string]$pipelineFile.Path)) -Description "Pinned VWHUD toolchain file '$($pipelineFile.Path)'"
-  if ((Get-FileHash -LiteralPath $pipelinePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne [string]$pipelineFile.Sha256) {
-    throw "Pinned VWHUD toolchain file '$($pipelineFile.Path)' changed during the complete Scaleform build."
+Assert-CanvasScaleformToolchainEvidence `
+  -Actual $toolchain `
+  -Expected (Get-CanvasScaleformToolchainEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsPath -FlexSdkPath $resolvedFlexSdkPath -Matrix $matrix)
+Assert-CanvasMovieEvidence `
+  -Evidence (Get-Content -LiteralPath $movieEvidencePath -Raw | ConvertFrom-Json) `
+  -RepositoryRoot $repositoryRoot `
+  -MoviesDirectory $movieOutputDirectory `
+  -Variants $variants `
+  -Toolchain $toolchain `
+  -ValidateAllRows
+
+if ($null -eq $playerHudEvidence) {
+  $existingPlayerEvidencePath = Join-Path $resolvedOutputDirectory 'player-hud\build-evidence.json'
+  if (Test-Path -LiteralPath $existingPlayerEvidencePath -PathType Leaf) {
+    try {
+      $existingPlayerEvidence = Get-Content -LiteralPath $existingPlayerEvidencePath -Raw | ConvertFrom-Json
+      Assert-CanvasPlayerHudEvidence -Evidence $existingPlayerEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -PlayerDirectory (Split-Path -Parent $existingPlayerEvidencePath) -Matrix $matrix
+      $playerHudEvidence = $existingPlayerEvidence
+    }
+    catch { Write-Warning "Retained Player HUD evidence was omitted as stale: $($_.Exception.Message)" }
+  }
+}
+if ($null -eq $shipHudEvidence) {
+  $existingShipEvidencePath = Join-Path $resolvedOutputDirectory 'ship-hud\build-evidence.json'
+  if (Test-Path -LiteralPath $existingShipEvidencePath -PathType Leaf) {
+    try {
+      $existingShipEvidence = Get-Content -LiteralPath $existingShipEvidencePath -Raw | ConvertFrom-Json
+      Assert-CanvasShipHudEvidence -Evidence $existingShipEvidence -RepositoryRoot $repositoryRoot -VwHudRepositoryPath $resolvedVwHudRoot -ShipDirectory (Split-Path -Parent $existingShipEvidencePath) -Matrix $matrix
+      $shipHudEvidence = $existingShipEvidence
+    }
+    catch { Write-Warning "Retained Ship HUD evidence was omitted as stale: $($_.Exception.Message)" }
   }
 }
 
 $buildEvidence = [ordered]@{
-  Schema = 'VWCANVAS_SCALEFORM_BUILD/1'
-  Variants = @($variants.VariantKey)
+  Schema = 'VWCANVAS_SCALEFORM_BUILD/2'
+  Variants = @($movieEvidence.Movies | ForEach-Object { [string]$_.VariantKey } | Sort-Object)
   VwHudRevision = [string]$matrix.VwHudFixture.Revision
-  CanvasMovies = @($movieEvidence.Movies)
-  PlayerHudBuilt = $null -ne $playerHudEvidence
-  ShipHudBuilt = $null -ne $shipHudEvidence
+  CanvasMoviesEvidenceSha256 = Get-CanvasFileSha256 -Path $movieEvidencePath
+  PlayerHudEvidenceSha256 = if ($null -eq $playerHudEvidence) { $null } else { Get-CanvasFileSha256 -Path (Join-Path $resolvedOutputDirectory 'player-hud\build-evidence.json') }
+  ShipHudEvidenceSha256 = if ($null -eq $shipHudEvidence) { $null } else { Get-CanvasFileSha256 -Path (Join-Path $resolvedOutputDirectory 'ship-hud\build-evidence.json') }
 }
 Write-CanvasUtf8WithoutBom -Path (Join-Path $resolvedOutputDirectory 'build-evidence.json') -Text (($buildEvidence | ConvertTo-Json -Depth 8) + "`n")
 
-Write-Host -ForegroundColor Green "Built Scaleform artifacts for $([string]::Join(', ', @($variants.VariantKey))) at $resolvedOutputDirectory"
+Assert-CanvasScaleformAggregateEvidence `
+  -Evidence (Get-Content -LiteralPath (Join-Path $resolvedOutputDirectory 'build-evidence.json') -Raw | ConvertFrom-Json) `
+  -ScaleformDirectory $resolvedOutputDirectory `
+  -RequiredVariantKeys @($variants.VariantKey) `
+  -RequirePlayerHud (@($variants | Where-Object { $_.IncludesPlayerHud }).Count -gt 0) `
+  -RequireShipHud (@($variants | Where-Object { $_.IncludesShipHud }).Count -gt 0)
+
+if (!$KeepWork -and (Test-Path -LiteralPath $resolvedWorkDirectory -PathType Container)) {
+  Assert-CanvasRemovalPath -Path $resolvedWorkDirectory -AllowedRoot $canvasWorkRoot
+  Remove-Item -LiteralPath $resolvedWorkDirectory -Recurse -Force
+}
+
+Write-Host -ForegroundColor Green "Built selected Scaleform artifacts for $([string]::Join(', ', @($variants.VariantKey))) and retained only current unselected evidence at $resolvedOutputDirectory"
