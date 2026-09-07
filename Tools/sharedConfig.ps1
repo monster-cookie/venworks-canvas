@@ -75,6 +75,10 @@ if (!$SkipEnvironment) {
     if ([string]::IsNullOrWhiteSpace($name)) {
       throw "Invalid .env entry: environment variable name cannot be empty."
     }
+    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+        ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+      $value = $value.Substring(1, $value.Length - 2)
+    }
 
     Set-Item -LiteralPath "env:$name" -Value $value
   }
@@ -132,7 +136,7 @@ $Global:ModuleVariants = @(
     (Join-Path $repositoryRoot "Staging-Example"),
     "MODULE_VARIANT_EXAMPLE_PATH",
     "$ENV:MODULE_VARIANT_EXAMPLE_PATH",
-    @("Venworks\Canvas\ExampleRegistrar.psc"),
+    @("Venworks\CanvasExamples\ExampleRegistrar.psc"),
     "build\example.build.xml",
     "CanvasExample.swf",
     "venworks.canvas.example",
@@ -147,7 +151,7 @@ $Global:ModuleVariants = @(
     (Join-Path $repositoryRoot "Staging-ComponentGallery"),
     "MODULE_VARIANT_COMPONENT_GALLERY_PATH",
     "$ENV:MODULE_VARIANT_COMPONENT_GALLERY_PATH",
-    @("Venworks\Canvas\ComponentGalleryRegistrar.psc"),
+    @("Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.psc"),
     "build\component-gallery.build.xml",
     "CanvasComponentGallery.swf",
     "venworks.canvas.component-gallery",

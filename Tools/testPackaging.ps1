@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Exercises installed-receipt, exact-Junction, archive-inventory, and process-lock package contracts.
+Exercises direct payload, installed archive, exact-Junction, recovery, and process-lock package contracts.
 #>
 [CmdletBinding()]
 param()
@@ -17,12 +17,50 @@ function Assert-TestRejected {
   if (!$caught) { throw "$Description was accepted." }
 }
 
+function Assert-TestNames {
+  param([Parameter(Mandatory = $true)][string[]]$Actual, [Parameter(Mandatory = $true)][string[]]$Expected, [Parameter(Mandatory = $true)][string]$Description)
+  $actualNames = @($Actual | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
+  $expectedNames = @($Expected | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
+  if ($actualNames.Count -ne $expectedNames.Count) { throw "$Description count differs. Expected $($expectedNames.Count); found $($actualNames.Count)." }
+  for ($index = 0; $index -lt $expectedNames.Count; $index++) {
+    if ($actualNames[$index] -cne $expectedNames[$index]) { throw "$Description differs at index $index. Expected '$($expectedNames[$index])'; found '$($actualNames[$index])'." }
+  }
+}
+
 function Write-TestEsm {
   param([Parameter(Mandatory = $true)][string]$Path, [byte]$Marker = 0)
   $bytes = [byte[]]::new(42)
   [Text.Encoding]::ASCII.GetBytes('TES4').CopyTo($bytes, 0)
   [BitConverter]::GetBytes([uint32]18).CopyTo($bytes, 4)
   $bytes[24] = $Marker
+  [System.IO.File]::WriteAllBytes($Path, $bytes)
+}
+
+function Write-TestPayload {
+  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+  [System.IO.File]::WriteAllText($Path, $Text)
+}
+
+function Write-TestPapyrusHeaderFixture {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+  $bytes = [byte[]]::new(16)
+  $bytes[0] = 0xDE
+  $bytes[1] = 0xC0
+  $bytes[2] = 0x57
+  $bytes[3] = 0xFA
+  [System.IO.File]::WriteAllBytes($Path, $bytes)
+}
+
+function Write-TestScaleformHeaderFixture {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][ValidateSet('CWS', 'GFX')][string]$Signature
+  )
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+  $bytes = [byte[]]::new(8)
+  [Text.Encoding]::ASCII.GetBytes($Signature).CopyTo($bytes, 0)
   [System.IO.File]::WriteAllBytes($Path, $bytes)
 }
 
@@ -74,51 +112,160 @@ foreach ($badKeys in @(@('UNKNOWN'), @('CANVAS', 'CANVAS'))) {
   Assert-TestRejected -Description "Invalid variant selection '$($badKeys -join ', ')'" -Action { [void](Get-CanvasStagingSelection -VariantKeys $badKeys) }
 }
 
+$wrapperTokens = $null
+$wrapperParseErrors = $null
+$wrapperAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'createPackages.ps1'), [ref]$wrapperTokens, [ref]$wrapperParseErrors)
+if ($wrapperParseErrors.Count -ne 0) { throw "createPackages.ps1 has $($wrapperParseErrors.Count) parse error(s)." }
+$packageTransactionTry = $null
+foreach ($candidateTry in @($wrapperAst.FindAll({ param($node) $node -is [Management.Automation.Language.TryStatementAst] }, $true))) {
+  $candidateCommands = @($candidateTry.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
+  if ($candidateCommands -contains 'Enter-CanvasPackageLock') {
+    if ($null -ne $packageTransactionTry) { throw 'createPackages.ps1 contains multiple package-lock transaction scopes.' }
+    $packageTransactionTry = $candidateTry
+  }
+}
+if ($null -eq $packageTransactionTry -or $null -eq $packageTransactionTry.Finally) { throw 'createPackages.ps1 does not protect the package-lock transaction with finally.' }
+$cleanupOwnershipTries = @($packageTransactionTry.Finally.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })
+if ($cleanupOwnershipTries.Count -ne 1) { throw 'createPackages.ps1 does not contain one lock-owned successful-cleanup scope.' }
+$cleanupOwnershipTry = $cleanupOwnershipTries[0]
+$cleanupCommands = @($cleanupOwnershipTry.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
+if ($cleanupCommands -cnotcontains 'Remove-Item' -or $null -eq $cleanupOwnershipTry.Finally) { throw 'createPackages.ps1 does not perform successful transaction cleanup before its nested release finally.' }
+$lockDisposeCalls = @($cleanupOwnershipTry.Finally.FindAll({
+  param($node)
+  $node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and
+    $node.Expression -is [Management.Automation.Language.VariableExpressionAst] -and
+    $node.Expression.VariablePath.UserPath -ceq 'packageLock' -and
+    $node.Member.Extent.Text -ceq 'Dispose'
+}, $true))
+if ($lockDisposeCalls.Count -ne 1) { throw 'createPackages.ps1 does not release the package lock exactly once after successful-cleanup handling.' }
+
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testBase = Join-Path $repositoryRoot '.work\canvas\build-remediation-tests'
+$testBase = Join-Path $repositoryRoot '.work\canvas\pr4-simplification\package'
 $fixtureRoot = Join-Path $testBase ('packaging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
 $originalCanvasTarget = [Environment]::GetEnvironmentVariable('TEST_CANVAS_TARGET', 'Process')
 $originalExampleTarget = [Environment]::GetEnvironmentVariable('TEST_EXAMPLE_TARGET', 'Process')
 try {
+  $scriptsDirectory = Join-Path $fixtureRoot 'outputs\scripts'
+  $moviesDirectory = Join-Path $fixtureRoot 'outputs\scaleform\movies'
+  $playerDirectory = Join-Path $fixtureRoot 'outputs\scaleform\player-hud'
+  $shipDirectory = Join-Path $fixtureRoot 'outputs\scaleform\ship-hud'
+  New-Item -ItemType Directory -Force -Path $scriptsDirectory, $moviesDirectory, $playerDirectory, $shipDirectory | Out-Null
+  $canvas = [pscustomobject]@{
+    VariantKey = 'CANVAS'; PackageBaseName = 'FixtureCanvas'; ScaleformOutput = 'CanvasHost.swf'
+    PapyrusScripts = @('Venworks\Canvas\GlobalConfig.psc', 'Venworks\Canvas\Enumerations.psc', 'Venworks\Canvas\Base\BaseQuest.psc', 'Venworks\Canvas\Registry.psc')
+  }
+  $example = [pscustomobject]@{
+    VariantKey = 'EXAMPLE'; PackageBaseName = 'FixtureExample'; ScaleformOutput = 'CanvasExample.swf'
+    PapyrusScripts = @('Venworks\CanvasExamples\ExampleRegistrar.psc')
+  }
+  $gallery = [pscustomobject]@{
+    VariantKey = 'COMPONENTGALLERY'; PackageBaseName = 'FixtureGallery'; ScaleformOutput = 'CanvasComponentGallery.swf'
+    PapyrusScripts = @('Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.psc')
+  }
+  foreach ($variant in @($canvas, $example, $gallery)) {
+    Write-TestScaleformHeaderFixture -Path (Join-Path $moviesDirectory $variant.ScaleformOutput) -Signature 'CWS'
+    foreach ($source in @($variant.PapyrusScripts)) {
+      Write-TestPapyrusHeaderFixture -Path (Join-Path $scriptsDirectory ([System.IO.Path]::ChangeExtension([string]$source, '.pex')))
+    }
+  }
+  foreach ($name in @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')) {
+    $signature = if ([System.IO.Path]::GetExtension($name) -ieq '.gfx') { 'GFX' } else { 'CWS' }
+    Write-TestScaleformHeaderFixture -Path (Join-Path $playerDirectory $name) -Signature $signature
+  }
+  foreach ($name in @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')) {
+    Write-TestScaleformHeaderFixture -Path (Join-Path $shipDirectory $name) -Signature 'CWS'
+  }
+
+  # Installed dependencies and undeclared output files may be present, but they must never enter a Canvas package.
+  $foreignFiles = @(
+    (Join-Path $scriptsDirectory 'Venworks\Core\Logging.pex'),
+    (Join-Path $playerDirectory 'hudmenu.swf'),
+    (Join-Path $playerDirectory 'hudmenu.gfx'),
+    (Join-Path $moviesDirectory 'ForeignDependency.swf')
+  )
+  foreach ($path in $foreignFiles) { Write-TestPayload -Path $path -Text 'foreign-dependency' }
+
+  $payloads = Get-CanvasPackagePayloads -SelectedVariants @($canvas, $example, $gallery) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -PlayerDirectory $playerDirectory -ShipDirectory $shipDirectory
+  $canvasTargets = @(
+    'Interface\venworkscui.swf',
+    'Interface\playerhudcomponents.swf',
+    'Interface\playerhudcomponents.gfx',
+    'Interface\playerhudcomponents_lrg.swf',
+    'Interface\playerhudcomponents_lrg.gfx',
+    'Interface\spaceshiphudmenu.swf',
+    'Interface\spaceshiphudmenu_lrg.swf',
+    'Scripts\Venworks\Canvas\GlobalConfig.pex',
+    'Scripts\Venworks\Canvas\Enumerations.pex',
+    'Scripts\Venworks\Canvas\Base\BaseQuest.pex',
+    'Scripts\Venworks\Canvas\Registry.pex'
+  )
+  $exampleTargets = @(
+    'Interface\VenworksCanvas\Consumers\venworks.canvas.example\normal.swf',
+    'Interface\VenworksCanvas\Consumers\venworks.canvas.example\large.swf',
+    'Scripts\Venworks\CanvasExamples\ExampleRegistrar.pex'
+  )
+  $galleryTargets = @(
+    'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\normal.swf',
+    'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\large.swf',
+    'Scripts\Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.pex'
+  )
+  Assert-TestNames -Actual @($payloads['CANVAS'].Target) -Expected $canvasTargets -Description 'CANVAS owned payload inventory'
+  Assert-TestNames -Actual @($payloads['EXAMPLE'].Target) -Expected $exampleTargets -Description 'EXAMPLE owned payload inventory'
+  Assert-TestNames -Actual @($payloads['COMPONENTGALLERY'].Target) -Expected $galleryTargets -Description 'COMPONENTGALLERY owned payload inventory'
+  $allPayloads = @($payloads.Values | ForEach-Object { $_ })
+  foreach ($row in $allPayloads) {
+    if ((Get-CanvasFileSha256 -Path $row.Source) -cne [string]$row.ExpectedSha256) { throw "Transient payload hash differs for '$($row.Target)'." }
+  }
+  $allTargets = @($allPayloads.Target | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() })
+  foreach ($forbiddenTarget in @(
+      'scripts/venworks/core/logging.pex',
+      'interface/hudmenu.swf',
+      'interface/hudmenu.gfx',
+      'scripts/venworks/canvas/exampleregistrar.pex',
+      'scripts/venworks/canvas/componentgalleryregistrar.pex')) {
+    if ($forbiddenTarget -cin $allTargets) { throw "Foreign or retired package target was included: $forbiddenTarget" }
+  }
+  $exampleOnly = Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory
+  Assert-TestNames -Actual @($exampleOnly['EXAMPLE'].Target) -Expected $exampleTargets -Description 'Selected EXAMPLE payload inventory'
+  $examplePexPath = Join-Path $scriptsDirectory 'Venworks\CanvasExamples\ExampleRegistrar.pex'
+  $exampleMoviePath = Join-Path $moviesDirectory 'CanvasExample.swf'
+  $truncatedPex = [byte[]]::new(4)
+  $truncatedPex[0] = 0xDE
+  $truncatedPex[1] = 0xC0
+  $truncatedPex[2] = 0x57
+  $truncatedPex[3] = 0xFA
+  foreach ($invalidPex in @(
+      @{ Description = 'Empty selected PEX'; Bytes = [byte[]]::new(0) },
+      @{ Description = 'Truncated selected PEX'; Bytes = $truncatedPex },
+      @{ Description = 'Invalid-header selected PEX'; Bytes = [byte[]]::new(16) })) {
+    [System.IO.File]::WriteAllBytes($examplePexPath, [byte[]]$invalidPex.Bytes)
+    Assert-TestRejected -Description ([string]$invalidPex.Description) -Action {
+      [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory)
+    }
+    Write-TestPapyrusHeaderFixture -Path $examplePexPath
+  }
+  foreach ($invalidMovie in @(
+      @{ Description = 'Empty selected movie'; Bytes = [byte[]]::new(0) },
+      @{ Description = 'Truncated selected movie'; Bytes = [Text.Encoding]::ASCII.GetBytes('CWS') },
+      @{ Description = 'Invalid-header selected movie'; Bytes = [Text.Encoding]::ASCII.GetBytes('NOTMOVIE!') })) {
+    [System.IO.File]::WriteAllBytes($exampleMoviePath, [byte[]]$invalidMovie.Bytes)
+    Assert-TestRejected -Description ([string]$invalidMovie.Description) -Action {
+      [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory)
+    }
+    Write-TestScaleformHeaderFixture -Path $exampleMoviePath -Signature 'CWS'
+  }
+  Remove-Item -LiteralPath (Join-Path $moviesDirectory 'CanvasHost.swf') -Force
+  Assert-TestRejected -Description 'Missing selected CanvasHost output' -Action {
+    [void](Get-CanvasPackagePayloads -SelectedVariants @($canvas) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -PlayerDirectory $playerDirectory -ShipDirectory $shipDirectory)
+  }
+  Write-TestScaleformHeaderFixture -Path (Join-Path $moviesDirectory 'CanvasHost.swf') -Signature 'CWS'
+
   $target = Join-Path $fixtureRoot 'target'
   $otherTarget = Join-Path $fixtureRoot 'other-target'
   $staging = Join-Path $fixtureRoot 'staging'
   $otherStaging = Join-Path $fixtureRoot 'other-staging'
   New-Item -ItemType Directory -Path $target, $otherTarget | Out-Null
-  $proofSource = Join-Path $fixtureRoot 'proof-source.json'
-  Write-CanvasUtf8WithoutBom -Path $proofSource -Text "{`"Marker`":`"admitted`"}`n"
-  $proofSnapshot = Get-CanvasJsonEvidenceSnapshot -Path $proofSource -Description 'Fixture proof' -TransactionFileName 'proof.json'
-  if ([string]$proofSnapshot.Value.Marker -cne 'admitted' -or
-      [string]$proofSnapshot.Sha256 -cne [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([byte[]]$proofSnapshot.Bytes))) {
-    throw 'Evidence snapshot object and hash did not come from the same captured bytes.'
-  }
-  $proofDirectory = Join-Path $fixtureRoot 'proof-copy'
-  New-Item -ItemType Directory -Path $proofDirectory | Out-Null
-  Write-CanvasJsonEvidenceSnapshot -Snapshot $proofSnapshot -Directory $proofDirectory
-  [System.IO.File]::WriteAllText($proofSource, '{"Marker":"changed"}')
-  if ((Get-CanvasFileSha256 -Path $proofSnapshot.TransactionPath) -cne [string]$proofSnapshot.Sha256 -or
-      (Get-CanvasFileSha256 -Path $proofSource) -ceq [string]$proofSnapshot.Sha256) {
-    throw 'Immutable evidence snapshot did not preserve and distinguish the admitted bytes.'
-  }
-
-  $payloadFixture = Join-Path $fixtureRoot 'payload-fixture'
-  $payloadMovie = Join-Path $payloadFixture 'movies\Canvas.swf'
-  $payloadCore = Join-Path $payloadFixture 'core\Staging\Scripts\Core.pex'
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $payloadMovie), (Split-Path -Parent $payloadCore) | Out-Null
-  [System.IO.File]::WriteAllText($payloadMovie, 'movie')
-  [System.IO.File]::WriteAllText($payloadCore, 'core')
-  $admittedMovieHash = Get-CanvasFileSha256 -Path $payloadMovie
-  $pinnedCoreHash = Get-CanvasFileSha256 -Path $payloadCore
-  $payloadVariant = [pscustomobject]@{ VariantKey = 'CANVAS'; PapyrusScripts = @() }
-  $payloadMovieEvidence = [pscustomobject]@{ Movies = @([pscustomobject]@{ VariantKey = 'CANVAS'; OutputFile = 'Canvas.swf'; Sha256 = $admittedMovieHash }) }
-  $payloadMatrix = @{ VenworksCoreFixture = @{ RuntimeScripts = @(@{ Source = 'Staging/Scripts/Core.pex'; Target = 'Scripts/Core.pex'; Sha256 = $pinnedCoreHash }) } }
-  $admittedPayloads = @(Get-CanvasPackagePayloads -SelectedVariants @($payloadVariant) -CompileEvidence ([pscustomobject]@{ Scripts = @() }) -MovieEvidence $payloadMovieEvidence -MoviesDirectory (Split-Path -Parent $payloadMovie) -ScriptsDirectory $payloadFixture -VenworksCoreRepositoryPath (Join-Path $payloadFixture 'core') -Matrix $payloadMatrix -PlayerDirectory $payloadFixture -PlayerEvidence ([pscustomobject]@{ Movies = @() }) -ShipDirectory $payloadFixture -ShipEvidence ([pscustomobject]@{ Movies = @() }) | ForEach-Object { $_['CANVAS'] })
-  if ($admittedPayloads.Count -ne 2 -or
-      [string]@($admittedPayloads | Where-Object Target -CEQ 'Interface\venworkscui.swf')[0].ExpectedSha256 -cne $admittedMovieHash -or
-      [string]@($admittedPayloads | Where-Object Target -CEQ 'Scripts\Core.pex')[0].ExpectedSha256 -cne $pinnedCoreHash) {
-    throw 'Package payloads did not retain admitted movie and pinned Core hashes.'
-  }
   Write-TestEsm -Path (Join-Path $target 'Fixture.esm')
   $variant = [pscustomobject]@{ VariantKey = 'CANVAS'; PackageBaseName = 'Fixture'; StagingFolderPath = $staging; EnvironmentVariableName = 'TEST_CANVAS_TARGET' }
   $unselectedVariant = [pscustomobject]@{ VariantKey = 'EXAMPLE'; PackageBaseName = 'Other'; StagingFolderPath = $otherStaging; EnvironmentVariableName = 'TEST_EXAMPLE_TARGET' }
@@ -127,9 +274,10 @@ try {
 
   Assert-TestRejected -Description 'Missing staging path preflight' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
   New-Item -ItemType Directory -Path $staging | Out-Null
-  $beforeOrdinary = Get-CanvasDirectoryDigest -Path $target
+  $beforeOrdinaryBytes = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes((Join-Path $target 'Fixture.esm')))
   Assert-TestRejected -Description 'Ordinary staging directory preflight' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
-  if ((Get-CanvasDirectoryDigest -Path $target) -cne $beforeOrdinary) { throw 'Rejected ordinary-directory preflight changed the physical target.' }
+  Assert-TestNames -Actual @((Get-ChildItem -LiteralPath $target -Force).Name) -Expected @('Fixture.esm') -Description 'Rejected ordinary-directory physical target inventory'
+  if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes((Join-Path $target 'Fixture.esm'))) -cne $beforeOrdinaryBytes) { throw 'Rejected ordinary-directory preflight changed the physical target.' }
   Remove-Item -LiteralPath $staging -Force
 
   if ($IsWindows) {
@@ -148,57 +296,22 @@ try {
   }
 
   $packageDirectory = Join-Path $fixtureRoot 'installed'
-  $receiptsDirectory = Join-Path $fixtureRoot 'receipts'
-  New-Item -ItemType Directory -Path $packageDirectory, $receiptsDirectory | Out-Null
+  New-Item -ItemType Directory -Path $packageDirectory | Out-Null
   $esmPath = Join-Path $packageDirectory 'Fixture.esm'
   $ba2Path = Join-Path $packageDirectory 'Fixture - Main.ba2'
   Write-TestEsm -Path $esmPath
   Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('movie'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
-  $entries = @(Get-CanvasGeneralBa2Evidence -Path $ba2Path)
-  $esmSha = Get-CanvasFileSha256 -Path $esmPath
-  $ba2Sha = Get-CanvasFileSha256 -Path $ba2Path
-  $compileSha = 'A' * 64
-  $scaleformSha = 'B' * 64
-  $receipt = [ordered]@{
-    Schema = 'VWCANVAS_PACKAGE_RECEIPT/2'; TransactionId = [guid]::NewGuid().ToString('N'); VariantKey = 'CANVAS'; PackageBaseName = 'Fixture'
-    SourceEsm = [ordered]@{ File = 'Fixture.esm'; Sha256 = $esmSha }
-    BuildEvidence = [ordered]@{ CompileEvidenceSha256 = $compileSha; ScaleformEvidenceSha256 = $scaleformSha }
-    Candidate = [ordered]@{ Plugin = [ordered]@{ File = 'Fixture.esm'; Sha256 = $esmSha }; Archive = [ordered]@{ File = 'Fixture - Main.ba2'; Sha256 = $ba2Sha; Entries = $entries } }
-    Installed = [ordered]@{ Plugin = [ordered]@{ File = 'Fixture.esm'; Sha256 = $esmSha }; Archive = [ordered]@{ File = 'Fixture - Main.ba2'; Sha256 = $ba2Sha; Entries = $entries } }
-  }
-  Assert-CanvasPackageReceipt -Receipt ([pscustomobject]$receipt) -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries -CompileEvidenceSha256 $compileSha -ScaleformEvidenceSha256 $scaleformSha
-  Write-CanvasUtf8WithoutBom -Path (Join-Path $receiptsDirectory 'CANVAS.json') -Text (($receipt | ConvertTo-Json -Depth 10) + "`n")
-  [void](Get-CanvasPackageReceipts -ReceiptDirectory $receiptsDirectory -RequiredVariantKeys @('CANVAS'))
-
-  Write-TestEsm -Path $esmPath -Marker 1
-  Assert-TestRejected -Description 'Different valid-header installed ESM' -Action { Assert-CanvasPackageReceipt -Receipt ([pscustomobject]$receipt) -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries -CompileEvidenceSha256 $compileSha -ScaleformEvidenceSha256 $scaleformSha }
+  $entries = @(Get-CanvasGeneralBa2Contents -Path $ba2Path)
+  Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries
+  [System.IO.File]::WriteAllText($esmPath, 'invalid-esm')
+  Assert-TestRejected -Description 'Invalid installed ESM header' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
   Write-TestEsm -Path $esmPath
   Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('changed'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
-  Assert-TestRejected -Description 'Changed installed archive entry' -Action { Assert-CanvasPackageReceipt -Receipt ([pscustomobject]$receipt) -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries -CompileEvidenceSha256 $compileSha -ScaleformEvidenceSha256 $scaleformSha }
+  Assert-TestRejected -Description 'Changed installed archive entry' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
   Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('movie'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
   [System.IO.File]::WriteAllText((Join-Path $packageDirectory 'extra.txt'), 'extra')
-  Assert-TestRejected -Description 'Extra installed package file' -Action { Assert-CanvasPackageReceipt -Receipt ([pscustomobject]$receipt) -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries -CompileEvidenceSha256 $compileSha -ScaleformEvidenceSha256 $scaleformSha }
+  Assert-TestRejected -Description 'Extra installed package file' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
   Remove-Item -LiteralPath (Join-Path $packageDirectory 'extra.txt') -Force
-  Copy-Item -LiteralPath (Join-Path $receiptsDirectory 'CANVAS.json') -Destination (Join-Path $receiptsDirectory 'duplicate.json')
-  Assert-TestRejected -Description 'Duplicate variant receipt' -Action { [void](Get-CanvasPackageReceipts -ReceiptDirectory $receiptsDirectory -RequiredVariantKeys @('CANVAS')) }
-  Remove-Item -LiteralPath (Join-Path $receiptsDirectory 'duplicate.json') -Force
-  Assert-TestRejected -Description 'Missing variant receipt' -Action { [void](Get-CanvasPackageReceipts -ReceiptDirectory $receiptsDirectory -RequiredVariantKeys @('EXAMPLE')) }
-  [System.IO.File]::WriteAllText((Join-Path $receiptsDirectory 'EXAMPLE.json'), '{ invalid')
-  [void](Get-CanvasPackageReceipts -ReceiptDirectory $receiptsDirectory -RequiredVariantKeys @('CANVAS') -WarningAction SilentlyContinue)
-  Remove-Item -LiteralPath (Join-Path $receiptsDirectory 'EXAMPLE.json') -Force
-
-  $receiptDestination = Join-Path $fixtureRoot 'published-receipt.json'
-  $receiptBackup = Join-Path $fixtureRoot 'published-receipt.backup.json'
-  [System.IO.File]::WriteAllText($receiptBackup, 'old-receipt')
-  [System.IO.File]::WriteAllText($receiptDestination, 'new-receipt')
-  $publication = [pscustomobject]@{ Destination = $receiptDestination; Backup = $receiptBackup; OriginalSha256 = Get-CanvasFileSha256 -Path $receiptBackup }
-  Restore-CanvasReceiptPublication -Publication $publication
-  if ([System.IO.File]::ReadAllText($receiptDestination) -cne 'old-receipt') { throw 'Receipt publication recovery did not restore the prior receipt.' }
-  [System.IO.File]::WriteAllText($receiptDestination, 'newer-receipt')
-  [System.IO.File]::WriteAllText($receiptBackup, 'corrupt-backup')
-  $destinationHashBefore = Get-CanvasFileSha256 -Path $receiptDestination
-  Assert-TestRejected -Description 'Corrupt receipt publication backup' -Action { Restore-CanvasReceiptPublication -Publication $publication }
-  if ((Get-CanvasFileSha256 -Path $receiptDestination) -cne $destinationHashBefore) { throw 'Failed receipt recovery changed the published receipt before backup preflight.' }
 
   $transactionBase = Join-Path $fixtureRoot 'transactions'
   New-Item -ItemType Directory -Path $transactionBase | Out-Null
@@ -286,4 +399,4 @@ finally {
   }
 }
 
-Write-Output 'Packaging contracts passed: exact Junction preflight, selected/unselected target isolation, single-read proof snapshots, admitted movie/Core hashes, candidate-bound installed receipts, exact BA2 entries/inventories, duplicate/missing evidence rejection, retained-transaction blocking, publication/package recovery preflight, and platform-safe process-held lock exclusion/termination recovery.'
+Write-Output 'Packaging contracts passed: selected Canvas-owned payload allowlists, installed dependency exclusion, child namespace isolation, direct artifact hashes, exact Junction preflight, exact installed BA2 contents, package recovery, retained transaction blocking, and platform-safe process lock exclusion/termination recovery.'

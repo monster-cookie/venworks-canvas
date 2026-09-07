@@ -3,7 +3,7 @@ EditorID: VWCANVAS_ExampleRegistrar
 FormVersion: 582
 VirtualMachineAdapter:
   Scripts:
-  - Name: Venworks:Canvas:ExampleRegistrar
+  - Name: Venworks:CanvasExamples:ExampleRegistrar
     Properties:
     - MutagenObjectType: ScriptStringProperty
       Name: ConsumerId

@@ -1,193 +1,265 @@
 <#
 .SYNOPSIS
-Exercises selected-build evidence retention and selected-only package payload resolution with isolated files.
+Exercises selected Papyrus builds with an isolated compiler fixture.
 .DESCRIPTION
-This is a filesystem/evidence simulation. It does not invoke the Papyrus, Flex, JPEXS, VWHUD, or Archive2 toolchains.
+The fixture verifies variant selection, installed-source imports, compiler failures, missing
+fresh outputs, and preservation of existing selected and unselected output bytes.
 #>
 [CmdletBinding()]
 param()
 
+$PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 
-function Assert-TestRejected {
-  param([Parameter(Mandatory = $true)][scriptblock]$Action, [Parameter(Mandatory = $true)][string]$Description)
-  $caught = $false
-  try { & $Action } catch { $caught = $true }
-  if (!$caught) { throw "$Description was accepted." }
+function Write-TestText {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+  )
+
+  [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Path)) | Out-Null
+  [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Assert-TestText {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Expected,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  if (!(Test-Path -LiteralPath $Path -PathType Leaf)) {
+    throw "$Description is missing: $Path"
+  }
+  $actual = [System.IO.File]::ReadAllText($Path)
+  if ($actual -cne $Expected) {
+    throw "$Description changed. Expected '$Expected'; found '$actual'."
+  }
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testBase = Join-Path $repositoryRoot '.work\canvas\build-remediation-tests'
-$fixtureRoot = Join-Path $testBase ('variants-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
+$compileScriptPath = Join-Path $PSScriptRoot 'compileScripts.ps1'
+$powerShellPath = (Get-Process -Id $PID).Path
+$testBase = Join-Path $repositoryRoot '.work\canvas\pr4-simplification\papyrus'
+$fixtureRoot = Join-Path $testBase ('compile-' + [guid]::NewGuid().ToString('N'))
+$installedSourceRoot = Join-Path $fixtureRoot 'installed-sources'
+$flagsPath = Join-Path $fixtureRoot 'Starfield_Papyrus_Flags.flg'
+$fakeCompilerPath = Join-Path $fixtureRoot 'fakePapyrusCompiler.ps1'
+$canvasSourceRoot = Join-Path $repositoryRoot 'Papyrus'
+
+function New-TestEnvironment {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Mode,
+    [Parameter(Mandatory = $true)][string]$LogPath
+  )
+
+  $lines = @(
+    "TOOL_PATH_PAPYRUS_COMPILER=$fakeCompilerPath"
+    "PAPYRUS_COMPILER_FLAGS=$flagsPath"
+    "PAPYRUS_SCRIPTS_SOURCE_PATH=$installedSourceRoot"
+    "VWCANVAS_TEST_SOURCE_ROOT=$canvasSourceRoot"
+    "VWCANVAS_TEST_COMPILER_MODE=$Mode"
+    "VWCANVAS_TEST_COMPILER_LOG=$LogPath"
+  )
+  Write-TestText -Path $Path -Text ([string]::Join([Environment]::NewLine, $lines) + [Environment]::NewLine)
+}
+
+function Invoke-TestCompile {
+  param(
+    [Parameter(Mandatory = $true)][string]$VariantKey,
+    [Parameter(Mandatory = $true)][string]$EnvironmentPath,
+    [Parameter(Mandatory = $true)][string]$OutputDirectory
+  )
+
+  $output = @(& $powerShellPath -NoProfile -File $compileScriptPath `
+    -VariantKeys $VariantKey `
+    -EnvironmentPath $EnvironmentPath `
+    -OutputDirectory $OutputDirectory 2>&1)
+  return [pscustomobject]@{
+    ExitCode = $LASTEXITCODE
+    Output = @($output | ForEach-Object { [string]$_ })
+  }
+}
+
+function Get-TestCompilerLog {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (!(Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return @()
+  }
+  return @(Get-Content -LiteralPath $Path | ForEach-Object { $_ | ConvertFrom-Json })
+}
+
+New-Item -ItemType Directory -Force -Path $fixtureRoot, $installedSourceRoot | Out-Null
 try {
-  $environmentProbeRoot = Join-Path $fixtureRoot 'environment-path'
-  $probeRepositoryRoot = Join-Path $environmentProbeRoot 'repository'
-  $probeToolsDirectory = Join-Path $probeRepositoryRoot 'Tools'
-  New-Item -ItemType Directory -Force -Path $probeToolsDirectory | Out-Null
-  foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasBuildEvidence.ps1', 'sharedCanvasPackaging.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination $probeToolsDirectory
-  }
-  $alternateEnvironmentPath = Join-Path $environmentProbeRoot 'alternate.env'
-  Write-CanvasUtf8WithoutBom -Path $alternateEnvironmentPath -Text "VWCANVAS_ENVIRONMENT_PATH_PROBE=alternate`n"
-  if (Test-Path -LiteralPath (Join-Path $probeRepositoryRoot '.env')) {
-    throw 'Explicit EnvironmentPath fixture unexpectedly contains a default .env file.'
-  }
-  $probePath = Join-Path $probeToolsDirectory 'environmentPathProbe.ps1'
-  $probeSource = @'
-[CmdletBinding()]
-param([Parameter(Mandatory = $true)][string]$EnvironmentPath)
+  Write-TestText -Path $flagsPath -Text 'fixture flags'
+  Write-TestText `
+    -Path (Join-Path $installedSourceRoot 'Venworks\Core\Base\BaseQuest.psc') `
+    -Text 'ScriptName Venworks:Core:Base:BaseQuest'
+
+  $fakeCompiler = @'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
-Import-CanvasEnvironment -Path $EnvironmentPath
-if ($env:VWCANVAS_ENVIRONMENT_PATH_PROBE -cne 'alternate') { throw 'Explicit alternate environment content was not imported.' }
-Write-Output "VWCANVAS_ENVIRONMENT_PATH_OK=$([System.IO.Path]::GetFullPath($EnvironmentPath))"
+
+if ($args.Count -lt 1) { throw 'Fake compiler did not receive a source path.' }
+$sourcePath = [System.IO.Path]::GetFullPath([string]$args[0])
+$outputArguments = @($args | Where-Object { [string]$_ -like '-output=*' })
+$importArguments = @($args | Where-Object { [string]$_ -like '-import=*' })
+if ($outputArguments.Count -ne 1 -or $importArguments.Count -ne 1) {
+  throw 'Fake compiler requires exactly one output and import argument.'
+}
+
+$sourceRoot = [System.IO.Path]::GetFullPath($env:VWCANVAS_TEST_SOURCE_ROOT)
+$relativeSource = [System.IO.Path]::GetRelativePath($sourceRoot, $sourcePath)
+$outputRoot = [System.IO.Path]::GetFullPath(([string]$outputArguments[0]).Substring(8))
+$importPaths = @(([string]$importArguments[0]).Substring(8).Split(';') | ForEach-Object {
+  [System.IO.Path]::GetFullPath($_)
+})
+$logEntry = [ordered]@{
+  Source = $relativeSource.Replace('\', '/')
+  OutputRoot = $outputRoot
+  Imports = $importPaths
+  Arguments = @($args | ForEach-Object { [string]$_ })
+}
+[System.IO.File]::AppendAllText(
+  $env:VWCANVAS_TEST_COMPILER_LOG,
+  (($logEntry | ConvertTo-Json -Compress) + [Environment]::NewLine),
+  [System.Text.UTF8Encoding]::new($false)
+)
+
+if ($env:VWCANVAS_TEST_COMPILER_MODE -ceq 'Fail') {
+  Set-Variable -Name LASTEXITCODE -Value 23 -Scope 1
+  return
+}
+if ($env:VWCANVAS_TEST_COMPILER_MODE -ceq 'Missing') {
+  Set-Variable -Name LASTEXITCODE -Value 0 -Scope 1
+  return
+}
+if ($env:VWCANVAS_TEST_COMPILER_MODE -cne 'Success') {
+  throw "Unknown fake compiler mode '$env:VWCANVAS_TEST_COMPILER_MODE'."
+}
+
+$outputRelativePath = [System.IO.Path]::ChangeExtension($relativeSource, '.pex')
+$outputPath = Join-Path $outputRoot $outputRelativePath
+[System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($outputPath)) | Out-Null
+[System.IO.File]::WriteAllText(
+  $outputPath,
+  "compiled:$($relativeSource.Replace('\', '/'))",
+  [System.Text.UTF8Encoding]::new($false)
+)
+Set-Variable -Name LASTEXITCODE -Value 0 -Scope 1
 '@
-  Write-CanvasUtf8WithoutBom -Path $probePath -Text ($probeSource + "`n")
-  $probeOutput = @(& (Get-Process -Id $PID).Path -NoProfile -File $probePath -EnvironmentPath $alternateEnvironmentPath 2>&1)
-  $expectedProbeOutput = "VWCANVAS_ENVIRONMENT_PATH_OK=$([System.IO.Path]::GetFullPath($alternateEnvironmentPath))"
-  if ($LASTEXITCODE -ne 0 -or $probeOutput.Count -ne 1 -or [string]$probeOutput[0] -cne $expectedProbeOutput) {
-    throw "An explicit alternate EnvironmentPath was not preserved across sharedConfig loading: $([string]::Join(' | ', @($probeOutput)))"
+  Write-TestText -Path $fakeCompilerPath -Text ($fakeCompiler + [Environment]::NewLine)
+
+  $selectedRelativeOutput = 'Venworks\CanvasExamples\ExampleRegistrar.pex'
+  $unselectedRelativeOutput = 'Venworks\Canvas\Registry.pex'
+
+  $successOutputDirectory = Join-Path $fixtureRoot 'success-output'
+  $successSelectedPath = Join-Path $successOutputDirectory $selectedRelativeOutput
+  $successUnselectedPath = Join-Path $successOutputDirectory $unselectedRelativeOutput
+  $successEnvironmentPath = Join-Path $fixtureRoot 'success.env'
+  $successLogPath = Join-Path $fixtureRoot 'success.log'
+  Write-TestText -Path $successSelectedPath -Text 'stale selected bytes'
+  Write-TestText -Path $successUnselectedPath -Text 'preserved unselected bytes'
+  New-TestEnvironment -Path $successEnvironmentPath -Mode 'Success' -LogPath $successLogPath
+
+  $success = Invoke-TestCompile `
+    -VariantKey 'EXAMPLE' `
+    -EnvironmentPath $successEnvironmentPath `
+    -OutputDirectory $successOutputDirectory
+  if ($success.ExitCode -ne 0) {
+    throw "Selected EXAMPLE compile failed: $([string]::Join(' | ', $success.Output))"
   }
-  foreach ($wrapperName in @(
-    'compileScripts.ps1',
-    'buildScaleform.ps1',
-    'createPackages.ps1',
-    'verifyCanvas.ps1',
-    'SpriggitDumpDatabaseToYaml.ps1',
-    'SpriggitAssembleDatabaseFromYaml.ps1'
-  )) {
-    $wrapperSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot $wrapperName))
-    if ($wrapperSource -cnotmatch '(?m)^\s*\[string\]\$EnvironmentPath(?:\s*=|,)' -or
-        $wrapperSource -cnotmatch '(?m)^\. \(Join-Path \$PSScriptRoot ''sharedConfig\.ps1''\) -SkipEnvironment\s*$' -or
-        $wrapperSource -cnotmatch '(?m)Import-CanvasEnvironment\s+-Path\s+\$EnvironmentPath') {
-      throw "$wrapperName no longer exposes and consumes the shared alternate EnvironmentPath contract."
-    }
+  Assert-TestText `
+    -Path $successSelectedPath `
+    -Expected 'compiled:Venworks/CanvasExamples/ExampleRegistrar.psc' `
+    -Description 'Selected EXAMPLE output'
+  Assert-TestText `
+    -Path $successUnselectedPath `
+    -Expected 'preserved unselected bytes' `
+    -Description 'Unselected CANVAS output'
+
+  $successLog = @(Get-TestCompilerLog -Path $successLogPath)
+  if ($successLog.Count -ne 1 -or [string]$successLog[0].Source -cne 'Venworks/CanvasExamples/ExampleRegistrar.psc') {
+    throw 'EXAMPLE selection did not compile exactly its sharedConfig Papyrus source.'
+  }
+  $actualImports = @($successLog[0].Imports | ForEach-Object { [System.IO.Path]::GetFullPath([string]$_) })
+  $expectedImports = @(
+    [System.IO.Path]::GetFullPath($canvasSourceRoot)
+    [System.IO.Path]::GetFullPath($installedSourceRoot)
+  )
+  if ($actualImports.Count -ne 2 -or
+      [string]$actualImports[0] -cne [string]$expectedImports[0] -or
+      [string]$actualImports[1] -cne [string]$expectedImports[1]) {
+    throw "Compiler imports were not exactly Canvas plus installed sources: $([string]::Join(';', $actualImports))"
+  }
+  $candidateOutputRoot = [System.IO.Path]::GetFullPath([string]$successLog[0].OutputRoot)
+  $workRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot '.work\canvas'))
+  if (!$candidateOutputRoot.StartsWith(
+      $workRoot + [System.IO.Path]::DirectorySeparatorChar,
+      [System.StringComparison]::OrdinalIgnoreCase) -or
+      $candidateOutputRoot -ceq [System.IO.Path]::GetFullPath($successOutputDirectory) -or
+      (Test-Path -LiteralPath $candidateOutputRoot)) {
+    throw 'Selected output was not compiled in a fresh, cleaned Canvas work candidate.'
   }
 
-  $allVariants = @(Get-ModuleVariants)
-  $example = @(Get-ModuleVariants -VariantKeys 'EXAMPLE')[0]
-  $componentGallery = @(Get-ModuleVariants -VariantKeys 'COMPONENTGALLERY')[0]
-  $canvas = @(Get-ModuleVariants -VariantKeys 'CANVAS')[0]
+  $failureOutputDirectory = Join-Path $fixtureRoot 'failure-output'
+  $failureSelectedPath = Join-Path $failureOutputDirectory $selectedRelativeOutput
+  $failureUnselectedPath = Join-Path $failureOutputDirectory $unselectedRelativeOutput
+  $failureEnvironmentPath = Join-Path $fixtureRoot 'failure.env'
+  $failureLogPath = Join-Path $fixtureRoot 'failure.log'
+  Write-TestText -Path $failureSelectedPath -Text 'selected bytes before compiler failure'
+  Write-TestText -Path $failureUnselectedPath -Text 'unselected bytes before compiler failure'
+  New-TestEnvironment -Path $failureEnvironmentPath -Mode 'Fail' -LogPath $failureLogPath
 
-  $scriptsDirectory = Join-Path $fixtureRoot 'scripts'
-  $sourceOwnership = Get-CanvasExpectedCompileSources -Variants $allVariants
-  $compileRows = [System.Collections.Generic.List[object]]::new()
-  foreach ($source in @($sourceOwnership.Keys)) {
-    $sourcePath = Join-Path $fixtureRoot ('Papyrus\' + $source.Replace('/', '\'))
-    $output = [System.IO.Path]::ChangeExtension($source, '.pex')
-    $outputPath = Join-Path $scriptsDirectory $output.Replace('/', '\')
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sourcePath), (Split-Path -Parent $outputPath) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $repositoryRoot ('Papyrus\' + $source.Replace('/', '\'))) -Destination $sourcePath
-    [System.IO.File]::WriteAllBytes($outputPath, [Text.Encoding]::UTF8.GetBytes("compiled-$source"))
-    $compileRows.Add([pscustomobject]@{
-      VariantKeys = @($sourceOwnership[$source]); Source = $source; SourceSha256 = Get-CanvasFileSha256 -Path $sourcePath
-      Output = $output; Sha256 = Get-CanvasFileSha256 -Path $outputPath
-    })
+  $failure = Invoke-TestCompile `
+    -VariantKey 'EXAMPLE' `
+    -EnvironmentPath $failureEnvironmentPath `
+    -OutputDirectory $failureOutputDirectory
+  if ($failure.ExitCode -eq 0 -or [string]::Join(' | ', $failure.Output) -notmatch 'exit code 23') {
+    throw "Compiler exit 23 was not reported: $([string]::Join(' | ', $failure.Output))"
   }
-  $compileToolchain = [pscustomobject]@{
-    Compiler = [pscustomobject]@{ Key = 'PapyrusCompiler'; Path = 'compiler'; Sha256 = '1' * 64 }; CompilerVersion = 'fixture'
-    Flags = [pscustomobject]@{ Key = 'PapyrusFlags'; Path = 'flags'; Sha256 = '2' * 64 }; VenworksCoreRevision = 'fixture'
-    VenworksCoreSources = @([pscustomobject]@{ Key = 'core'; Path = 'core'; Sha256 = '3' * 64 })
-    ImplementationFiles = @([pscustomobject]@{ Key = 'implementation'; Path = 'implementation'; Sha256 = '4' * 64 })
-  }
-  $compileEvidence = [pscustomobject]@{ Schema = 'VWCANVAS_SCRIPTS/2'; Toolchain = $compileToolchain; Scripts = @($compileRows) }
-  $selectedSources = @((Get-CanvasExpectedCompileSources -Variants @($example)).Keys)
-  $retainedCompile = @(Get-CanvasValidRetainedCompileRows -Evidence $compileEvidence -RepositoryRoot $fixtureRoot -OutputDirectory $scriptsDirectory -SelectedSources $selectedSources -Toolchain $compileToolchain)
-  if ($retainedCompile.Count -ne $compileRows.Count - 1) { throw 'EXAMPLE-only compile retention did not preserve every valid unselected row.' }
-  $staleCompileRow = @($retainedCompile | Where-Object { 'CANVAS' -in @($_.VariantKeys) })[0]
-  $staleCompilePath = Join-Path $scriptsDirectory ([string]$staleCompileRow.Output).Replace('/', '\')
-  [System.IO.File]::AppendAllText($staleCompilePath, 'stale')
-  $staleCompileHash = Get-CanvasFileSha256 -Path $staleCompilePath
-  $filteredCompile = @(Get-CanvasValidRetainedCompileRows -Evidence $compileEvidence -RepositoryRoot $fixtureRoot -OutputDirectory $scriptsDirectory -SelectedSources $selectedSources -Toolchain $compileToolchain -WarningAction SilentlyContinue)
-  if ($filteredCompile.Count -ne $retainedCompile.Count - 1 -or (Get-CanvasFileSha256 -Path $staleCompilePath) -cne $staleCompileHash) {
-    throw 'Stale unselected compile evidence was not omitted while preserving its output bytes.'
-  }
+  Assert-TestText `
+    -Path $failureSelectedPath `
+    -Expected 'selected bytes before compiler failure' `
+    -Description 'Selected output after compiler failure'
+  Assert-TestText `
+    -Path $failureUnselectedPath `
+    -Expected 'unselected bytes before compiler failure' `
+    -Description 'Unselected output after compiler failure'
 
-  $canvasRoot = Join-Path $fixtureRoot 'Scaleform\canvas'
-  $moviesDirectory = Join-Path $fixtureRoot 'scaleform\movies'
-  New-Item -ItemType Directory -Force -Path $moviesDirectory | Out-Null
-  $movieRows = [System.Collections.Generic.List[object]]::new()
-  foreach ($variant in $allVariants) {
-    $manifestSource = Join-Path $repositoryRoot "Scaleform\canvas\$($variant.ScaleformManifest)"
-    $manifestPath = Join-Path $canvasRoot ([string]$variant.ScaleformManifest)
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $manifestPath) | Out-Null
-    Copy-Item -LiteralPath $manifestSource -Destination $manifestPath
-    $definition = Get-CanvasBuildDefinition -ManifestPath $manifestSource
-    $sourceRelative = [System.IO.Path]::GetRelativePath((Join-Path $repositoryRoot 'Scaleform\canvas'), $definition.SourcePath)
-    $sourcePath = Join-Path $canvasRoot $sourceRelative
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sourcePath) | Out-Null
-    Copy-Item -LiteralPath $definition.SourcePath -Destination $sourcePath -Force
-    $outputPath = Join-Path $moviesDirectory ([string]$variant.ScaleformOutput)
-    [System.IO.File]::WriteAllBytes($outputPath, [Text.Encoding]::UTF8.GetBytes("movie-$($variant.VariantKey)"))
-    $movieRows.Add([pscustomobject]@{
-      VariantKey = [string]$variant.VariantKey; Name = ([string]$variant.VariantKey).ToLowerInvariant(); Role = 'fixture'
-      OutputFile = [string]$variant.ScaleformOutput; Sha256 = Get-CanvasFileSha256 -Path $outputPath
-      Manifest = ([string]$variant.ScaleformManifest).Replace('\', '/'); ManifestSha256 = Get-CanvasFileSha256 -Path $manifestPath
-      Source = $sourceRelative.Replace('\', '/'); SourceSha256 = Get-CanvasFileSha256 -Path $sourcePath
-      ClassInventory = @('Fixture'); BuildPasses = 2
-    })
-  }
-  $scaleformToolchain = [pscustomobject]@{
-    VwHudRevision = 'fixture'
-    Files = @([pscustomobject]@{ Key = 'tool'; Path = 'tool'; Sha256 = '5' * 64 })
-    ImplementationFiles = @([pscustomobject]@{ Key = 'implementation'; Path = 'implementation'; Sha256 = '6' * 64 })
-  }
-  $movieEvidence = [pscustomobject]@{ Schema = 'VWCANVAS_SCALEFORM_MOVIES/2'; Toolchain = $scaleformToolchain; Movies = @($movieRows) }
-  $retainedMovies = @(Get-CanvasValidRetainedMovieRows -Evidence $movieEvidence -RepositoryRoot $fixtureRoot -MoviesDirectory $moviesDirectory -SelectedVariantKeys @('EXAMPLE') -Toolchain $scaleformToolchain)
-  if ($retainedMovies.Count -ne 2) { throw 'EXAMPLE-only movie retention did not preserve both valid unselected rows.' }
-  $canvasMoviePath = Join-Path $moviesDirectory $canvas.ScaleformOutput
-  [System.IO.File]::AppendAllText($canvasMoviePath, 'stale')
-  $staleMovieHash = Get-CanvasFileSha256 -Path $canvasMoviePath
-  $filteredMovies = @(Get-CanvasValidRetainedMovieRows -Evidence $movieEvidence -RepositoryRoot $fixtureRoot -MoviesDirectory $moviesDirectory -SelectedVariantKeys @('EXAMPLE') -Toolchain $scaleformToolchain -WarningAction SilentlyContinue)
-  if ($filteredMovies.Count -ne 1 -or (Get-CanvasFileSha256 -Path $canvasMoviePath) -cne $staleMovieHash) {
-    throw 'Stale unselected movie evidence was not omitted while preserving its output bytes.'
-  }
+  $missingOutputDirectory = Join-Path $fixtureRoot 'missing-output'
+  $missingSelectedPath = Join-Path $missingOutputDirectory $selectedRelativeOutput
+  $missingEnvironmentPath = Join-Path $fixtureRoot 'missing.env'
+  $missingLogPath = Join-Path $fixtureRoot 'missing.log'
+  Write-TestText -Path $missingSelectedPath -Text 'selected bytes before missing output'
+  New-TestEnvironment -Path $missingEnvironmentPath -Mode 'Missing' -LogPath $missingLogPath
 
-  $movieEvidencePath = Join-Path $moviesDirectory 'build-evidence.json'
-  Write-CanvasUtf8WithoutBom -Path $movieEvidencePath -Text (($movieEvidence | ConvertTo-Json -Depth 8) + "`n")
-  $aggregate = [pscustomobject]@{
-    Schema = 'VWCANVAS_SCALEFORM_BUILD/2'; Variants = @('CANVAS', 'EXAMPLE', 'COMPONENTGALLERY')
-    CanvasMoviesEvidenceSha256 = Get-CanvasFileSha256 -Path $movieEvidencePath; PlayerHudEvidenceSha256 = $null; ShipHudEvidenceSha256 = $null
+  $missing = Invoke-TestCompile `
+    -VariantKey 'EXAMPLE' `
+    -EnvironmentPath $missingEnvironmentPath `
+    -OutputDirectory $missingOutputDirectory
+  if ($missing.ExitCode -eq 0 -or [string]::Join(' | ', $missing.Output) -notmatch 'did not produce a fresh output') {
+    throw "Missing compiler output was not rejected: $([string]::Join(' | ', $missing.Output))"
   }
-  Assert-CanvasScaleformAggregateEvidence -Evidence $aggregate -ScaleformDirectory (Join-Path $fixtureRoot 'scaleform') -RequiredVariantKeys @('EXAMPLE') -RequirePlayerHud $false -RequireShipHud $false
-
-  foreach ($variant in @($example, $componentGallery)) {
-    $payloads = Get-CanvasPackagePayloads -SelectedVariants @($variant) -CompileEvidence $compileEvidence -MovieEvidence $movieEvidence -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -VenworksCoreRepositoryPath $fixtureRoot -Matrix @{ VenworksCoreFixture = @{ RuntimeScripts = @() } }
-    if (@($payloads[[string]$variant.VariantKey]).Count -ne 3) { throw "$($variant.VariantKey)-only payload unexpectedly requires unrelated Player/Ship directories." }
-    $variantMovieHash = [string]@($movieEvidence.Movies | Where-Object VariantKey -CEQ $variant.VariantKey)[0].Sha256
-    foreach ($payload in @($payloads[[string]$variant.VariantKey] | Where-Object { [string]$_.Target -like 'Interface\*' })) {
-      if ([string]$payload.ExpectedSha256 -cne $variantMovieHash) { throw "$($variant.VariantKey) payload did not retain its admitted movie hash." }
-    }
-    foreach ($payload in @($payloads[[string]$variant.VariantKey] | Where-Object { [string]$_.Target -like 'Scripts\*' })) {
-      $source = ([string]$variant.PapyrusScripts[0]).Replace('\', '/')
-      $expectedCompileHash = [string]@($compileEvidence.Scripts | Where-Object Source -CEQ $source)[0].Sha256
-      if ([string]$payload.ExpectedSha256 -cne $expectedCompileHash) { throw "$($variant.VariantKey) payload did not retain its admitted compile hash." }
-    }
-  }
-  $missingCompileEvidence = [pscustomobject]@{ Scripts = @() }
-  Assert-TestRejected -Description 'Payload with missing admitted compile row' -Action {
-    [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -CompileEvidence $missingCompileEvidence -MovieEvidence $movieEvidence -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -VenworksCoreRepositoryPath $fixtureRoot -Matrix @{ VenworksCoreFixture = @{ RuntimeScripts = @() } })
-  }
-  $exampleCompileRow = @($compileEvidence.Scripts | Where-Object { 'EXAMPLE' -in @($_.VariantKeys) })[0]
-  $duplicateCompileEvidence = [pscustomobject]@{ Scripts = @($compileEvidence.Scripts) + @($exampleCompileRow) }
-  Assert-TestRejected -Description 'Payload with duplicate admitted compile row' -Action {
-    [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -CompileEvidence $duplicateCompileEvidence -MovieEvidence $movieEvidence -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -VenworksCoreRepositoryPath $fixtureRoot -Matrix @{ VenworksCoreFixture = @{ RuntimeScripts = @() } })
-  }
-  Assert-TestRejected -Description 'CANVAS payload without Player/Ship evidence' -Action {
-    [void](Get-CanvasPackagePayloads -SelectedVariants @($canvas) -CompileEvidence $compileEvidence -MovieEvidence $movieEvidence -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -VenworksCoreRepositoryPath $fixtureRoot -Matrix @{ VenworksCoreFixture = @{ RuntimeScripts = @() } })
-  }
+  Assert-TestText `
+    -Path $missingSelectedPath `
+    -Expected 'selected bytes before missing output' `
+    -Description 'Selected output after missing compiler output'
 }
 finally {
-  if (Test-Path -LiteralPath $fixtureRoot) {
-    Assert-CanvasRemovalPath -Path $fixtureRoot -AllowedRoot $testBase
-    Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+  if (Test-Path -LiteralPath $fixtureRoot -PathType Container) {
+    $resolvedFixtureRoot = [System.IO.Path]::GetFullPath($fixtureRoot)
+    $resolvedTestBase = [System.IO.Path]::GetFullPath($testBase)
+    if (!$resolvedFixtureRoot.StartsWith(
+        $resolvedTestBase + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to remove Papyrus test fixture outside $resolvedTestBase."
+    }
+    Remove-Item -LiteralPath $resolvedFixtureRoot -Recurse -Force
   }
 }
 
-Write-Output 'Selected-build simulation passed: explicit alternate environment paths survive shared configuration loading for all six affected wrappers, payloads retain admitted compile/movie hashes, valid unselected evidence is retained, stale rows are omitted without deleting outputs, and consumer-only payloads require no Player/Ship directories.'
+Write-Output 'Papyrus selected-build tests passed: sharedConfig selection, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'

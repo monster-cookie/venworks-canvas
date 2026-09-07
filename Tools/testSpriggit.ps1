@@ -95,6 +95,30 @@ function Assert-ChildSuccess {
   }
 }
 
+function Get-ChildDiagnosticText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [pscustomobject]$Result
+  )
+
+  $diagnosticText = [string]::Join([Environment]::NewLine, @($Result.Output))
+  return [regex]::Replace($diagnosticText, '(?m)^[\t ]*\|[\t ]?', '')
+}
+
+function Test-ChildDiagnosticExitCode {
+  param(
+    [Parameter(Mandatory = $true)]
+    [pscustomobject]$Result,
+
+    [Parameter(Mandatory = $true)]
+    [int]$ExpectedExitCode
+  )
+
+  $expectedExitCodeText = [regex]::Escape([string]$ExpectedExitCode)
+  $pattern = '(?i)\bexit\s+code\s+' + $expectedExitCodeText + '\b'
+  return (Get-ChildDiagnosticText -Result $Result) -match $pattern
+}
+
 function Get-TestCalls {
   if (!(Test-Path -LiteralPath $stubLog -PathType Leaf)) {
     return @()
@@ -140,8 +164,24 @@ function Assert-SafeFixturePath {
   }
 }
 
+$splitDiagnosticFixture = [pscustomobject]@{
+  Output = @(
+    "Spriggit test failure with exit code"
+    "     | 23."
+  )
+}
+$wrongDiagnosticFixture = [pscustomobject]@{
+  Output = @("Spriggit test failure with exit code 24.")
+}
+$missingDiagnosticFixture = [pscustomobject]@{
+  Output = @("Spriggit test failure without a reported native code.")
+}
+Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $splitDiagnosticFixture -ExpectedExitCode 23) 'Wrapped child diagnostics did not preserve the expected native exit code.'
+Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $wrongDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted the wrong native exit code.'
+Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $missingDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted a missing native exit code.'
+
 New-Item -ItemType Directory -Force -Path $fixtureTools, $stubRoot, (Join-Path $fixtureRoot 'starfield-data') | Out-Null
-foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasBuildEvidence.ps1', 'sharedCanvasPackaging.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
+foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasPackaging.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination (Join-Path $fixtureTools $fileName)
 }
 
@@ -243,7 +283,8 @@ try {
   Set-TestEnvironment -FailOperation 'serialize'
   $result = Invoke-ChildScript -ScriptPath $dumpScript -ArgumentList @('-VariantKeys', 'CANVAS', '-EnvironmentPath', $environmentPath)
   Assert-TestCondition ($result.ExitCode -ne 0) 'Serializer nonzero exit was accepted.'
-  Assert-TestCondition (@($result.Output | Where-Object { $_ -match 'exit code 23' }).Count -gt 0) 'Serializer failure omitted its exit code.'
+  $serializerDiagnostic = Get-ChildDiagnosticText -Result $result
+  Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $result -ExpectedExitCode 23) "Serializer failure omitted its exit code. Captured output:$([Environment]::NewLine)$serializerDiagnostic"
   Assert-TestCondition (((Get-FileHash -LiteralPath $retainedBackup -Algorithm SHA256).Hash) -ceq $backupHash) 'Serializer failure changed a retained recovery backup.'
   Assert-TestCondition (((Get-FileHash -LiteralPath $retainedCandidate -Algorithm SHA256).Hash) -ceq $candidateHash) 'Serializer failure changed an old candidate directory.'
   Assert-TestCondition ((Get-TestDirectoryDigest -Path $exampleYaml) -ceq $exampleDigest) 'Serializer failure changed an unrelated YAML tree.'
@@ -291,7 +332,8 @@ try {
   Set-TestEnvironment -FailOperation 'deserialize'
   $result = Invoke-ChildScript -ScriptPath $assembleScript -ArgumentList @('-VariantKeys', 'CANVAS', '-EnvironmentPath', $environmentPath)
   Assert-TestCondition ($result.ExitCode -ne 0) 'Assembler nonzero exit was accepted.'
-  Assert-TestCondition (@($result.Output | Where-Object { $_ -match 'exit code 23' }).Count -gt 0) 'Assembler failure omitted its exit code.'
+  $assemblerDiagnostic = Get-ChildDiagnosticText -Result $result
+  Assert-TestCondition (Test-ChildDiagnosticExitCode -Result $result -ExpectedExitCode 23) "Assembler failure omitted its exit code. Captured output:$([Environment]::NewLine)$assemblerDiagnostic"
   Assert-TestCondition (((Get-FileHash -LiteralPath $exampleEsm -Algorithm SHA256).Hash) -ceq $exampleEsmHash) 'Assembler failure changed an unrelated staged ESM.'
 
   $result = Invoke-ChildScript -ScriptPath $dumpScript -ArgumentList @('-Profile', 'Faults')

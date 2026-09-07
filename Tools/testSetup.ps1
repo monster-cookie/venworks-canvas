@@ -49,30 +49,51 @@ function Write-TestText {
   [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Write-TestArtifacts {
+  param([Parameter(Mandatory = $true)][string]$TargetPath)
+
+  $esmBytes = [byte[]]::new(42)
+  [Text.Encoding]::ASCII.GetBytes('TES4').CopyTo($esmBytes, 0)
+  [BitConverter]::GetBytes([uint32]18).CopyTo($esmBytes, 4)
+  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath 'Venworks-Canvas-Example.esm'), $esmBytes)
+
+  $ba2Bytes = [byte[]]::new(70)
+  [Text.Encoding]::ASCII.GetBytes('BTDX').CopyTo($ba2Bytes, 0)
+  [BitConverter]::GetBytes([uint32]2).CopyTo($ba2Bytes, 4)
+  [Text.Encoding]::ASCII.GetBytes('GNRL').CopyTo($ba2Bytes, 8)
+  [BitConverter]::GetBytes([uint32]1).CopyTo($ba2Bytes, 12)
+  [BitConverter]::GetBytes([uint64]68).CopyTo($ba2Bytes, 16)
+  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath 'Venworks-Canvas-Example - Main.ba2'), $ba2Bytes)
+}
+
 function New-SetupCase {
-  param([Parameter(Mandatory = $true)][string]$Name)
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [string]$ValueQuote = ''
+  )
 
   $caseRoot = Join-Path $fixtureRoot $Name
   $caseRepository = Join-Path $caseRoot 'repository'
   $caseTools = Join-Path $caseRepository 'Tools'
-  $targetRoot = Join-Path $caseRoot 'targets'
+  $targetRoot = Join-Path $caseRoot 'targets with spaces'
   New-Item -ItemType Directory -Force -Path $caseTools, $targetRoot | Out-Null
-  foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasBuildEvidence.ps1', 'sharedCanvasPackaging.ps1', 'setupRepo.ps1')) {
+  foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasPackaging.ps1', 'setupRepo.ps1', 'checkRepo.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination (Join-Path $caseTools $fileName)
   }
   $case = [pscustomobject]@{
     Root = $caseRoot
     Repository = $caseRepository
     SetupScript = (Join-Path $caseTools 'setupRepo.ps1')
+    CheckScript = (Join-Path $caseTools 'checkRepo.ps1')
     EnvironmentPath = (Join-Path $caseRepository '.env')
     CanvasTarget = (Join-Path $targetRoot 'canvas')
     ExampleTarget = (Join-Path $targetRoot 'example')
     ComponentTarget = (Join-Path $targetRoot 'component-gallery')
   }
   $environmentText = [string]::Join("`n", @(
-    "MODULE_VARIANT_CANVAS_PATH=$($case.CanvasTarget)"
-    "MODULE_VARIANT_EXAMPLE_PATH=$($case.ExampleTarget)"
-    "MODULE_VARIANT_COMPONENT_GALLERY_PATH=$($case.ComponentTarget)"
+    "MODULE_VARIANT_CANVAS_PATH=$ValueQuote$($case.CanvasTarget)$ValueQuote"
+    "MODULE_VARIANT_EXAMPLE_PATH=$ValueQuote$($case.ExampleTarget)$ValueQuote"
+    "MODULE_VARIANT_COMPONENT_GALLERY_PATH=$ValueQuote$($case.ComponentTarget)$ValueQuote"
   )) + "`n"
   Write-TestText -Path $case.EnvironmentPath -Text $environmentText
   $createdCases.Add($case)
@@ -88,6 +109,13 @@ function Invoke-SetupCase {
   )
 
   $output = @(& $powerShellPath -NoProfile -File $Case.SetupScript -EnvironmentPath $Case.EnvironmentPath @ArgumentList 2>&1 | ForEach-Object { [string]$_ })
+  return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
+
+function Invoke-CheckCase {
+  param([Parameter(Mandatory = $true)][pscustomobject]$Case)
+
+  $output = @(& $powerShellPath -NoProfile -File $Case.CheckScript -VariantKeys EXAMPLE 2>&1 | ForEach-Object { [string]$_ })
   return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
 }
 
@@ -184,7 +212,22 @@ try {
   Assert-JunctionRoute -Path (Join-Path $valid.Repository 'Staging-ComponentGallery') -Target $valid.ComponentTarget
   Assert-TestCondition (((Get-FileHash -LiteralPath $existingTargetSentinel -Algorithm SHA256).Hash) -ceq $existingTargetHash) 'Repeated setup changed existing target contents.'
 
-  Write-Output 'Setup tests passed: complete preflight, populated-directory preservation, retired migration, invalid Junction and target rejection, three missing-path creations, and harmless repetition.'
+  foreach ($environmentCase in @(
+    [pscustomobject]@{ Name = 'fresh-check-unquoted'; ValueQuote = '' },
+    [pscustomobject]@{ Name = 'fresh-check-double-quoted'; ValueQuote = '"' },
+    [pscustomobject]@{ Name = 'fresh-check-single-quoted'; ValueQuote = "'" }
+  )) {
+    $freshCheck = New-SetupCase -Name $environmentCase.Name -ValueQuote $environmentCase.ValueQuote
+    $result = Invoke-SetupCase -Case $freshCheck -ArgumentList @('-VariantKeys', 'EXAMPLE')
+    Assert-TestCondition ($result.ExitCode -eq 0) "$($environmentCase.Name) setup failed: $([string]::Join([Environment]::NewLine, $result.Output))"
+    Assert-JunctionRoute -Path (Join-Path $freshCheck.Repository 'Staging-Example') -Target $freshCheck.ExampleTarget
+    Write-TestArtifacts -TargetPath $freshCheck.ExampleTarget
+
+    $result = Invoke-CheckCase -Case $freshCheck
+    Assert-TestCondition ($result.ExitCode -eq 0) "$($environmentCase.Name) fresh repository check failed: $([string]::Join([Environment]::NewLine, $result.Output))"
+  }
+
+  Write-Output 'Setup tests passed: complete preflight, populated-directory preservation, retired migration, invalid Junction and target rejection, three missing-path creations, harmless repetition, and fresh checker handling of unquoted and paired-quoted paths with spaces.'
 }
 finally {
   foreach ($case in $createdCases) {

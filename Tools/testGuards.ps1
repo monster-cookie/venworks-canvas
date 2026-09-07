@@ -95,10 +95,15 @@ function Assert-CanvasGuardContract {
   Assert-GuardPattern $functions['ExampleRegistrar.ApplyPendingUpdateLocked'] '(?s)If \(IsRegistrationAccepted\(result.Status\)\).*?ActiveDisplayName = PendingDisplayName.*?PendingUpdate = False.*?ElseIf \(!IsDeferred\(result.Status\)\)\s+PendingUpdate = False' 'busy preserves pending work; acceptance alone commits active data'
 }
 
-$sourceRoot = Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas'
+$sourceRoot = Join-Path $PSScriptRoot '../Papyrus'
+$sourcePaths = @{
+  Registry = 'Venworks/Canvas/Registry.psc'
+  ExampleRegistrar = 'Venworks/CanvasExamples/ExampleRegistrar.psc'
+  ComponentGalleryRegistrar = 'Venworks/CanvasComponentGallery/ComponentGalleryRegistrar.psc'
+}
 $sources = @{}
-foreach ($name in @('Registry', 'ExampleRegistrar', 'ComponentGalleryRegistrar')) {
-  $sources[$name] = Get-Content -LiteralPath (Join-Path $sourceRoot "$name.psc") -Raw
+foreach ($name in $sourcePaths.Keys) {
+  $sources[$name] = Get-Content -LiteralPath (Join-Path $sourceRoot $sourcePaths[$name]) -Raw
 }
 Assert-CanvasGuardContract -Sources $sources
 $lineBreak = [Environment]::NewLine

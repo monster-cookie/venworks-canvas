@@ -14,46 +14,6 @@ function Test-CanvasSamePath {
   )
 }
 
-function Get-CanvasJsonEvidenceSnapshot {
-  param(
-    [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$Description,
-    [Parameter(Mandatory = $true)][string]$TransactionFileName
-  )
-
-  $resolvedPath = Resolve-CanvasRequiredFile -Path $Path -Description $Description
-  $bytes = [System.IO.File]::ReadAllBytes($resolvedPath)
-  $sha256 = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
-  try {
-    $text = [System.Text.UTF8Encoding]::new($false, $true).GetString($bytes)
-    $value = $text | ConvertFrom-Json
-  }
-  catch {
-    throw "$Description is not valid UTF-8 JSON: $($_.Exception.Message)"
-  }
-  return [pscustomobject]@{
-    SourcePath = $resolvedPath
-    TransactionFileName = $TransactionFileName
-    Bytes = $bytes
-    Sha256 = $sha256
-    Value = $value
-  }
-}
-
-function Write-CanvasJsonEvidenceSnapshot {
-  param(
-    [Parameter(Mandatory = $true)][object]$Snapshot,
-    [Parameter(Mandatory = $true)][string]$Directory
-  )
-
-  $destination = Join-Path $Directory ([string]$Snapshot.TransactionFileName)
-  [System.IO.File]::WriteAllBytes($destination, [byte[]]$Snapshot.Bytes)
-  if ((Get-CanvasFileSha256 -Path $destination) -cne [string]$Snapshot.Sha256) {
-    throw "Admitted evidence snapshot differs after writing '$destination'."
-  }
-  $Snapshot | Add-Member -NotePropertyName TransactionPath -NotePropertyValue $destination -Force
-}
-
 function Get-CanvasJunctionTarget {
   param([Parameter(Mandatory = $true)][System.IO.DirectoryInfo]$Item)
 
@@ -239,31 +199,6 @@ function Write-CanvasPackageTransactionJournal {
   Write-CanvasUtf8WithoutBom -Path (Join-Path $TransactionPath 'transaction.json') -Text (($journal | ConvertTo-Json -Depth 5) + "`n")
 }
 
-function Restore-CanvasReceiptPublication {
-  param([Parameter(Mandatory = $true)][object]$Publication)
-
-  if ($null -eq $Publication.Backup) {
-    if (Test-Path -LiteralPath $Publication.Destination -PathType Leaf) { Remove-Item -LiteralPath $Publication.Destination -Force }
-    return
-  }
-  $backupPath = Resolve-CanvasRequiredFile -Path ([string]$Publication.Backup) -Description 'Prior package receipt backup'
-  $expectedHash = [string]$Publication.OriginalSha256
-  if ($expectedHash -cnotmatch '^[0-9A-F]{64}$' -or (Get-CanvasFileSha256 -Path $backupPath) -cne $expectedHash) {
-    throw 'Prior package receipt backup failed recovery preflight.'
-  }
-  $destination = [string]$Publication.Destination
-  $temporaryPath = "$destination.$PID-$([guid]::NewGuid().ToString('N')).restore"
-  try {
-    Copy-Item -LiteralPath $backupPath -Destination $temporaryPath
-    if ((Get-CanvasFileSha256 -Path $temporaryPath) -cne $expectedHash) { throw 'Prior package receipt restore copy differs.' }
-    [System.IO.File]::Move($temporaryPath, $destination, $true)
-    if ((Get-CanvasFileSha256 -Path $destination) -cne $expectedHash) { throw 'Prior package receipt differs after recovery.' }
-  }
-  finally {
-    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
-  }
-}
-
 function Restore-CanvasPackageOperation {
   param([Parameter(Mandatory = $true)][object]$Operation)
 
@@ -302,7 +237,7 @@ function Restore-CanvasPackageOperation {
   Assert-CanvasExactNames -Actual @($restored.Name) -Expected @($Operation.OriginalNames) -Description "$($Operation.Key) restored inventory"
 }
 
-function Get-CanvasGeneralBa2Evidence {
+function Get-CanvasGeneralBa2Contents {
   param([Parameter(Mandatory = $true)][string]$Path)
 
   $rows = [System.Collections.Generic.List[object]]::new()
@@ -319,7 +254,7 @@ function Get-CanvasGeneralBa2Evidence {
   return @($rows | Sort-Object Path)
 }
 
-function Assert-CanvasArchiveEvidenceRows {
+function Assert-CanvasArchiveContents {
   param(
     [Parameter(Mandatory = $true)][object[]]$Actual,
     [Parameter(Mandatory = $true)][object[]]$Expected,
@@ -336,102 +271,61 @@ function Assert-CanvasArchiveEvidenceRows {
   }
 }
 
-function Get-CanvasPackageReceipts {
-  param(
-    [Parameter(Mandatory = $true)][string]$ReceiptDirectory,
-    [Parameter(Mandatory = $true)][string[]]$RequiredVariantKeys
-  )
-
-  $directory = Resolve-CanvasRequiredDirectory -Path $ReceiptDirectory -Description 'Canvas package receipt directory'
-  $receipts = [System.Collections.Generic.List[object]]::new()
-  foreach ($receiptFile in @(Get-ChildItem -LiteralPath $directory -File -Filter '*.json')) {
-    try {
-      $receipt = Get-Content -LiteralPath $receiptFile.FullName -Raw | ConvertFrom-Json
-      $receipt | Add-Member -NotePropertyName EvidenceFileName -NotePropertyValue $receiptFile.Name -Force
-      $receipts.Add($receipt)
-    }
-    catch {
-      if ($receiptFile.BaseName -in $RequiredVariantKeys) { throw "Required package receipt '$($receiptFile.Name)' is unreadable: $($_.Exception.Message)" }
-      Write-Warning "Unselected package receipt '$($receiptFile.Name)' is unreadable and was not validated."
-    }
-  }
-  foreach ($key in $RequiredVariantKeys) {
-    $matchingReceipts = @($receipts | Where-Object { [string]$_.VariantKey -ceq $key })
-    if ($matchingReceipts.Count -ne 1) { throw "Package evidence must contain exactly one receipt for '$key'; found $($matchingReceipts.Count)." }
-    if ([string]$matchingReceipts[0].EvidenceFileName -cne "$key.json") { throw "Required package receipt for '$key' is not stored at its canonical filename '$key.json'." }
-  }
-  foreach ($key in $RequiredVariantKeys) {
-    if (@($receipts | Where-Object { [string]$_.VariantKey -ceq $key }).Count -ne 1) { throw "Package evidence contains duplicate variant receipts for '$key'." }
-  }
-  return @($receipts)
-}
-
 function Get-CanvasPackagePayloads {
   param(
     [Parameter(Mandatory = $true)][object[]]$SelectedVariants,
-    [Parameter(Mandatory = $true)][object]$CompileEvidence,
-    [Parameter(Mandatory = $true)][object]$MovieEvidence,
     [Parameter(Mandatory = $true)][string]$MoviesDirectory,
     [Parameter(Mandatory = $true)][string]$ScriptsDirectory,
-    [Parameter(Mandatory = $true)][string]$VenworksCoreRepositoryPath,
-    [Parameter(Mandatory = $true)][hashtable]$Matrix,
     [string]$PlayerDirectory,
-    [object]$PlayerEvidence,
-    [string]$ShipDirectory,
-    [object]$ShipEvidence
+    [string]$ShipDirectory
   )
 
+  $playerNames = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')
+  $shipNames = @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')
   $payloads = @{}
   foreach ($variant in $SelectedVariants) {
     $key = [string]$variant.VariantKey
     $rows = [System.Collections.Generic.List[object]]::new()
-    $movieRow = @($MovieEvidence.Movies | Where-Object { [string]$_.VariantKey -ceq $key })
-    if ($movieRow.Count -ne 1) { throw "Canvas movie evidence does not contain exactly one '$key' package input." }
-    $movieSource = Resolve-CanvasRequiredFile -Path (Join-Path $MoviesDirectory ([string]$movieRow[0].OutputFile)) -Description "$key Canvas movie"
+    $movieSource = Join-Path $MoviesDirectory ([string]$variant.ScaleformOutput)
     switch ($key) {
       'CANVAS' {
-        if ($null -eq $PlayerEvidence -or $null -eq $ShipEvidence -or
-            [string]::IsNullOrWhiteSpace($PlayerDirectory) -or [string]::IsNullOrWhiteSpace($ShipDirectory)) {
-          throw 'CANVAS packaging requires validated Player HUD and Ship HUD evidence.'
+        if ([string]::IsNullOrWhiteSpace($PlayerDirectory) -or [string]::IsNullOrWhiteSpace($ShipDirectory)) {
+          throw 'CANVAS packaging requires Player HUD and Ship HUD output directories.'
         }
-        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\venworkscui.swf'; ExpectedSha256 = [string]$movieRow[0].Sha256 })
-        foreach ($movie in @($ShipEvidence.Movies)) { $rows.Add([pscustomobject]@{ Source = (Join-Path $ShipDirectory ([string]$movie.File)); Target = "Interface\$($movie.File)"; ExpectedSha256 = [string]$movie.Sha256 }) }
-        foreach ($movie in @($PlayerEvidence.Movies)) { $rows.Add([pscustomobject]@{ Source = (Join-Path $PlayerDirectory ([string]$movie.File)); Target = "Interface\$($movie.File)"; ExpectedSha256 = [string]$movie.Sha256 }) }
+        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\venworkscui.swf' })
+        foreach ($name in $playerNames) { $rows.Add([pscustomobject]@{ Source = (Join-Path $PlayerDirectory $name); Target = "Interface\$name" }) }
+        foreach ($name in $shipNames) { $rows.Add([pscustomobject]@{ Source = (Join-Path $ShipDirectory $name); Target = "Interface\$name" }) }
       }
       'EXAMPLE' {
-        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\normal.swf'; ExpectedSha256 = [string]$movieRow[0].Sha256 })
-        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\large.swf'; ExpectedSha256 = [string]$movieRow[0].Sha256 })
+        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\normal.swf' })
+        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.example\large.swf' })
       }
       'COMPONENTGALLERY' {
-        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\normal.swf'; ExpectedSha256 = [string]$movieRow[0].Sha256 })
-        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\large.swf'; ExpectedSha256 = [string]$movieRow[0].Sha256 })
+        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\normal.swf' })
+        $rows.Add([pscustomobject]@{ Source = $movieSource; Target = 'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\large.swf' })
       }
       default { throw "Package payload mapping is missing for '$key'." }
     }
     foreach ($script in @($variant.PapyrusScripts)) {
       $relativeOutput = [System.IO.Path]::ChangeExtension(([string]$script), '.pex')
-      $canonicalSource = ([string]$script).Replace('\', '/')
-      $compileRow = @($CompileEvidence.Scripts | Where-Object { ([string]$_.Source).Replace('\', '/') -ceq $canonicalSource })
-      if ($compileRow.Count -ne 1 -or [string]$compileRow[0].Output -cne $relativeOutput.Replace('\', '/')) {
-        throw "$key package payload does not resolve exactly one admitted compile row for '$canonicalSource'."
-      }
-      $rows.Add([pscustomobject]@{ Source = (Join-Path $ScriptsDirectory $relativeOutput); Target = "Scripts\$relativeOutput"; ExpectedSha256 = [string]$compileRow[0].Sha256 })
-    }
-    if ($key -ceq 'CANVAS') {
-      foreach ($coreScript in @($Matrix.VenworksCoreFixture.RuntimeScripts)) {
-        $rows.Add([pscustomobject]@{ Source = (Join-Path $VenworksCoreRepositoryPath ([string]$coreScript.Source)); Target = ([string]$coreScript.Target).Replace('/', '\'); ExpectedSha256 = [string]$coreScript.Sha256 })
-      }
+      $rows.Add([pscustomobject]@{ Source = (Join-Path $ScriptsDirectory $relativeOutput); Target = "Scripts\$relativeOutput" })
     }
     $resolvedRows = @($rows | ForEach-Object {
+      $row = $_
+      $target = ([string]$_.Target).Replace('/', '\')
+      $description = "$key payload '$target'"
+      $source = switch ([System.IO.Path]::GetExtension($target).ToLowerInvariant()) {
+        '.pex' { Assert-CanvasPapyrusFile -Path ([string]$row.Source) -Description $description }
+        '.swf' { Assert-CanvasScaleformFile -Path ([string]$row.Source) -Description $description }
+        '.gfx' { Assert-CanvasScaleformFile -Path ([string]$row.Source) -Description $description }
+        default { throw "$description has an unsupported package payload type." }
+      }
       [pscustomobject]@{
-        Source = Resolve-CanvasRequiredFile -Path ([string]$_.Source) -Description "$key payload '$($_.Target)'"
-        Target = ([string]$_.Target).Replace('/', '\')
-        ExpectedSha256 = [string]$_.ExpectedSha256
+        Source = $source
+        Target = $target
+        ExpectedSha256 = Get-CanvasFileSha256 -Path $source
       }
     })
-    foreach ($row in $resolvedRows) {
-      if ([string]$row.ExpectedSha256 -cnotmatch '^[0-9A-F]{64}$') { throw "$key package payload has an invalid admitted hash for '$($row.Target)'." }
-    }
     $targetNames = @($resolvedRows | ForEach-Object { ([string]$_.Target).Replace('\', '/').ToLowerInvariant() })
     if (@($targetNames | Select-Object -Unique).Count -ne $targetNames.Count) { throw "$key package payload contains duplicate archive targets." }
     $payloads[$key] = $resolvedRows
@@ -439,48 +333,24 @@ function Get-CanvasPackagePayloads {
   return $payloads
 }
 
-function Assert-CanvasPackageReceipt {
+function Assert-CanvasInstalledPackage {
   param(
-    [Parameter(Mandatory = $true)][object]$Receipt,
     [Parameter(Mandatory = $true)][object]$Variant,
     [Parameter(Mandatory = $true)][string]$InstallPath,
-    [Parameter(Mandatory = $true)][object[]]$ExpectedEntries,
-    [Parameter(Mandatory = $true)][string]$CompileEvidenceSha256,
-    [Parameter(Mandatory = $true)][string]$ScaleformEvidenceSha256
+    [Parameter(Mandatory = $true)][object[]]$ExpectedEntries
   )
 
   $key = [string]$Variant.VariantKey
   $pluginName = "$($Variant.PackageBaseName).esm"
   $archiveName = "$($Variant.PackageBaseName) - Main.ba2"
-  if ([string]$Receipt.Schema -cne 'VWCANVAS_PACKAGE_RECEIPT/2' -or
-      [string]$Receipt.VariantKey -cne $key -or [string]$Receipt.PackageBaseName -cne [string]$Variant.PackageBaseName -or
-      [string]$Receipt.BuildEvidence.CompileEvidenceSha256 -cne $CompileEvidenceSha256 -or
-      [string]$Receipt.BuildEvidence.ScaleformEvidenceSha256 -cne $ScaleformEvidenceSha256) {
-    throw "$key package receipt identity or build provenance differs."
-  }
-  $transactionGuid = [guid]::Empty
-  if (![guid]::TryParseExact([string]$Receipt.TransactionId, 'N', [ref]$transactionGuid)) {
-    throw "$key package receipt has an invalid transaction identity."
-  }
-  $items = @(Get-ChildItem -LiteralPath $InstallPath -Force)
+  $directory = Resolve-CanvasRequiredDirectory -Path $InstallPath -Description "$key installed package directory"
+  $items = @(Get-ChildItem -LiteralPath $directory -Force)
   if (@($items | Where-Object { $_.PSIsContainer }).Count -ne 0) { throw "$key installed package contains a directory." }
   Assert-CanvasExactNames -Actual @($items.Name) -Expected @($pluginName, $archiveName) -Description "$key installed package inventory"
-  $pluginPath = Resolve-CanvasRequiredFile -Path (Join-Path $InstallPath $pluginName) -Description "$key installed ESM"
-  $archivePath = Resolve-CanvasRequiredFile -Path (Join-Path $InstallPath $archiveName) -Description "$key installed BA2"
+  $pluginPath = Resolve-CanvasRequiredFile -Path (Join-Path $directory $pluginName) -Description "$key installed ESM"
+  $archivePath = Resolve-CanvasRequiredFile -Path (Join-Path $directory $archiveName) -Description "$key installed BA2"
   Assert-CanvasArtifactHeader -Path $pluginPath
   Assert-CanvasArtifactHeader -Path $archivePath
-  $pluginSha = Get-CanvasFileSha256 -Path $pluginPath
-  $archiveSha = Get-CanvasFileSha256 -Path $archivePath
-  if ([string]$Receipt.SourceEsm.File -cne $pluginName -or
-      [string]$Receipt.Candidate.Plugin.File -cne $pluginName -or [string]$Receipt.Installed.Plugin.File -cne $pluginName -or
-      [string]$Receipt.Candidate.Archive.File -cne $archiveName -or [string]$Receipt.Installed.Archive.File -cne $archiveName -or
-      [string]$Receipt.SourceEsm.Sha256 -cne $pluginSha -or
-      [string]$Receipt.Candidate.Plugin.Sha256 -cne $pluginSha -or [string]$Receipt.Installed.Plugin.Sha256 -cne $pluginSha -or
-      [string]$Receipt.Candidate.Archive.Sha256 -cne $archiveSha -or [string]$Receipt.Installed.Archive.Sha256 -cne $archiveSha) {
-    throw "$key installed package hashes do not match the validated input and candidate receipt."
-  }
-  $actualEntries = @(Get-CanvasGeneralBa2Evidence -Path $archivePath)
-  Assert-CanvasArchiveEvidenceRows -Actual $actualEntries -Expected @($Receipt.Candidate.Archive.Entries) -Description "$key candidate archive evidence"
-  Assert-CanvasArchiveEvidenceRows -Actual $actualEntries -Expected @($Receipt.Installed.Archive.Entries) -Description "$key installed archive evidence"
-  Assert-CanvasArchiveEvidenceRows -Actual $actualEntries -Expected $ExpectedEntries -Description "$key current package payload"
+  $actualEntries = @(Get-CanvasGeneralBa2Contents -Path $archivePath)
+  Assert-CanvasArchiveContents -Actual $actualEntries -Expected $ExpectedEntries -Description "$key installed archive"
 }

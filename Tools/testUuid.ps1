@@ -17,10 +17,10 @@ foreach ($inputValue in @('', 'invalid', '00000000-0000-0000-0000-000000000000',
   try { [void](ConvertTo-CanvasUuid -Value $inputValue) } catch { $rejected = $true }
   if (!$rejected) { throw 'UUID reference accepted a malformed/nil value.' }
 }
-$sourceRoot = Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas'
-$registry = Get-Content -LiteralPath (Join-Path $sourceRoot 'Registry.psc') -Raw
+$sourceRoot = Join-Path $PSScriptRoot '../Papyrus'
+$registry = Get-Content -LiteralPath (Join-Path $sourceRoot 'Venworks/Canvas/Registry.psc') -Raw
 & (Join-Path $PSScriptRoot 'testGuards.ps1')
-$registrar = Get-Content -LiteralPath (Join-Path $sourceRoot 'ExampleRegistrar.psc') -Raw
+$registrar = Get-Content -LiteralPath (Join-Path $sourceRoot 'Venworks/CanvasExamples/ExampleRegistrar.psc') -Raw
 if ($registry.Contains('GenerateV4(') -or $registrar.Contains('GenerateV4(')) { throw 'Registration must not generate IDs.' }
 $canvasHostSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/canvas/actionscript/CanvasHost.as') -Raw
 foreach ($token in @('this.normalizeUuid(String(consumerIdFrame.value))','this.normalizeUuid(String(record.consumerId))','value.length != 36','value.length == 32','value = value.toLowerCase();')) {
@@ -31,6 +31,12 @@ $expectedIds = @{
   VWCANVAS_ComponentGalleryRegistrar = 'beef70b2-024e-4e9b-a8d5-70a0c882c431'
   VWCANVAS_ComponentGalleryCollisionFixture = $canonical.ToUpperInvariant()
   VWCANVAS_ComponentGalleryMissingFixture = 'cad7cd56-217a-4e62-a98d-42c3adad07b5'
+}
+$expectedScripts = @{
+  VWCANVAS_ExampleRegistrar = 'Venworks:CanvasExamples:ExampleRegistrar'
+  VWCANVAS_ComponentGalleryRegistrar = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
+  VWCANVAS_ComponentGalleryCollisionFixture = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
+  VWCANVAS_ComponentGalleryMissingFixture = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
 }
 $yamlBindings = 0
 foreach ($root in @(
@@ -44,6 +50,8 @@ foreach ($root in @(
     $yaml = Get-Content -LiteralPath $file.FullName -Raw
     $editorId = [regex]::Match($yaml, '(?m)^EditorID: (\S+)').Groups[1].Value
     if (!$expectedIds.ContainsKey($editorId)) { continue }
+    $scriptBinding = [regex]::Match($yaml, '(?m)^  - Name: (\S+)').Groups[1].Value
+    if ($scriptBinding -cne $expectedScripts[$editorId]) { throw "Unexpected registrar script binding in $($file.FullName)." }
     $binding = [regex]::Match($yaml, '(?m)^      Name: ConsumerId\r?\n      Data: ([^\r\n]+)').Groups[1].Value
     if ($binding -cne $expectedIds[$editorId]) { throw "Unexpected persistent UUID binding in $($file.FullName)." }
     [void](ConvertTo-CanvasUuid -Value $binding)
@@ -51,4 +59,4 @@ foreach ($root in @(
   }
 }
 if ($yamlBindings -ne 6) { throw "Expected six UUID VMAD bindings, found $yamlBindings." }
-Write-Output 'UUID reference vectors, six VMAD bindings and guard-source contracts passed; Papyrus/Scaleform runtime remains a PC test.'
+Write-Output 'UUID reference vectors, six namespaced VMAD bindings and guard-source contracts passed; Papyrus/Scaleform runtime remains a PC test.'

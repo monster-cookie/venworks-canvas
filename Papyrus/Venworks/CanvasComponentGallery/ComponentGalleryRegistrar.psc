@@ -1,4 +1,4 @@
-ScriptName Venworks:Canvas:ComponentGalleryRegistrar Extends Venworks:Canvas:Base:BaseQuest
+ScriptName Venworks:CanvasComponentGallery:ComponentGalleryRegistrar Extends Venworks:Canvas:Base:BaseQuest
 Import Venworks:Canvas:Registry
 
 Venworks:Canvas:Registry Property Registry Auto Const Mandatory
@@ -10,14 +10,14 @@ Int Property DescriptorVersion Auto Const Mandatory
 Bool Property ExpectedRegistration Auto Const Mandatory
 Float Property InitialDelaySeconds Auto Const Mandatory
 
-String ModuleName = "Canvas:ComponentGalleryRegistrar"
+String ModuleName = "CanvasComponentGallery:ComponentGalleryRegistrar"
 ; Retained for saved-script compatibility only; this flag is never consulted as a lock or scheduling gate.
 Bool RegistrationAttemptActive = False
 Guard AttemptGuard ProtectsFunctionLogic
 
 ; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
 String Function ConsoleResolve() Global
-  Venworks:Canvas:ComponentGalleryRegistrar target = ResolveConsoleComponentGallery()
+  Venworks:CanvasComponentGallery:ComponentGalleryRegistrar target = ResolveConsoleComponentGallery()
   If (target == None)
     Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ComponentGalleryRegistrar.ConsoleResolve | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
@@ -28,7 +28,7 @@ EndFunction
 
 ; One explicit Component Gallery-owned request; pass the original UUID unchanged and never register or schedule a retry here.
 String Function ConsoleCheckUiLoadRequest(String requestedConsumerId) Global
-  Venworks:Canvas:ComponentGalleryRegistrar target = ResolveConsoleComponentGallery()
+  Venworks:CanvasComponentGallery:ComponentGalleryRegistrar target = ResolveConsoleComponentGallery()
   If (target == None)
     Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ComponentGalleryRegistrar.ConsoleCheckUiLoadRequest | " + "CONSOLE_RESOLVE_FAILED")
     Return "CONSOLE_RESOLVE_FAILED"
@@ -40,14 +40,14 @@ String Function ConsoleCheckUiLoadRequest(String requestedConsumerId) Global
 EndFunction
 
 ; Resolve the permanent file-local identity on every explicit call; no Editor ID, cached target or external prefix.
-Venworks:Canvas:ComponentGalleryRegistrar Function ResolveConsoleComponentGallery() Global
+Venworks:CanvasComponentGallery:ComponentGalleryRegistrar Function ResolveConsoleComponentGallery() Global
   LogConsoleComponentGallery("ResolveConsoleComponentGallery", "CONSOLE_BEGIN | Plugin=Venworks-Canvas-ComponentGallery.esm | LocalId=0x000800")
   Form targetForm = Game.GetFormFromFile(0x000800, "Venworks-Canvas-ComponentGallery.esm")
   If (targetForm == None)
     LogConsoleComponentGallery("ResolveConsoleComponentGallery", "CONSOLE_TARGET_NOT_FOUND")
     Return None
   EndIf
-  Venworks:Canvas:ComponentGalleryRegistrar target = targetForm as Venworks:Canvas:ComponentGalleryRegistrar
+  Venworks:CanvasComponentGallery:ComponentGalleryRegistrar target = targetForm as Venworks:CanvasComponentGallery:ComponentGalleryRegistrar
   If (target == None)
     LogConsoleComponentGallery("ResolveConsoleComponentGallery", "CONSOLE_SCRIPT_NOT_BOUND | Form=" + targetForm)
     Return None
@@ -59,7 +59,7 @@ EndFunction
 ; Global diagnostics cannot use instance logging or saved ModuleName; emit the same bounded build marker to both logs.
 Function LogConsoleComponentGallery(String functionName, String logMessage) Global
   Venworks:Core:Enumerations:LogSeverity severityTable = new Venworks:Core:Enumerations:LogSeverity
-  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="Canvas:ComponentGalleryRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
+  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasComponentGallery:ComponentGalleryRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
 EndFunction
 
 ; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.

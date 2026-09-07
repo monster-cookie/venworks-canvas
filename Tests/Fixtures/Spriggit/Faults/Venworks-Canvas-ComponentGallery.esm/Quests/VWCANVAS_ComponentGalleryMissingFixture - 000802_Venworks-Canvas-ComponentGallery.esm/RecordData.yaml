@@ -3,7 +3,7 @@ EditorID: VWCANVAS_ComponentGalleryMissingFixture
 FormVersion: 582
 VirtualMachineAdapter:
   Scripts:
-  - Name: Venworks:Canvas:ComponentGalleryRegistrar
+  - Name: Venworks:CanvasComponentGallery:ComponentGalleryRegistrar
     Properties:
     - MutagenObjectType: ScriptStringProperty
       Name: ConsumerId

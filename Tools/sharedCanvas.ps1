@@ -1,6 +1,21 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Assert-CanvasExactNames {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Actual,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Expected,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $actualNames = @($Actual | Sort-Object)
+  $expectedNames = @($Expected | Sort-Object)
+  if ($actualNames.Count -ne $expectedNames.Count -or
+      [string]::Join("`n", $actualNames) -cne [string]::Join("`n", $expectedNames)) {
+    throw "$Description differs. Expected $([string]::Join(', ', $expectedNames)); found $([string]::Join(', ', $actualNames))."
+  }
+}
+
 function Resolve-CanvasRequiredFile {
   param(
     [Parameter(Mandatory = $true)]
@@ -15,6 +30,54 @@ function Resolve-CanvasRequiredFile {
     throw "$Description does not exist: $Path"
   }
   return $resolved.Path
+}
+
+function Assert-CanvasPapyrusFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $resolvedPath = Resolve-CanvasRequiredFile -Path $Path -Description $Description
+  $header = [byte[]]::new(16)
+  $stream = [System.IO.File]::OpenRead($resolvedPath)
+  try {
+    if ($stream.Length -lt $header.Length -or $stream.Read($header, 0, $header.Length) -ne $header.Length) {
+      throw "$Description is empty or too short to contain a Papyrus PEX header: $resolvedPath"
+    }
+  }
+  finally {
+    $stream.Dispose()
+  }
+  $signature = [System.BitConverter]::ToString($header, 0, 4)
+  if ($signature -cne 'DE-C0-57-FA') {
+    throw "$Description has an unsupported Papyrus PEX header '$signature': $resolvedPath"
+  }
+  return $resolvedPath
+}
+
+function Assert-CanvasScaleformFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $resolvedPath = Resolve-CanvasRequiredFile -Path $Path -Description $Description
+  $header = [byte[]]::new(8)
+  $stream = [System.IO.File]::OpenRead($resolvedPath)
+  try {
+    if ($stream.Length -lt $header.Length -or $stream.Read($header, 0, $header.Length) -ne $header.Length) {
+      throw "$Description is empty or too short to be a Scaleform movie: $resolvedPath"
+    }
+  }
+  finally {
+    $stream.Dispose()
+  }
+  $signature = [System.Text.Encoding]::ASCII.GetString($header, 0, 3)
+  if ($signature -cnotin @('FWS', 'CWS', 'ZWS', 'GFX')) {
+    throw "$Description has an unsupported Scaleform header '$signature': $resolvedPath"
+  }
+  return $resolvedPath
 }
 
 function Resolve-CanvasRequiredDirectory {
@@ -200,42 +263,6 @@ function Get-CanvasFileSha256 {
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
-function Get-CanvasReviewFileSha256 {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path
-  )
-
-  $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
-  if ($extension -notin @('.json', '.yaml', '.yml')) {
-    return Get-CanvasFileSha256 -Path $Path
-  }
-
-  $strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
-  $text = $strictUtf8.GetString([System.IO.File]::ReadAllBytes($Path))
-  $canonicalText = $text.Replace("`r`n", "`n").Replace("`r", "`n")
-  $canonicalBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($canonicalText)
-  return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($canonicalBytes))
-}
-
-function Get-CanvasDirectoryDigest {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path
-  )
-
-  $resolvedRoot = Resolve-CanvasRequiredDirectory -Path $Path -Description 'Directory digest root'
-  $digestRows = @(
-    Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | ForEach-Object {
-      $relativePath = [System.IO.Path]::GetRelativePath($resolvedRoot, $_.FullName).Replace('\', '/')
-      "$relativePath`:$((Get-CanvasReviewFileSha256 -Path $_.FullName))"
-    } | Sort-Object
-  )
-  $digestText = [string]::Join("`n", $digestRows) + "`n"
-  $digestBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($digestText)
-  return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($digestBytes))
-}
-
 function Assert-CanvasRemovalPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -312,142 +339,6 @@ function Resolve-CanvasExecutable {
     $candidate = Join-Path $Path $FileName
   }
   return Resolve-CanvasRequiredFile -Path $candidate -Description $Description
-}
-
-function Assert-PinnedVwHudToolchainFixture {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$VwHudRepositoryPath,
-
-    [Parameter(Mandatory = $true)]
-    [hashtable]$Matrix
-  )
-
-  $resolvedRoot = Resolve-CanvasRequiredDirectory `
-    -Path $VwHudRepositoryPath `
-    -Description 'VWHUD repository'
-  $safeDirectory = $resolvedRoot.Replace('\', '/')
-  $headOutput = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot rev-parse HEAD)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to read the VWHUD fixture revision from $resolvedRoot."
-  }
-  $head = ([string]::Join('', $headOutput)).Trim()
-  if ($head -cne [string]$Matrix.VwHudFixture.Revision) {
-    throw "VWHUD fixture drifted. Expected $($Matrix.VwHudFixture.Revision); found $head."
-  }
-  $status = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot status --porcelain=v1)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to inspect the VWHUD fixture worktree at $resolvedRoot."
-  }
-  if ($status.Count -ne 0) {
-    throw "VWHUD fixture worktree is not clean: $([string]::Join(', ', $status))"
-  }
-  foreach ($relativePath in @($Matrix.VwHudFixture.RequiredToolchainFiles)) {
-    [void](Resolve-CanvasRequiredFile `
-      -Path (Join-Path $resolvedRoot ([string]$relativePath)) `
-      -Description "Required pinned VWHUD toolchain file '$relativePath'")
-  }
-  return $resolvedRoot
-}
-
-function Assert-PinnedVenworksCoreFixture {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$VenworksCoreRepositoryPath,
-
-    [Parameter(Mandatory = $true)]
-    [hashtable]$Matrix
-  )
-
-  $resolvedRoot = Resolve-CanvasRequiredDirectory `
-    -Path $VenworksCoreRepositoryPath `
-    -Description 'Venworks Core repository'
-  $safeDirectory = $resolvedRoot.Replace('\', '/')
-  $headOutput = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot rev-parse HEAD)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to read the Venworks Core fixture revision from $resolvedRoot."
-  }
-  $head = ([string]::Join('', $headOutput)).Trim()
-  if ($head -cne [string]$Matrix.VenworksCoreFixture.Revision) {
-    throw "Venworks Core fixture drifted. Expected $($Matrix.VenworksCoreFixture.Revision); found $head."
-  }
-
-  $requiredDefinitions = @($Matrix.VenworksCoreFixture.SourceFiles) + @($Matrix.VenworksCoreFixture.RuntimeScripts)
-  $requiredPaths = @($requiredDefinitions | ForEach-Object {
-    if ($_.ContainsKey('Path')) { [string]$_.Path } else { [string]$_.Source }
-  })
-  $status = @(& git -c "safe.directory=$safeDirectory" -C $resolvedRoot status --porcelain=v1 -- @requiredPaths)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Unable to inspect the required Venworks Core fixture paths at $resolvedRoot."
-  }
-  if ($status.Count -ne 0) {
-    throw "Required Venworks Core fixture paths are not clean: $([string]::Join(', ', $status))"
-  }
-
-  foreach ($definition in $requiredDefinitions) {
-    $relativePath = if ($definition.ContainsKey('Path')) { [string]$definition.Path } else { [string]$definition.Source }
-    $path = Resolve-CanvasRequiredFile `
-      -Path (Join-Path $resolvedRoot $relativePath) `
-      -Description "Required pinned Venworks Core file '$relativePath'"
-    $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToUpperInvariant()
-    if ($actualHash -cne [string]$definition.Sha256) {
-      throw "Venworks Core fixture hash drifted for '$relativePath'. Expected $($definition.Sha256); found $actualHash."
-    }
-  }
-
-  return $resolvedRoot
-}
-
-function Get-VwHudExpectedMovieHash {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$VwHudRepositoryPath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$ManifestRelativePath
-  )
-
-  $manifestPath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $VwHudRepositoryPath $ManifestRelativePath) `
-    -Description 'VWHUD host movie manifest'
-  [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
-  $expectedHashFile = [string]$manifest.scaleformBuild.expectedHashFile
-  if ([string]::IsNullOrWhiteSpace($expectedHashFile)) {
-    throw "VWHUD host movie manifest does not declare expectedHashFile: $manifestPath"
-  }
-  $hashPath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path (Split-Path -Parent $manifestPath) $expectedHashFile) `
-    -Description 'VWHUD expected host movie hash'
-  $hashLine = [System.IO.File]::ReadAllText($hashPath).Trim()
-  $hashMatch = [regex]::Match($hashLine, '^(?<hash>[0-9A-Fa-f]{64})(?:\s{2,}.+)?$')
-  if (!$hashMatch.Success) {
-    throw "VWHUD expected host movie hash is invalid: $hashPath"
-  }
-  return $hashMatch.Groups['hash'].Value.ToUpperInvariant()
-}
-
-function Get-VwHudHostMovieEvidence {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$VwHudRepositoryPath,
-
-    [Parameter(Mandatory = $true)]
-    [hashtable]$Matrix
-  )
-
-  $evidence = [System.Collections.Generic.List[object]]::new()
-  foreach ($definition in @($Matrix.VwHudFixture.PlayerHudMovies)) {
-    $sourcePath = Resolve-CanvasRequiredFile `
-      -Path (Join-Path $VwHudRepositoryPath ([string]$definition.Source)) `
-      -Description "Pinned VWHUD host movie '$($definition.Source)'"
-    $actualHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
-    $evidence.Add([pscustomobject]@{
-      Source = [string]$definition.Source
-      Target = [string]$definition.Target
-      Sha256 = $actualHash
-    })
-  }
-  return @($evidence)
 }
 
 function Get-CanvasStagingSelection {
@@ -699,24 +590,12 @@ function Assert-CanvasMovie {
     [string]$WorkPath,
 
     [Parameter(Mandatory = $true)]
-    [pscustomobject]$Definition,
-
-    [Parameter(Mandatory = $true)]
-    [string]$PassName
+    [pscustomobject]$Definition
   )
 
-  $metadata = Get-ScaleformMovieMetadata `
-    -Path $MoviePath `
-    -Context "Generated $($Definition.Name) canvas movie" `
-    -ExpectedSignature CWS
-  if ($metadata.StageWidth -ne $Definition.StageWidth -or
-      $metadata.StageHeight -ne $Definition.StageHeight -or
-      $metadata.FrameRate -ne $Definition.FrameRate -or
-      $metadata.FrameCount -ne 1) {
-    throw "Canvas movie '$($Definition.Name)' has unexpected stage metadata."
-  }
+  Assert-CanvasScaleformFile -Path $MoviePath -Description "Generated $($Definition.Name) Canvas movie"
 
-  $exportDirectory = Join-Path $WorkPath "$PassName-scripts"
+  $exportDirectory = Join-Path $WorkPath 'inspection-scripts'
   Invoke-CanvasJavaJar `
     -JavaPath $JavaPath `
     -JarPath $JpexsJarPath `
@@ -739,10 +618,7 @@ function Assert-CanvasMovie {
       throw "Canvas movie '$($Definition.Name)' contains forbidden bytecode token '$forbiddenToken'."
     }
   }
-  return [pscustomobject]@{
-    ClassInventory = $inventory
-    Metadata = $metadata
-  }
+  return $inventory
 }
 
 function Invoke-CanvasMovieBuild {
@@ -768,15 +644,7 @@ function Invoke-CanvasMovieBuild {
     [switch]$KeepWork
   )
 
-  $resolvedManifestPath = Resolve-CanvasRequiredFile `
-    -Path $ManifestPath `
-    -Description 'Canvas movie build manifest'
-  $manifestSha256Before = (Get-FileHash -LiteralPath $resolvedManifestPath -Algorithm SHA256).Hash.ToUpperInvariant()
-  $definition = Get-CanvasBuildDefinition -ManifestPath $resolvedManifestPath
-  if ((Get-FileHash -LiteralPath $resolvedManifestPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $manifestSha256Before) {
-    throw "Canvas movie manifest changed while it was being parsed: $resolvedManifestPath"
-  }
-  $sourceSha256Before = (Get-FileHash -LiteralPath $definition.SourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
+  $definition = Get-CanvasBuildDefinition -ManifestPath $ManifestPath
   $resolvedJavaPath = Resolve-CanvasRequiredFile -Path $JavaPath -Description 'Java executable'
   $resolvedJpexsJarPath = Resolve-CanvasRequiredFile -Path $JpexsJarPath -Description 'JPEXS JAR'
   $resolvedFlexSdkPath = Resolve-CanvasRequiredDirectory -Path $FlexSdkPath -Description 'Apache Flex SDK'
@@ -791,7 +659,7 @@ function Invoke-CanvasMovieBuild {
     -Description 'Apache Flex compiler configuration'
   $playerGlobalMatches = @(Get-ChildItem -LiteralPath $flexFrameworksPath -Recurse -File -Filter 'playerglobal.swc')
   if ($playerGlobalMatches.Count -ne 1) {
-    throw "Expected exactly one playerglobal.swc in the VWHUD v2 Flex SDK; found $($playerGlobalMatches.Count)."
+    throw "Expected exactly one playerglobal.swc in the Apache Flex SDK; found $($playerGlobalMatches.Count)."
   }
 
   $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -800,87 +668,45 @@ function Invoke-CanvasMovieBuild {
   $buildWorkDirectory = Join-Path $resolvedWorkDirectory ([guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $buildWorkDirectory | Out-Null
   $sourceRoot = Join-Path $buildWorkDirectory 'source'
-  $firstPassRoot = Join-Path $buildWorkDirectory 'first-pass'
-  $secondPassRoot = Join-Path $buildWorkDirectory 'second-pass'
-  New-Item -ItemType Directory -Path $sourceRoot, $firstPassRoot, $secondPassRoot | Out-Null
+  $compileRoot = Join-Path $buildWorkDirectory 'compile'
+  New-Item -ItemType Directory -Path $sourceRoot, $compileRoot | Out-Null
   $entrypointPath = Join-Path $sourceRoot ([System.IO.Path]::GetFileName($definition.SourcePath))
   Copy-Item -LiteralPath $definition.SourcePath -Destination $entrypointPath
-  if ((Get-FileHash -LiteralPath $entrypointPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
-    throw "Canvas ActionScript changed while its build snapshot was being captured: $($definition.SourcePath)"
-  }
 
   try {
-    $passResults = [System.Collections.Generic.List[object]]::new()
-    foreach ($pass in @(
-      [pscustomobject]@{ Name = 'first'; Root = $firstPassRoot },
-      [pscustomobject]@{ Name = 'second'; Root = $secondPassRoot }
-    )) {
-      $compiledPath = Join-Path $pass.Root 'compiled.swf'
-      $normalizedPath = Join-Path $pass.Root $definition.OutputFile
-      Invoke-CanvasCompilation `
-        -JavaPath $resolvedJavaPath `
-        -MxmlcJarPath $mxmlcJarPath `
-        -FlexConfigPath $flexConfigPath `
-        -PlayerGlobalPath $playerGlobalMatches[0].FullName `
-        -FlexFrameworksPath $flexFrameworksPath `
-        -EntrypointPath $entrypointPath `
-        -SourceRoot $sourceRoot `
-        -OutputPath $compiledPath `
-        -StageWidth $definition.StageWidth `
-        -StageHeight $definition.StageHeight `
-        -FrameRate $definition.FrameRate
-      Normalize-CanvasMovie `
-        -JavaPath $resolvedJavaPath `
-        -JpexsJarPath $resolvedJpexsJarPath `
-        -InputPath $compiledPath `
-        -OutputPath $normalizedPath `
-        -WorkPath $pass.Root
-      $inspection = Assert-CanvasMovie `
-        -JavaPath $resolvedJavaPath `
-        -JpexsJarPath $resolvedJpexsJarPath `
-        -MoviePath $normalizedPath `
-        -WorkPath $pass.Root `
-        -Definition $definition `
-        -PassName $pass.Name
-      $passResults.Add([pscustomobject]@{
-        Path = $normalizedPath
-        Sha256 = (Get-FileHash -LiteralPath $normalizedPath -Algorithm SHA256).Hash.ToUpperInvariant()
-        ClassInventory = @($inspection.ClassInventory)
-      })
-    }
-
-    if ($passResults[0].Sha256 -cne $passResults[1].Sha256) {
-      throw "Canvas movie '$($definition.Name)' is not deterministic across two v2-style normalized builds."
-    }
-    if ([string]::Join("`n", $passResults[0].ClassInventory) -cne
-        [string]::Join("`n", $passResults[1].ClassInventory)) {
-      throw "Canvas movie '$($definition.Name)' changed class inventory across deterministic build passes."
-    }
-
+    $compiledPath = Join-Path $compileRoot 'compiled.swf'
+    $normalizedPath = Join-Path $compileRoot $definition.OutputFile
+    Invoke-CanvasCompilation `
+      -JavaPath $resolvedJavaPath `
+      -MxmlcJarPath $mxmlcJarPath `
+      -FlexConfigPath $flexConfigPath `
+      -PlayerGlobalPath $playerGlobalMatches[0].FullName `
+      -FlexFrameworksPath $flexFrameworksPath `
+      -EntrypointPath $entrypointPath `
+      -SourceRoot $sourceRoot `
+      -OutputPath $compiledPath `
+      -StageWidth $definition.StageWidth `
+      -StageHeight $definition.StageHeight `
+      -FrameRate $definition.FrameRate
+    Normalize-CanvasMovie `
+      -JavaPath $resolvedJavaPath `
+      -JpexsJarPath $resolvedJpexsJarPath `
+      -InputPath $compiledPath `
+      -OutputPath $normalizedPath `
+      -WorkPath $compileRoot
+    [void](Assert-CanvasMovie `
+      -JavaPath $resolvedJavaPath `
+      -JpexsJarPath $resolvedJpexsJarPath `
+      -MoviePath $normalizedPath `
+      -WorkPath $compileRoot `
+      -Definition $definition)
     $destinationPath = Join-Path $resolvedOutputDirectory $definition.OutputFile
-    Copy-Item -LiteralPath $passResults[1].Path -Destination $destinationPath -Force
-    Write-CanvasUtf8WithoutBom `
-      -Path "$destinationPath.sha256" `
-      -Text ($passResults[1].Sha256 + "`n")
-    Write-CanvasUtf8WithoutBom `
-      -Path "$destinationPath.classes.txt" `
-      -Text ([string]::Join("`n", $passResults[1].ClassInventory) + "`n")
-    if ((Get-FileHash -LiteralPath $definition.ManifestPath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $manifestSha256Before -or
-        (Get-FileHash -LiteralPath $definition.SourcePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
-      throw "Canvas movie '$($definition.Name)' source inputs changed during compilation; generated evidence was not accepted."
-    }
+    Publish-CanvasScaleformFile -CandidatePath $normalizedPath -DestinationPath $destinationPath -AllowedRoot $resolvedOutputDirectory
     return [pscustomobject]@{
       Name = $definition.Name
       Role = $definition.Role
       OutputFile = $definition.OutputFile
       Path = $destinationPath
-      Sha256 = $passResults[1].Sha256
-      ManifestPath = $definition.ManifestPath
-      ManifestSha256 = $manifestSha256Before
-      SourcePath = $definition.SourcePath
-      SourceSha256 = $sourceSha256Before
-      ClassInventory = @($passResults[1].ClassInventory)
-      BuildPasses = 2
     }
   }
   finally {
@@ -1004,5 +830,4 @@ function Read-CanvasGeneralBa2EntryBytes {
   return $storedBytes
 }
 
-. (Join-Path $PSScriptRoot 'sharedCanvasBuildEvidence.ps1')
 . (Join-Path $PSScriptRoot 'sharedCanvasPackaging.ps1')

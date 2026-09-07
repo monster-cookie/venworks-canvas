@@ -28,10 +28,11 @@ function Get-ConsoleFunctions {
 
 function Assert-CanvasConsoleContract {
   param([hashtable]$Sources, [string]$Readme, [object[]]$Definitions)
-  $prefix = 'Venworks:Canvas:'
   foreach ($definition in $Definitions) {
     $name = [string]$definition.Script
+    $qualifiedScriptName = [string]$definition.ScriptName
     $functions = Get-ConsoleFunctions -Source $Sources[$name]
+    Assert-ConsolePattern $Sources[$name] ('(?m)^ScriptName ' + [regex]::Escape($qualifiedScriptName) + '\s') "$name declares its package-owned namespace"
     $resolver = 'ResolveConsole' + $definition.Suffix
     $logger = 'LogConsole' + $definition.Suffix
     $action = [string]$definition.Action
@@ -43,7 +44,7 @@ function Assert-CanvasConsoleContract {
         $functions[$action].Parameters -cne [string]$definition.Parameters) { throw "$name console signature changed." }
 
     $body = $functions[$resolver].Body
-    $type = [regex]::Escape($prefix + $name)
+    $type = [regex]::Escape($qualifiedScriptName)
     $lookup = 'Form targetForm = Game.GetFormFromFile(0x' + $definition.LocalId + ', "' + $definition.Plugin + '")'
     Assert-ConsolePattern $body ([regex]::Escape($lookup)) "$name uses its permanent plugin and file-local ID"
     Assert-ConsolePattern $body '(?s)If \(targetForm == None\).*?CONSOLE_TARGET_NOT_FOUND.*?Return None\s+EndIf' "$name rejects a missing form before casting"
@@ -86,15 +87,17 @@ function Assert-CanvasConsoleContract {
       Assert-ConsolePattern $functions[$action].Body '(?s)target.EnsureMenuSubscriptions\(\)\s+OperationResult result = target.TryEnsureStorage\(\)\s+target.LogOperation\(result\).*?Return result.Status' 'host recovery preserves its detailed busy result and logs outside the guard'
     }
     foreach ($functionName in @('ConsoleResolve', $action)) {
-      $command = 'cgf "' + $prefix + $name + '.' + $functionName + '"'
+      $command = 'cgf "' + $qualifiedScriptName + '.' + $functionName + '"'
       if (!$Readme.Contains($command)) { throw "README is missing $command" }
     }
   }
   if ($Readme -match '\bcqf\b') { throw 'README still directs users to a quest-function console path.' }
-  foreach ($command in [regex]::Matches($Readme, 'cgf "Venworks:Canvas:(\w+)\.(\w+)"')) {
-    $scriptName = $command.Groups[1].Value
-    $functionName = $command.Groups[2].Value
-    if (!$Sources.ContainsKey($scriptName)) { throw "Unknown documented console script: $scriptName" }
+  foreach ($command in [regex]::Matches($Readme, 'cgf "(?<script>Venworks:[\w:]+)\.(?<function>\w+)"')) {
+    $qualifiedScriptName = $command.Groups['script'].Value
+    $definition = @($Definitions | Where-Object { $_.ScriptName -ceq $qualifiedScriptName })
+    if ($definition.Count -ne 1) { throw "Unknown documented console script: $qualifiedScriptName" }
+    $scriptName = [string]$definition[0].Script
+    $functionName = $command.Groups['function'].Value
     $functions = Get-ConsoleFunctions -Source $Sources[$scriptName]
     if (!$functions.ContainsKey($functionName)) { throw "Unknown documented console function: $functionName" }
     Assert-ConsolePattern $functions[$functionName].Flags '^\s+Global\s*$' 'each documented Canvas console command targets a real global'
@@ -103,13 +106,13 @@ function Assert-CanvasConsoleContract {
 }
 
 $definitions = @(
-  @{ Script = 'Registry'; Suffix = 'Registry'; Plugin = 'Venworks-Canvas.esm'; LocalId = '000800'; Action = 'ConsoleEnsureStorage'; Parameters = '' }
-  @{ Script = 'ComponentGalleryRegistrar'; Suffix = 'ComponentGallery'; Plugin = 'Venworks-Canvas-ComponentGallery.esm'; LocalId = '000800'; Action = 'ConsoleCheckUiLoadRequest'; Parameters = 'String requestedConsumerId' }
+  @{ Script = 'Registry'; ScriptName = 'Venworks:Canvas:Registry'; Source = 'Venworks/Canvas/Registry.psc'; Suffix = 'Registry'; Plugin = 'Venworks-Canvas.esm'; LocalId = '000800'; Action = 'ConsoleEnsureStorage'; Parameters = '' }
+  @{ Script = 'ComponentGalleryRegistrar'; ScriptName = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'; Source = 'Venworks/CanvasComponentGallery/ComponentGalleryRegistrar.psc'; Suffix = 'ComponentGallery'; Plugin = 'Venworks-Canvas-ComponentGallery.esm'; LocalId = '000800'; Action = 'ConsoleCheckUiLoadRequest'; Parameters = 'String requestedConsumerId' }
 )
-$sourceRoot = Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas'
+$sourceRoot = Join-Path $PSScriptRoot '../Papyrus'
 $sources = @{}
 foreach ($definition in $definitions) {
-  $sources[$definition.Script] = Get-Content -LiteralPath (Join-Path $sourceRoot ($definition.Script + '.psc')) -Raw
+  $sources[$definition.Script] = Get-Content -LiteralPath (Join-Path $sourceRoot $definition.Source) -Raw
 }
 $readme = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../README.md') -Raw
 Assert-CanvasConsoleContract -Sources $sources -Readme $readme -Definitions $definitions
@@ -117,6 +120,7 @@ $mutations = @(
   @{ Script = 'ComponentGalleryRegistrar'; From = 'Venworks:Core:Utilities:Console.ConsoleEcho('; To = 'Venworks:Core:Logging.ConsoleEcho(' }
   @{ Script = 'Registry'; From = '"VWCANVAS: Registry.ConsoleEnsureStorage | "'; To = '"VWCORE: Registry.ConsoleEnsureStorage | "' }
   @{ Script = 'ComponentGalleryRegistrar'; From = 'ConsoleCheckUiLoadRequest(String requestedConsumerId) Global'; To = 'ConsoleCheckUiLoadRequest(String requestedConsumerId)' }
+  @{ Script = 'ComponentGalleryRegistrar'; From = 'ScriptName Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'; To = 'ScriptName Venworks:Canvas:ComponentGalleryRegistrar' }
   @{ Script = 'Registry'; From = 'ConsoleResolve() Global'; To = 'ConsoleResolve() Global Protected' }
   @{ Script = 'Registry'; From = 'Game.GetFormFromFile(0x000800,'; To = 'Game.GetFormFromFile(0xFE004800,' }
   @{ Script = 'ComponentGalleryRegistrar'; From = '"Venworks-Canvas-ComponentGallery.esm"'; To = '"Venworks-Canvas-Example.esm"' }
