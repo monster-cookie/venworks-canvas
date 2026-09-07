@@ -1,103 +1,99 @@
-<#
-.SYNOPSIS
-Exercises direct payload, installed archive, exact-Junction, recovery, and process-lock package contracts.
-#>
-[CmdletBinding()]
-param()
-
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 function Assert-TestRejected {
-  param([Parameter(Mandatory = $true)][scriptblock]$Action, [Parameter(Mandatory = $true)][string]$Description)
-  $caught = $false
-  try { & $Action } catch { $caught = $true }
-  if (!$caught) { throw "$Description was accepted." }
-}
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Action,
+    [Parameter(Mandatory = $true)][string]$Description,
+    [string]$MessagePattern
+  )
 
-function Assert-TestNames {
-  param([Parameter(Mandatory = $true)][string[]]$Actual, [Parameter(Mandatory = $true)][string[]]$Expected, [Parameter(Mandatory = $true)][string]$Description)
-  $actualNames = @($Actual | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
-  $expectedNames = @($Expected | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
-  if ($actualNames.Count -ne $expectedNames.Count) { throw "$Description count differs. Expected $($expectedNames.Count); found $($actualNames.Count)." }
-  for ($index = 0; $index -lt $expectedNames.Count; $index++) {
-    if ($actualNames[$index] -cne $expectedNames[$index]) { throw "$Description differs at index $index. Expected '$($expectedNames[$index])'; found '$($actualNames[$index])'." }
+  $failure = $null
+  try { & $Action } catch { $failure = $_ }
+  if ($null -eq $failure) { throw "$Description was accepted." }
+  if (![string]::IsNullOrWhiteSpace($MessagePattern) -and $failure.Exception.Message -notmatch $MessagePattern) {
+    throw "$Description failed for the wrong reason: $($failure.Exception.Message)"
   }
 }
 
-function Write-TestEsm {
-  param([Parameter(Mandatory = $true)][string]$Path, [byte]$Marker = 0)
-  $bytes = [byte[]]::new(42)
-  [Text.Encoding]::ASCII.GetBytes('TES4').CopyTo($bytes, 0)
-  [BitConverter]::GetBytes([uint32]18).CopyTo($bytes, 4)
-  $bytes[24] = $Marker
-  [System.IO.File]::WriteAllBytes($Path, $bytes)
+function Assert-TestNames {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Actual,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Expected,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $actualNames = @($Actual | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
+  $expectedNames = @($Expected | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() } | Sort-Object)
+  if ($actualNames.Count -ne $expectedNames.Count -or [string]::Join("`n", $actualNames) -cne [string]::Join("`n", $expectedNames)) {
+    throw "$Description differs. Expected $([string]::Join(', ', $expectedNames)); found $([string]::Join(', ', $actualNames))."
+  }
 }
 
-function Write-TestPayload {
-  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
+function Write-TestPsc {
+  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$ScriptName)
+
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
-  [System.IO.File]::WriteAllText($Path, $Text)
+  [IO.File]::WriteAllText($Path, "ScriptName $ScriptName`n")
 }
 
-function Write-TestPapyrusHeaderFixture {
+function Write-TestPex {
   param([Parameter(Mandatory = $true)][string]$Path)
+
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
   $bytes = [byte[]]::new(16)
   $bytes[0] = 0xDE
   $bytes[1] = 0xC0
   $bytes[2] = 0x57
   $bytes[3] = 0xFA
-  [System.IO.File]::WriteAllBytes($Path, $bytes)
+  [IO.File]::WriteAllBytes($Path, $bytes)
 }
 
-function Write-TestScaleformHeaderFixture {
-  param(
-    [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][ValidateSet('CWS', 'GFX')][string]$Signature
-  )
+function Write-TestScaleform {
+  param([Parameter(Mandatory = $true)][string]$Path, [string]$Signature = 'CWS')
+
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
   $bytes = [byte[]]::new(8)
   [Text.Encoding]::ASCII.GetBytes($Signature).CopyTo($bytes, 0)
-  [System.IO.File]::WriteAllBytes($Path, $bytes)
+  [IO.File]::WriteAllBytes($Path, $bytes)
+}
+
+function Write-TestEsm {
+  param([Parameter(Mandatory = $true)][string]$Path, [byte]$Marker = 0)
+
+  $bytes = [byte[]]::new(42)
+  [Text.Encoding]::ASCII.GetBytes('TES4').CopyTo($bytes, 0)
+  [BitConverter]::GetBytes([uint32]18).CopyTo($bytes, 4)
+  $bytes[24] = $Marker
+  [IO.File]::WriteAllBytes($Path, $bytes)
 }
 
 function Write-TestBa2 {
-  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][hashtable]$Entries)
-  $ordered = @($Entries.GetEnumerator() | Sort-Object Key)
-  $recordEnd = 32 + (36 * $ordered.Count)
-  $dataLength = @($ordered | ForEach-Object { ([byte[]]$_.Value).Length } | Measure-Object -Sum).Sum
-  $nameOffset = $recordEnd + $dataLength
-  $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-  $writer = [System.IO.BinaryWriter]::new($stream, [Text.Encoding]::UTF8, $true)
+  param([Parameter(Mandatory = $true)][string]$Path, [byte]$Marker = 0)
+
+  $data = [byte[]]@(0x41, $Marker)
+  $name = [Text.Encoding]::UTF8.GetBytes('docs/test.txt')
+  $recordEnd = 68
+  $nameOffset = $recordEnd + $data.Length
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+  $writer = [IO.BinaryWriter]::new($stream, [Text.Encoding]::UTF8, $true)
   try {
     $writer.Write([Text.Encoding]::ASCII.GetBytes('BTDX'))
     $writer.Write([uint32]2)
     $writer.Write([Text.Encoding]::ASCII.GetBytes('GNRL'))
-    $writer.Write([uint32]$ordered.Count)
+    $writer.Write([uint32]1)
     $writer.Write([uint64]$nameOffset)
     $writer.Write([uint64]0)
-    $offset = [uint64]$recordEnd
-    foreach ($entry in $ordered) {
-      $bytes = [byte[]]$entry.Value
-      $writer.Write([uint32]0)
-      $writer.Write([byte[]]::new(4))
-      $writer.Write([uint32]0)
-      $writer.Write([uint32]0)
-      $writer.Write($offset)
-      $writer.Write([uint32]0)
-      $writer.Write([uint32]$bytes.Length)
-      $writer.Write([uint32]0)
-      $offset += $bytes.Length
-    }
-    foreach ($entry in $ordered) { $writer.Write([byte[]]$entry.Value) }
-    foreach ($entry in $ordered) {
-      $nameBytes = [Text.Encoding]::UTF8.GetBytes(([string]$entry.Key).Replace('\', '/'))
-      $writer.Write([uint16]$nameBytes.Length)
-      $writer.Write($nameBytes)
-    }
+    $writer.Write([byte[]]::new(16))
+    $writer.Write([uint64]$recordEnd)
+    $writer.Write([uint32]0)
+    $writer.Write([uint32]$data.Length)
+    $writer.Write([uint32]0)
+    $writer.Write($data)
+    $writer.Write([uint16]$name.Length)
+    $writer.Write($name)
   }
   finally {
     $writer.Dispose()
@@ -105,11 +101,19 @@ function Write-TestBa2 {
   }
 }
 
-$all = @(Get-CanvasStagingSelection)
-if ($all.Count -ne $Global:ModuleVariants.Count) { throw 'Default package selection must include every variant.' }
-if (@(Get-CanvasStagingSelection -VariantKeys 'CANVAS').Count -ne 1) { throw 'Explicit Canvas package selection failed.' }
-foreach ($badKeys in @(@('UNKNOWN'), @('CANVAS', 'CANVAS'))) {
-  Assert-TestRejected -Description "Invalid variant selection '$($badKeys -join ', ')'" -Action { [void](Get-CanvasStagingSelection -VariantKeys $badKeys) }
+$configured = @(Get-ModuleVariants)
+if ($configured.Count -ne 3) { throw 'Canvas packaging config must contain three variants.' }
+$configuredCanvas = @(Get-ModuleVariants -VariantKeys 'CANVAS')[0]
+$configuredExample = @(Get-ModuleVariants -VariantKeys 'EXAMPLE')[0]
+$configuredGallery = @(Get-ModuleVariants -VariantKeys 'COMPONENTGALLERY')[0]
+if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string]$configuredCanvas.Archives[0].FileName -cne 'Venworks-Canvas - Main.ba2') {
+  throw 'Canvas ESM/archive output identities changed.'
+}
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 7 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+  throw 'Canvas Scaleform archive mapping counts changed.'
+}
+if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
+  throw 'Each Canvas variant must own one Papyrus-bearing archive.'
 }
 
 $wrapperTokens = $null
@@ -118,285 +122,234 @@ $wrapperAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSS
 if ($wrapperParseErrors.Count -ne 0) { throw "createPackages.ps1 has $($wrapperParseErrors.Count) parse error(s)." }
 $packageTransactionTry = $null
 foreach ($candidateTry in @($wrapperAst.FindAll({ param($node) $node -is [Management.Automation.Language.TryStatementAst] }, $true))) {
-  $candidateCommands = @($candidateTry.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
-  if ($candidateCommands -contains 'Enter-CanvasPackageLock') {
+  $commands = @($candidateTry.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
+  if ($commands -contains 'Enter-BuildPackageLock') {
     if ($null -ne $packageTransactionTry) { throw 'createPackages.ps1 contains multiple package-lock transaction scopes.' }
     $packageTransactionTry = $candidateTry
   }
 }
 if ($null -eq $packageTransactionTry -or $null -eq $packageTransactionTry.Finally) { throw 'createPackages.ps1 does not protect the package-lock transaction with finally.' }
-$cleanupOwnershipTries = @($packageTransactionTry.Finally.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] })
-if ($cleanupOwnershipTries.Count -ne 1) { throw 'createPackages.ps1 does not contain one lock-owned successful-cleanup scope.' }
-$cleanupOwnershipTry = $cleanupOwnershipTries[0]
-$cleanupCommands = @($cleanupOwnershipTry.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
-if ($cleanupCommands -cnotcontains 'Remove-Item' -or $null -eq $cleanupOwnershipTry.Finally) { throw 'createPackages.ps1 does not perform successful transaction cleanup before its nested release finally.' }
-$lockDisposeCalls = @($cleanupOwnershipTry.Finally.FindAll({
-  param($node)
-  $node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and
-    $node.Expression -is [Management.Automation.Language.VariableExpressionAst] -and
-    $node.Expression.VariablePath.UserPath -ceq 'packageLock' -and
-    $node.Member.Extent.Text -ceq 'Dispose'
-}, $true))
-if ($lockDisposeCalls.Count -ne 1) { throw 'createPackages.ps1 does not release the package lock exactly once after successful-cleanup handling.' }
+$cleanupTries = @($packageTransactionTry.Finally.Statements | Where-Object { $_ -is [Management.Automation.Language.IfStatementAst] } | ForEach-Object {
+  $_.Clauses.Item2.Statements | Where-Object { $_ -is [Management.Automation.Language.TryStatementAst] }
+})
+if ($cleanupTries.Count -ne 1 -or $null -eq $cleanupTries[0].Finally) { throw 'createPackages.ps1 does not keep successful cleanup inside the lock-owned release scope.' }
+$cleanupCommands = @($cleanupTries[0].Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() })
+if ($cleanupCommands -cnotcontains 'Remove-Item') { throw 'createPackages.ps1 does not clean a successful transaction while the package lock is held.' }
+$wrapperSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'createPackages.ps1'))
+if ($wrapperSource -match 'NotePropertyName\s+CandidateNames') { throw 'createPackages.ps1 must use the flat CandidateNames returned by its install operation.' }
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testBase = Join-Path $repositoryRoot '.work\canvas\pr4-simplification\package'
+$testBase = Join-Path ([string]$Global:BuildSettings.WorkRoot) 'pipeline-tests/package'
 $fixtureRoot = Join-Path $testBase ('packaging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
-$originalCanvasTarget = [Environment]::GetEnvironmentVariable('TEST_CANVAS_TARGET', 'Process')
-$originalExampleTarget = [Environment]::GetEnvironmentVariable('TEST_EXAMPLE_TARGET', 'Process')
+$originalTarget = [Environment]::GetEnvironmentVariable('TEST_PACKAGE_TARGET', 'Process')
+$originalOtherTarget = [Environment]::GetEnvironmentVariable('TEST_OTHER_PACKAGE_TARGET', 'Process')
 try {
-  $scriptsDirectory = Join-Path $fixtureRoot 'outputs\scripts'
-  $moviesDirectory = Join-Path $fixtureRoot 'outputs\scaleform\movies'
-  $playerDirectory = Join-Path $fixtureRoot 'outputs\scaleform\player-hud'
-  $shipDirectory = Join-Path $fixtureRoot 'outputs\scaleform\ship-hud'
-  New-Item -ItemType Directory -Force -Path $scriptsDirectory, $moviesDirectory, $playerDirectory, $shipDirectory | Out-Null
-  $canvas = [pscustomobject]@{
-    VariantKey = 'CANVAS'; PackageBaseName = 'FixtureCanvas'; ScaleformOutput = 'CanvasHost.swf'
-    PapyrusScripts = @('Venworks\Canvas\GlobalConfig.psc', 'Venworks\Canvas\Enumerations.psc', 'Venworks\Canvas\Base\BaseQuest.psc', 'Venworks\Canvas\Registry.psc')
-  }
-  $example = [pscustomobject]@{
-    VariantKey = 'EXAMPLE'; PackageBaseName = 'FixtureExample'; ScaleformOutput = 'CanvasExample.swf'
-    PapyrusScripts = @('Venworks\CanvasExamples\ExampleRegistrar.psc')
-  }
-  $gallery = [pscustomobject]@{
-    VariantKey = 'COMPONENTGALLERY'; PackageBaseName = 'FixtureGallery'; ScaleformOutput = 'CanvasComponentGallery.swf'
-    PapyrusScripts = @('Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.psc')
-  }
-  foreach ($variant in @($canvas, $example, $gallery)) {
-    Write-TestScaleformHeaderFixture -Path (Join-Path $moviesDirectory $variant.ScaleformOutput) -Signature 'CWS'
-    foreach ($source in @($variant.PapyrusScripts)) {
-      Write-TestPapyrusHeaderFixture -Path (Join-Path $scriptsDirectory ([System.IO.Path]::ChangeExtension([string]$source, '.pex')))
-    }
-  }
-  foreach ($name in @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')) {
-    $signature = if ([System.IO.Path]::GetExtension($name) -ieq '.gfx') { 'GFX' } else { 'CWS' }
-    Write-TestScaleformHeaderFixture -Path (Join-Path $playerDirectory $name) -Signature $signature
-  }
-  foreach ($name in @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')) {
-    Write-TestScaleformHeaderFixture -Path (Join-Path $shipDirectory $name) -Signature 'CWS'
-  }
-
-  # Installed dependencies and undeclared output files may be present, but they must never enter a Canvas package.
-  $foreignFiles = @(
-    (Join-Path $scriptsDirectory 'Venworks\Core\Logging.pex'),
-    (Join-Path $playerDirectory 'hudmenu.swf'),
-    (Join-Path $playerDirectory 'hudmenu.gfx'),
-    (Join-Path $moviesDirectory 'ForeignDependency.swf')
-  )
-  foreach ($path in $foreignFiles) { Write-TestPayload -Path $path -Text 'foreign-dependency' }
-
-  $payloads = Get-CanvasPackagePayloads -SelectedVariants @($canvas, $example, $gallery) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -PlayerDirectory $playerDirectory -ShipDirectory $shipDirectory
-  $canvasTargets = @(
-    'Interface\venworkscui.swf',
-    'Interface\playerhudcomponents.swf',
-    'Interface\playerhudcomponents.gfx',
-    'Interface\playerhudcomponents_lrg.swf',
-    'Interface\playerhudcomponents_lrg.gfx',
-    'Interface\spaceshiphudmenu.swf',
-    'Interface\spaceshiphudmenu_lrg.swf',
-    'Scripts\Venworks\Canvas\GlobalConfig.pex',
-    'Scripts\Venworks\Canvas\Enumerations.pex',
-    'Scripts\Venworks\Canvas\Base\BaseQuest.pex',
-    'Scripts\Venworks\Canvas\Registry.pex'
-  )
-  $exampleTargets = @(
-    'Interface\VenworksCanvas\Consumers\venworks.canvas.example\normal.swf',
-    'Interface\VenworksCanvas\Consumers\venworks.canvas.example\large.swf',
-    'Scripts\Venworks\CanvasExamples\ExampleRegistrar.pex'
-  )
-  $galleryTargets = @(
-    'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\normal.swf',
-    'Interface\VenworksCanvas\Consumers\venworks.canvas.component-gallery\large.swf',
-    'Scripts\Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.pex'
-  )
-  Assert-TestNames -Actual @($payloads['CANVAS'].Target) -Expected $canvasTargets -Description 'CANVAS owned payload inventory'
-  Assert-TestNames -Actual @($payloads['EXAMPLE'].Target) -Expected $exampleTargets -Description 'EXAMPLE owned payload inventory'
-  Assert-TestNames -Actual @($payloads['COMPONENTGALLERY'].Target) -Expected $galleryTargets -Description 'COMPONENTGALLERY owned payload inventory'
-  $allPayloads = @($payloads.Values | ForEach-Object { $_ })
-  foreach ($row in $allPayloads) {
-    if ((Get-CanvasFileSha256 -Path $row.Source) -cne [string]$row.ExpectedSha256) { throw "Transient payload hash differs for '$($row.Target)'." }
-  }
-  $allTargets = @($allPayloads.Target | ForEach-Object { ([string]$_).Replace('\', '/').ToLowerInvariant() })
-  foreach ($forbiddenTarget in @(
-      'scripts/venworks/core/logging.pex',
-      'interface/hudmenu.swf',
-      'interface/hudmenu.gfx',
-      'scripts/venworks/canvas/exampleregistrar.pex',
-      'scripts/venworks/canvas/componentgalleryregistrar.pex')) {
-    if ($forbiddenTarget -cin $allTargets) { throw "Foreign or retired package target was included: $forbiddenTarget" }
-  }
-  $exampleOnly = Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory
-  Assert-TestNames -Actual @($exampleOnly['EXAMPLE'].Target) -Expected $exampleTargets -Description 'Selected EXAMPLE payload inventory'
-  $examplePexPath = Join-Path $scriptsDirectory 'Venworks\CanvasExamples\ExampleRegistrar.pex'
-  $exampleMoviePath = Join-Path $moviesDirectory 'CanvasExample.swf'
-  $truncatedPex = [byte[]]::new(4)
-  $truncatedPex[0] = 0xDE
-  $truncatedPex[1] = 0xC0
-  $truncatedPex[2] = 0x57
-  $truncatedPex[3] = 0xFA
-  foreach ($invalidPex in @(
-      @{ Description = 'Empty selected PEX'; Bytes = [byte[]]::new(0) },
-      @{ Description = 'Truncated selected PEX'; Bytes = $truncatedPex },
-      @{ Description = 'Invalid-header selected PEX'; Bytes = [byte[]]::new(16) })) {
-    [System.IO.File]::WriteAllBytes($examplePexPath, [byte[]]$invalidPex.Bytes)
-    Assert-TestRejected -Description ([string]$invalidPex.Description) -Action {
-      [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory)
-    }
-    Write-TestPapyrusHeaderFixture -Path $examplePexPath
-  }
-  foreach ($invalidMovie in @(
-      @{ Description = 'Empty selected movie'; Bytes = [byte[]]::new(0) },
-      @{ Description = 'Truncated selected movie'; Bytes = [Text.Encoding]::ASCII.GetBytes('CWS') },
-      @{ Description = 'Invalid-header selected movie'; Bytes = [Text.Encoding]::ASCII.GetBytes('NOTMOVIE!') })) {
-    [System.IO.File]::WriteAllBytes($exampleMoviePath, [byte[]]$invalidMovie.Bytes)
-    Assert-TestRejected -Description ([string]$invalidMovie.Description) -Action {
-      [void](Get-CanvasPackagePayloads -SelectedVariants @($example) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory)
-    }
-    Write-TestScaleformHeaderFixture -Path $exampleMoviePath -Signature 'CWS'
-  }
-  Remove-Item -LiteralPath (Join-Path $moviesDirectory 'CanvasHost.swf') -Force
-  Assert-TestRejected -Description 'Missing selected CanvasHost output' -Action {
-    [void](Get-CanvasPackagePayloads -SelectedVariants @($canvas) -MoviesDirectory $moviesDirectory -ScriptsDirectory $scriptsDirectory -PlayerDirectory $playerDirectory -ShipDirectory $shipDirectory)
-  }
-  Write-TestScaleformHeaderFixture -Path (Join-Path $moviesDirectory 'CanvasHost.swf') -Signature 'CWS'
-
-  $target = Join-Path $fixtureRoot 'target'
-  $otherTarget = Join-Path $fixtureRoot 'other-target'
-  $staging = Join-Path $fixtureRoot 'staging'
+  $papyrusRoot = Join-Path $fixtureRoot 'Papyrus'
+  $scriptsDirectory = Join-Path $fixtureRoot 'outputs/scripts'
+  $scaleformDirectory = Join-Path $fixtureRoot 'outputs/scaleform'
+  $stagingTarget = Join-Path $fixtureRoot 'installed'
+  $stagingPath = Join-Path $fixtureRoot 'staging'
+  $otherTarget = Join-Path $fixtureRoot 'other-installed'
   $otherStaging = Join-Path $fixtureRoot 'other-staging'
-  New-Item -ItemType Directory -Path $target, $otherTarget | Out-Null
-  Write-TestEsm -Path (Join-Path $target 'Fixture.esm')
-  $variant = [pscustomobject]@{ VariantKey = 'CANVAS'; PackageBaseName = 'Fixture'; StagingFolderPath = $staging; EnvironmentVariableName = 'TEST_CANVAS_TARGET' }
-  $unselectedVariant = [pscustomobject]@{ VariantKey = 'EXAMPLE'; PackageBaseName = 'Other'; StagingFolderPath = $otherStaging; EnvironmentVariableName = 'TEST_EXAMPLE_TARGET' }
-  [Environment]::SetEnvironmentVariable('TEST_CANVAS_TARGET', $target, 'Process')
-  [Environment]::SetEnvironmentVariable('TEST_EXAMPLE_TARGET', $otherTarget, 'Process')
+  $repositoryAssets = Join-Path $fixtureRoot 'assets'
+  New-Item -ItemType Directory -Force -Path $papyrusRoot, $scriptsDirectory, $scaleformDirectory, $stagingTarget, $otherTarget, $repositoryAssets | Out-Null
 
-  Assert-TestRejected -Description 'Missing staging path preflight' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
-  New-Item -ItemType Directory -Path $staging | Out-Null
-  $beforeOrdinaryBytes = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes((Join-Path $target 'Fixture.esm')))
-  Assert-TestRejected -Description 'Ordinary staging directory preflight' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
-  Assert-TestNames -Actual @((Get-ChildItem -LiteralPath $target -Force).Name) -Expected @('Fixture.esm') -Description 'Rejected ordinary-directory physical target inventory'
-  if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes((Join-Path $target 'Fixture.esm'))) -cne $beforeOrdinaryBytes) { throw 'Rejected ordinary-directory preflight changed the physical target.' }
-  Remove-Item -LiteralPath $staging -Force
+  $sourceRows = @(
+    @{ Relative = 'Venworks/Canvas/GlobalConfig.psc'; Name = 'Venworks:Canvas:GlobalConfig' }
+    @{ Relative = 'Venworks/Canvas/Base/BaseQuest.psc'; Name = 'Venworks:Canvas:Base:BaseQuest' }
+    @{ Relative = 'Venworks/CanvasExamples/Example.psc'; Name = 'Venworks:CanvasExamples:Example' }
+    @{ Relative = 'Venworks/CanvasExtra/Extra.psc'; Name = 'Venworks:CanvasExtra:Extra' }
+  )
+  foreach ($row in $sourceRows) {
+    Write-TestPsc -Path (Join-Path $papyrusRoot $row.Relative) -ScriptName $row.Name
+    Write-TestPex -Path (Join-Path $scriptsDirectory ([IO.Path]::ChangeExtension($row.Relative, '.pex')))
+  }
+  Write-TestPex -Path (Join-Path $scriptsDirectory 'Venworks/Canvas/Deleted.pex')
+  Write-TestScaleform -Path (Join-Path $scaleformDirectory 'movies/Consumer.swf')
+  [IO.File]::WriteAllText((Join-Path $repositoryAssets 'readme.txt'), 'repository asset')
+  Write-TestEsm -Path (Join-Path $stagingTarget 'ExplicitAnchor.esm')
+  New-Item -ItemType Directory -Force -Path (Join-Path $stagingTarget 'Scripts'), (Join-Path $stagingTarget 'Textures') | Out-Null
+  [IO.File]::WriteAllBytes((Join-Path $stagingTarget 'Scripts/Foreign.pex'), [byte[]]::new(0))
+  [IO.File]::WriteAllText((Join-Path $stagingTarget 'Textures/surface.dds'), 'dds payload')
+  [IO.File]::WriteAllText((Join-Path $stagingTarget 'meta.ini'), 'metadata')
+  [IO.File]::WriteAllText((Join-Path $stagingTarget 'loose.txt'), 'loose payload')
+  [IO.File]::WriteAllText((Join-Path $stagingTarget 'DifferentArchiveBase - Main.ba2'), 'old invalid archive')
 
+  $mainArchive = @{
+    FileName = 'DifferentArchiveBase - Main.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $true
+    ExcludeFilters = '.*\\meta\.ini|.*\\.*\.dds|.*\\.*\.esm|.*\\.*\.ba2'
+    Assets = @(
+      @{ Root = 'Staging'; Source = '.'; Target = '' }
+      @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/normal.swf' }
+      @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/large.swf' }
+      @{ Root = 'Repository'; Source = ([IO.Path]::GetRelativePath($fixtureRoot, (Join-Path $repositoryAssets 'readme.txt'))); Target = 'Docs/readme.txt' }
+    )
+  }
+  $textureArchive = @{
+    FileName = 'DifferentArchiveBase - Textures.ba2'; Format = 'DDS'; Compression = 'Default'; MaxSizeMB = 2048; IncludePapyrus = $false
+    IncludeFilters = '.*\\.*\.dds'
+    Assets = @(@{ Root = 'Staging'; Source = '.'; Target = '' })
+  }
+  $variant = [pscustomobject]@{
+    VariantKey = 'FIXTURE'; VariantName = 'Fixture'; EsmFileName = 'ExplicitAnchor.esm'; PackageBaseName = 'DifferentArchiveBase'
+    PapyrusNamespace = 'Venworks:Canvas'; StagingFolderPath = $stagingTarget; EnvironmentVariableName = 'TEST_PACKAGE_TARGET'
+    ScaleformBuilds = @(); Archives = @($mainArchive, $textureArchive)
+  }
+
+  $plans = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+  if ($plans.Count -ne 2) { throw 'Fixture variant did not produce one plan per archive.' }
+  $mainPlan = @($plans | Where-Object FileName -CEQ 'DifferentArchiveBase - Main.ba2')[0]
+  $texturePlan = @($plans | Where-Object FileName -CEQ 'DifferentArchiveBase - Textures.ba2')[0]
+  Assert-TestNames -Actual @($mainPlan.Payloads.Target) -Expected @(
+    'loose.txt'
+    'Interface/Consumers/normal.swf'
+    'Interface/Consumers/large.swf'
+    'Docs/readme.txt'
+    'Scripts/Venworks/Canvas/GlobalConfig.pex'
+    'Scripts/Venworks/Canvas/Base/BaseQuest.pex'
+  ) -Description 'Exact namespace-owned Main payload inventory'
+  Assert-TestNames -Actual @($texturePlan.Payloads.Target) -Expected @('Textures/surface.dds') -Description 'Filtered texture payload inventory'
+  if (@($plans.Payloads | ForEach-Object { $_ } | Where-Object { $_.Target -match 'CanvasExamples|CanvasExtra|Deleted|Foreign' }).Count -ne 0) {
+    throw 'Sibling, stale, or foreign PEX entered a package plan.'
+  }
+
+  Write-TestPsc -Path (Join-Path $papyrusRoot 'Venworks/Canvas/NewOwned.psc') -ScriptName 'Venworks:Canvas:NewOwned'
+  Write-TestPex -Path (Join-Path $scriptsDirectory 'Venworks/Canvas/NewOwned.pex')
+  $addedPlan = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory | Where-Object FileName -CEQ 'DifferentArchiveBase - Main.ba2')[0]
+  if ('Scripts\Venworks\Canvas\NewOwned.pex' -cnotin @($addedPlan.Payloads.Target)) { throw 'New namespace source was not automatically packaged.' }
+  Remove-Item -LiteralPath (Join-Path $papyrusRoot 'Venworks/Canvas/Base/BaseQuest.psc') -Force
+  $deletedPlan = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory | Where-Object FileName -CEQ 'DifferentArchiveBase - Main.ba2')[0]
+  if ('Scripts\Venworks\Canvas\Base\BaseQuest.pex' -cin @($deletedPlan.Payloads.Target)) { throw 'Deleted namespace source left a stale PEX in the package plan.' }
+
+  $globalPex = Join-Path $scriptsDirectory 'Venworks/Canvas/GlobalConfig.pex'
+  Remove-Item -LiteralPath $globalPex -Force
+  Assert-TestRejected -Description 'Missing owned compiled PEX' -MessagePattern 'does not exist' -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+  }
+  Write-TestPex -Path $globalPex
+
+  $duplicateArchive = @{} + $mainArchive
+  $duplicateArchive.Assets = @($mainArchive.Assets) + @(@{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/normal.swf' })
+  $duplicateVariant = $variant.PSObject.Copy()
+  $duplicateVariant.Archives = @($duplicateArchive)
+  Assert-TestRejected -Description 'Duplicate archive target' -MessagePattern 'more than one payload' -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($duplicateVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+  }
+  $traversalArchive = @{} + $mainArchive
+  $traversalArchive.Assets = @(@{ Root = 'Repository'; Source = '../outside.txt'; Target = 'outside.txt' })
+  $traversalVariant = $variant.PSObject.Copy()
+  $traversalVariant.Archives = @($traversalArchive)
+  Assert-TestRejected -Description 'Traversing package source' -MessagePattern 'traversal' -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($traversalVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+  }
+  Assert-TestRejected -Description 'Traversing archive target' -MessagePattern 'traversal' -Action {
+    [void](Resolve-BuildArchiveTarget -Root $fixtureRoot -Target '../outside.txt')
+  }
+  $invalidFilterArchive = @{} + $mainArchive
+  $invalidFilterArchive.ExcludeFilters = '('
+  $invalidFilterVariant = $variant.PSObject.Copy()
+  $invalidFilterVariant.Archives = @($invalidFilterArchive)
+  Assert-TestRejected -Description 'Invalid archive filter' -MessagePattern 'regular expression' -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($invalidFilterVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+  }
+
+  $arguments = @(Get-BuildArchive2Arguments -Archive $textureArchive -ArchiveRoot $stagingTarget -OutputPath (Join-Path $fixtureRoot 'candidate.ba2'))
+  if ('-format=DDS' -cnotin $arguments -or '-compression=Default' -cnotin $arguments -or '-includeFilters=.*\\.*\.dds' -cnotin $arguments) {
+    throw 'Configured Archive2 format, compression, or filters were not preserved.'
+  }
+
+  Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Main.ba2')
+  [Environment]::SetEnvironmentVariable('TEST_PACKAGE_TARGET', $stagingTarget, 'Process')
+  [Environment]::SetEnvironmentVariable('TEST_OTHER_PACKAGE_TARGET', $otherTarget, 'Process')
+  $variant.StagingFolderPath = $stagingPath
+  $otherVariant = [pscustomobject]@{
+    VariantKey = 'OTHER'; EsmFileName = 'Other.esm'; StagingFolderPath = $otherStaging; EnvironmentVariableName = 'TEST_OTHER_PACKAGE_TARGET'; Archives = @()
+  }
+  Assert-TestRejected -Description 'Missing staging Junction' -MessagePattern 'Junction' -Action {
+    [void](Get-BuildPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $otherVariant))
+  }
   if ($IsWindows) {
-    New-Item -ItemType Junction -Path $staging -Target $otherTarget | Out-Null
-    Assert-TestRejected -Description 'Wrong Junction target preflight' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
-    Remove-Item -LiteralPath $staging -Force
-    New-Item -ItemType Junction -Path $staging -Target $target | Out-Null
-    $operations = @(Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant))
-    if ($operations.Count -ne 1 -or !(Test-CanvasSamePath -Left $operations[0].InstallPath -Right $target)) { throw 'Correct Junction preflight did not resolve the configured physical target.' }
-    [Environment]::SetEnvironmentVariable('TEST_EXAMPLE_TARGET', (Join-Path $target 'nested'), 'Process')
-    Assert-TestRejected -Description 'Selected target overlap with an unselected configured target' -Action { [void](Get-CanvasPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $unselectedVariant)) }
-    [Environment]::SetEnvironmentVariable('TEST_EXAMPLE_TARGET', $otherTarget, 'Process')
+    New-Item -ItemType Junction -Path $stagingPath -Target $stagingTarget | Out-Null
+    $operations = @(Get-BuildPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $otherVariant))
+    if ($operations.Count -ne 1 -or $operations[0].PluginName -cne 'ExplicitAnchor.esm') { throw 'Explicit ESM install operation was not preserved.' }
+    Assert-TestNames -Actual @($operations[0].ArchiveNames) -Expected @('DifferentArchiveBase - Main.ba2', 'DifferentArchiveBase - Textures.ba2') -Description 'Configured archive install names'
+    [Environment]::SetEnvironmentVariable('TEST_PACKAGE_TARGET', $otherTarget, 'Process')
+    Assert-TestRejected -Description 'Dynamic environment path mismatch' -MessagePattern 'overlap|does not target' -Action {
+      [void](Get-BuildPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $otherVariant))
+    }
+    [Environment]::SetEnvironmentVariable('TEST_PACKAGE_TARGET', $stagingTarget, 'Process')
+
+    $backupPath = Join-Path $fixtureRoot 'managed-backup'
+    New-Item -ItemType Directory -Path $backupPath | Out-Null
+    $operation = $operations[0]
+    Assert-TestNames -Actual @($operation.CandidateNames) -Expected @('ExplicitAnchor.esm', 'DifferentArchiveBase - Main.ba2', 'DifferentArchiveBase - Textures.ba2') -Description 'Flat wrapper candidate inventory'
+    if (@($operation.CandidateNames | Where-Object { $_ -is [array] }).Count -ne 0) { throw 'Wrapper candidate inventory contains a nested archive-name array.' }
+    $originalNames = @($operation.CandidateNames | Where-Object { Test-Path -LiteralPath (Join-Path $stagingTarget $_) -PathType Leaf })
+    Assert-TestNames -Actual $originalNames -Expected @('ExplicitAnchor.esm', 'DifferentArchiveBase - Main.ba2') -Description 'Original managed inventory before induced publication failure'
+    $originalHashes = @{}
+    foreach ($name in $originalNames) {
+      Copy-Item -LiteralPath (Join-Path $stagingTarget $name) -Destination (Join-Path $backupPath $name)
+      $originalHashes[$name] = Get-BuildFileSha256 -Path (Join-Path $backupPath $name)
+    }
+    $operation | Add-Member -NotePropertyName BackupPath -NotePropertyValue $backupPath -Force
+    $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue $originalNames -Force
+    $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
+    $publicationError = $null
+    try {
+      Write-TestEsm -Path (Join-Path $stagingTarget 'ExplicitAnchor.esm') -Marker 9
+      Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Main.ba2') -Marker 9
+      Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2') -Marker 9
+      throw 'Injected publication failure after the previously absent texture archive was installed.'
+    }
+    catch {
+      $publicationError = $_
+      Restore-BuildPackageOperation -Operation $operation
+    }
+    if ($publicationError.Exception.Message -cnotmatch 'Injected publication failure') { throw 'The multiarchive recovery regression did not reach its induced publication failure.' }
+    foreach ($name in $originalNames) {
+      if ((Get-BuildFileSha256 -Path (Join-Path $stagingTarget $name)) -cne [string]$originalHashes[$name]) { throw "Recovery changed '$name'." }
+    }
+    if (Test-Path -LiteralPath (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2')) { throw 'Recovery left the newly installed texture archive behind.' }
+    if ([IO.File]::ReadAllText((Join-Path $stagingTarget 'loose.txt')) -cne 'loose payload' -or !(Test-Path -LiteralPath (Join-Path $stagingTarget 'Textures/surface.dds') -PathType Leaf)) {
+      throw 'Managed package recovery changed unrelated staged assets.'
+    }
+    Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2')
+    Assert-BuildInstalledPackage -Variant $variant -InstallPath $stagingTarget
   }
   else {
-    Write-Output 'SKIP: real Junction preflight cases require Windows.'
+    Write-Output 'SKIP: real Junction routing and publication recovery cases require Windows.'
   }
-
-  $packageDirectory = Join-Path $fixtureRoot 'installed'
-  New-Item -ItemType Directory -Path $packageDirectory | Out-Null
-  $esmPath = Join-Path $packageDirectory 'Fixture.esm'
-  $ba2Path = Join-Path $packageDirectory 'Fixture - Main.ba2'
-  Write-TestEsm -Path $esmPath
-  Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('movie'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
-  $entries = @(Get-CanvasGeneralBa2Contents -Path $ba2Path)
-  Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries
-  [System.IO.File]::WriteAllText($esmPath, 'invalid-esm')
-  Assert-TestRejected -Description 'Invalid installed ESM header' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
-  Write-TestEsm -Path $esmPath
-  Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('changed'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
-  Assert-TestRejected -Description 'Changed installed archive entry' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
-  Write-TestBa2 -Path $ba2Path -Entries @{ 'Interface/test.swf' = [Text.Encoding]::UTF8.GetBytes('movie'); 'Scripts/test.pex' = [Text.Encoding]::UTF8.GetBytes('script') }
-  [System.IO.File]::WriteAllText((Join-Path $packageDirectory 'extra.txt'), 'extra')
-  Assert-TestRejected -Description 'Extra installed package file' -Action { Assert-CanvasInstalledPackage -Variant $variant -InstallPath $packageDirectory -ExpectedEntries $entries }
-  Remove-Item -LiteralPath (Join-Path $packageDirectory 'extra.txt') -Force
 
   $transactionBase = Join-Path $fixtureRoot 'transactions'
   New-Item -ItemType Directory -Path $transactionBase | Out-Null
-  Assert-CanvasNoIncompletePackageTransactions -TransactionBase $transactionBase
-  $retainedTransaction = Join-Path $transactionBase ([guid]::NewGuid().ToString('N'))
-  New-Item -ItemType Directory -Path $retainedTransaction | Out-Null
-  Write-CanvasPackageTransactionJournal -TransactionPath $retainedTransaction -TransactionId (Split-Path -Leaf $retainedTransaction) -Status 'Active' -VariantKeys @('CANVAS')
-  Assert-TestRejected -Description 'Retained interrupted transaction' -Action { Assert-CanvasNoIncompletePackageTransactions -TransactionBase $transactionBase }
-  Remove-Item -LiteralPath $retainedTransaction -Recurse -Force
-
-  if ($IsWindows) {
-    $recoveryBackup = Join-Path $fixtureRoot 'installed-recovery'
-    New-Item -ItemType Directory -Path $recoveryBackup | Out-Null
-    $originalEsm = Join-Path $recoveryBackup 'Fixture.esm'
-    Write-TestEsm -Path $originalEsm
-    $originalHash = Get-CanvasFileSha256 -Path $originalEsm
-    Write-TestEsm -Path (Join-Path $target 'Fixture.esm') -Marker 9
-    [System.IO.File]::WriteAllText((Join-Path $target 'Fixture - Main.ba2'), 'candidate')
-    $recoveryOperation = [pscustomobject]@{
-      Key = 'CANVAS'; StagingPath = $staging; InstallPath = $target; BackupPath = $recoveryBackup
-      CandidateNames = @('Fixture.esm', 'Fixture - Main.ba2'); OriginalNames = @('Fixture.esm'); OriginalHashes = @{ 'Fixture.esm' = $originalHash }
-    }
-    [System.IO.File]::AppendAllText($originalEsm, 'corrupt')
-    $candidateHashBefore = Get-CanvasFileSha256 -Path (Join-Path $target 'Fixture.esm')
-    Assert-TestRejected -Description 'Corrupt installed-package recovery backup' -Action { Restore-CanvasPackageOperation -Operation $recoveryOperation }
-    if ((Get-CanvasFileSha256 -Path (Join-Path $target 'Fixture.esm')) -cne $candidateHashBefore -or !(Test-Path -LiteralPath (Join-Path $target 'Fixture - Main.ba2') -PathType Leaf)) {
-      throw 'Installed-package recovery mutated the candidate before complete backup preflight.'
-    }
-    Write-TestEsm -Path $originalEsm
-    Restore-CanvasPackageOperation -Operation $recoveryOperation
-    if ((Get-CanvasFileSha256 -Path (Join-Path $target 'Fixture.esm')) -cne $originalHash -or (Test-Path -LiteralPath (Join-Path $target 'Fixture - Main.ba2'))) {
-      throw 'Installed-package recovery did not restore the exact prior inventory and bytes.'
-    }
+  Assert-BuildNoIncompletePackageTransactions -TransactionBase $transactionBase
+  $retained = Join-Path $transactionBase ([guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $retained | Out-Null
+  Write-BuildPackageTransactionJournal -TransactionPath $retained -TransactionId (Split-Path -Leaf $retained) -Status 'Failed' -VariantKeys @('FIXTURE') -Failure 'fixture'
+  Assert-TestRejected -Description 'Retained package transaction' -MessagePattern 'manual inspection' -Action {
+    Assert-BuildNoIncompletePackageTransactions -TransactionBase $transactionBase
   }
+  Remove-Item -LiteralPath $retained -Recurse -Force
 
   $lockPath = Join-Path $fixtureRoot 'package.lock'
-  $lock = Enter-CanvasPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
+  $lock = Enter-BuildPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
   try {
-    $childResult = Join-Path $fixtureRoot 'child-lock-result.txt'
-    $command = @"
-. '$((Join-Path $PSScriptRoot 'sharedConfig.ps1').Replace("'", "''"))' -SkipEnvironment
-. '$((Join-Path $PSScriptRoot 'sharedCanvas.ps1').Replace("'", "''"))'
-try { `$held = Enter-CanvasPackageLock -Path '$($lockPath.Replace("'", "''"))' -TransactionId '$([guid]::NewGuid().ToString('N'))'; `$held.Dispose(); [IO.File]::WriteAllText('$($childResult.Replace("'", "''"))', 'ACQUIRED') }
-catch { [IO.File]::WriteAllText('$($childResult.Replace("'", "''"))', 'REJECTED') }
-"@
-    $startProcessParameters = @{
-      FilePath = (Get-Process -Id $PID).Path
-      ArgumentList = @('-NoProfile', '-Command', $command)
-      PassThru = $true
+    Assert-TestRejected -Description 'Same-process competing package lock' -MessagePattern 'exclusive package lock' -Action {
+      $competing = Enter-BuildPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
+      $competing.Dispose()
     }
-    if ($IsWindows) { $startProcessParameters.WindowStyle = 'Hidden' }
-    $child = Start-Process @startProcessParameters
-    if (!$child.WaitForExit(10000)) { $child.Kill(); throw 'Competing package-lock process did not finish.' }
-    if ([System.IO.File]::ReadAllText($childResult) -cne 'REJECTED') { throw 'Competing process acquired an already-held package lock.' }
   }
   finally { $lock.Dispose() }
-  $reacquired = Enter-CanvasPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
+  $reacquired = Enter-BuildPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
   $reacquired.Dispose()
-
-  if ($IsWindows) {
-    $holderMarker = Join-Path $fixtureRoot 'holder-ready.txt'
-    $holderCommand = @"
-. '$((Join-Path $PSScriptRoot 'sharedConfig.ps1').Replace("'", "''"))' -SkipEnvironment
-. '$((Join-Path $PSScriptRoot 'sharedCanvas.ps1').Replace("'", "''"))'
-`$held = Enter-CanvasPackageLock -Path '$($lockPath.Replace("'", "''"))' -TransactionId '$([guid]::NewGuid().ToString('N'))'
-[IO.File]::WriteAllText('$($holderMarker.Replace("'", "''"))', 'READY')
-Start-Sleep -Seconds 30
-"@
-    $holder = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile', '-Command', $holderCommand) -WindowStyle Hidden -PassThru
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    while (!(Test-Path -LiteralPath $holderMarker -PathType Leaf) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
-    if (!(Test-Path -LiteralPath $holderMarker -PathType Leaf)) { $holder.Kill(); throw 'Lock-holder process did not reach its barrier.' }
-    $holder.Kill()
-    $holder.WaitForExit()
-    $afterTermination = Enter-CanvasPackageLock -Path $lockPath -TransactionId ([guid]::NewGuid().ToString('N'))
-    $afterTermination.Dispose()
-  }
 }
 finally {
-  [Environment]::SetEnvironmentVariable('TEST_CANVAS_TARGET', $originalCanvasTarget, 'Process')
-  [Environment]::SetEnvironmentVariable('TEST_EXAMPLE_TARGET', $originalExampleTarget, 'Process')
+  [Environment]::SetEnvironmentVariable('TEST_PACKAGE_TARGET', $originalTarget, 'Process')
+  [Environment]::SetEnvironmentVariable('TEST_OTHER_PACKAGE_TARGET', $originalOtherTarget, 'Process')
   if (Test-Path -LiteralPath $fixtureRoot) {
-    Assert-CanvasRemovalPath -Path $fixtureRoot -AllowedRoot $testBase
+    Assert-BuildRemovalPath -Path $fixtureRoot -AllowedRoot $testBase
     Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
   }
 }
 
-Write-Output 'Packaging contracts passed: selected Canvas-owned payload allowlists, installed dependency exclusion, child namespace isolation, direct artifact hashes, exact Junction preflight, exact installed BA2 contents, package recovery, retained transaction blocking, and platform-safe process lock exclusion/termination recovery.'
+Write-Output 'Packaging contracts passed: declarative archive mappings, exact namespace-derived PEX ownership, added/deleted source refresh, filter-before-validation behavior, explicit ESM/archive identities, dynamic Junction routing, multiarchive absence restoration, retained-transaction blocking, and package-lock exclusion.'

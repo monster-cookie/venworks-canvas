@@ -8,8 +8,8 @@
     # status, and installation output where host formatting is part of the UX.
     'PSAvoidUsingWriteHost'
 
-    # Shared release configuration is dot-sourced and intentionally publishes
-    # the variant inventory and load sentinel for repository entry points.
+    # Shared build configuration is dot-sourced and intentionally publishes
+    # the variant inventory and build paths for repository entry points.
     'PSAvoidGlobalVars'
 
     # Internal collection helpers use plural nouns to describe plural results.

@@ -2,7 +2,7 @@
 .SYNOPSIS
 Exercises selected Papyrus builds with an isolated compiler fixture.
 .DESCRIPTION
-The fixture verifies variant selection, installed-source imports, compiler failures, missing
+The fixture verifies namespace-derived variant selection, installed-source imports, compiler failures, missing
 fresh outputs, and preservation of existing selected and unselected output bytes.
 #>
 [CmdletBinding()]
@@ -183,7 +183,7 @@ Set-Variable -Name LASTEXITCODE -Value 0 -Scope 1
 
   $successLog = @(Get-TestCompilerLog -Path $successLogPath)
   if ($successLog.Count -ne 1 -or [string]$successLog[0].Source -cne 'Venworks/CanvasExamples/ExampleRegistrar.psc') {
-    throw 'EXAMPLE selection did not compile exactly its sharedConfig Papyrus source.'
+    throw 'EXAMPLE selection did not compile exactly its discovered Papyrus namespace source.'
   }
   $actualImports = @($successLog[0].Imports | ForEach-Object { [System.IO.Path]::GetFullPath([string]$_) })
   $expectedImports = @(
@@ -262,4 +262,4 @@ finally {
   }
 }
 
-Write-Output 'Papyrus selected-build tests passed: sharedConfig selection, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'
+Write-Output 'Papyrus selected-build tests passed: namespace-derived selection, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'

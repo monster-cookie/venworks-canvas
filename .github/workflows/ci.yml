@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   validate-windows:
-    name: Validate Windows build and staging contracts
+    name: Validate Windows build pipeline and staging contracts
     runs-on: windows-latest
     steps:
       - name: Check out repository
@@ -22,7 +22,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Canvas sources and isolated Windows fixtures
+      - name: Validate Canvas sources, focused pipeline checks, and isolated Windows fixtures
         shell: pwsh
         run: ./Tools/verifyCanvas.ps1 -SourceOnly
 
@@ -40,7 +40,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Canvas sources
+      - name: Validate Canvas sources and focused pipeline checks
         shell: pwsh
         run: ./Tools/verifyCanvas.ps1 -SourceOnly
 

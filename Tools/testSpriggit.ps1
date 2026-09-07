@@ -194,9 +194,26 @@ Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $prefixDiagnosticFi
 Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $missingDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted a missing native exit code.'
 
 New-Item -ItemType Directory -Force -Path $fixtureTools, $stubRoot, (Join-Path $fixtureRoot 'starfield-data') | Out-Null
-foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasPackaging.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
+foreach ($fileName in @('sharedBuild.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination (Join-Path $fixtureTools $fileName)
 }
+$fixtureConfig = @'
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$Global:BuildSettings = @{
+  WorkRoot = Join-Path $repositoryRoot '.work/build'
+  PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
+  ScriptsDirectory = Join-Path $repositoryRoot '.work/build/scripts'
+  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform'
+  ScaleformDirectory = Join-Path $repositoryRoot '.work/build/scaleform'
+}
+$Global:ModuleVariants = @(
+  [ModuleVariant]::new('CANVAS', 'Canvas', 'Canvas-Authoring.esm', 'Canvas-Archive', 'Venworks:Canvas', (Join-Path $repositoryRoot 'Staging-Canvas'), 'TEST_CANVAS_PATH', @(), @())
+  [ModuleVariant]::new('EXAMPLE', 'Example', 'Canvas-Example-Authoring.esm', 'Example-Archive', 'Venworks:CanvasExamples', (Join-Path $repositoryRoot 'Staging-Example'), 'TEST_EXAMPLE_PATH', @(), @())
+  [ModuleVariant]::new('COMPONENTGALLERY', 'Component Gallery', 'Canvas-Gallery-Authoring.esm', 'Gallery-Archive', 'Venworks:CanvasComponentGallery', (Join-Path $repositoryRoot 'Staging-ComponentGallery'), 'TEST_GALLERY_PATH', @(), @())
+)
+'@
+Write-TestText -Path (Join-Path $fixtureTools 'sharedConfig.ps1') -Text ($fixtureConfig + "`n")
 
 $stubSource = @'
 $ErrorActionPreference = 'Stop'
@@ -239,12 +256,12 @@ Write-TestText -Path $stubPath -Text $stubSource
 Set-TestEnvironment
 
 $variants = @(
-  @{ Key = 'CANVAS'; BaseName = 'Venworks-Canvas'; Staging = 'Staging-Canvas' }
-  @{ Key = 'EXAMPLE'; BaseName = 'Venworks-Canvas-Example'; Staging = 'Staging-Example' }
-  @{ Key = 'COMPONENTGALLERY'; BaseName = 'Venworks-Canvas-ComponentGallery'; Staging = 'Staging-ComponentGallery' }
+  @{ Key = 'CANVAS'; EsmFileName = 'Canvas-Authoring.esm'; Staging = 'Staging-Canvas' }
+  @{ Key = 'EXAMPLE'; EsmFileName = 'Canvas-Example-Authoring.esm'; Staging = 'Staging-Example' }
+  @{ Key = 'COMPONENTGALLERY'; EsmFileName = 'Canvas-Gallery-Authoring.esm'; Staging = 'Staging-ComponentGallery' }
 )
 foreach ($variant in $variants) {
-  $esmPath = Join-Path $fixtureRepository "$($variant.Staging)\$($variant.BaseName).esm"
+  $esmPath = Join-Path $fixtureRepository "$($variant.Staging)\$($variant.EsmFileName)"
   Write-TestText -Path $esmPath -Text "fixture $($variant.Key)`n"
 }
 
@@ -257,7 +274,7 @@ try {
   $serializeCalls = @(Get-TestCalls | Where-Object { $_.Operation -ceq 'serialize' })
   Assert-TestCondition ($serializeCalls.Count -eq 3) 'Expected three serialize calls.'
   foreach ($variant in $variants) {
-    $fileName = "$($variant.BaseName).esm"
+    $fileName = [string]$variant.EsmFileName
     $call = @($serializeCalls | Where-Object { (Get-ArgumentValue -Call $_ -Name '--InputPath') -ceq (Join-Path $fixtureRepository "$($variant.Staging)\$fileName") })
     Assert-TestCondition ($call.Count -eq 1) "Expected one serialize call for $fileName."
     Assert-TestCondition ((Get-ArgumentValue -Call $call[0] -Name '--OutputPath') -ceq (Join-Path $fixtureRepository "Spriggit\$fileName")) "Unexpected YAML route for $fileName."
@@ -268,15 +285,15 @@ try {
     Assert-TestCondition (@($call[0].Arguments) -contains '--Check') "Serialize call for $fileName omitted --Check."
   }
 
-  $exampleYaml = Join-Path $fixtureRepository 'Spriggit\Venworks-Canvas-Example.esm'
+  $exampleYaml = Join-Path $fixtureRepository 'Spriggit\Canvas-Example-Authoring.esm'
   Write-TestText -Path (Join-Path $exampleYaml 'local-edit.yaml') -Text "preserve local edit`n"
   $exampleDigest = Get-TestDirectoryDigest -Path $exampleYaml
   $result = Invoke-ChildScript -ScriptPath $dumpScript -ArgumentList @('-VariantKeys', 'CANVAS', '-EnvironmentPath', $environmentPath)
   Assert-ChildSuccess -Result $result -Description 'Single-variant Spriggit serialization'
   Assert-TestCondition ((Get-TestDirectoryDigest -Path $exampleYaml) -ceq $exampleDigest) 'Single-variant serialization changed an unselected YAML tree.'
 
-  $canvasEsm = Join-Path $fixtureRepository 'Staging-Canvas\Venworks-Canvas.esm'
-  $canvasYaml = Join-Path $fixtureRepository 'Spriggit\Venworks-Canvas.esm'
+  $canvasEsm = Join-Path $fixtureRepository 'Staging-Canvas\Canvas-Authoring.esm'
+  $canvasYaml = Join-Path $fixtureRepository 'Spriggit\Canvas-Authoring.esm'
   $canvasDigest = Get-TestDirectoryDigest -Path $canvasYaml
   $callCountBeforeSkip = @(Get-TestCalls).Count
   Remove-Item -LiteralPath $canvasEsm -Force
@@ -308,7 +325,7 @@ try {
   Assert-TestCondition (((Get-FileHash -LiteralPath $retainedBackup -Algorithm SHA256).Hash) -ceq $backupHash) 'Repeated serialization removed a retained recovery backup.'
 
   foreach ($variant in $variants) {
-    $esmPath = Join-Path $fixtureRepository "$($variant.Staging)\$($variant.BaseName).esm"
+    $esmPath = Join-Path $fixtureRepository "$($variant.Staging)\$($variant.EsmFileName)"
     if (Test-Path -LiteralPath $esmPath) { Remove-Item -LiteralPath $esmPath -Force }
   }
   $result = Invoke-ChildScript -ScriptPath $assembleScript -ArgumentList @('-EnvironmentPath', $environmentPath)
@@ -316,7 +333,7 @@ try {
   $deserializeCalls = @(Get-TestCalls | Where-Object { $_.Operation -ceq 'deserialize' })
   Assert-TestCondition ($deserializeCalls.Count -eq 3) 'Expected three deserialize calls.'
   foreach ($variant in $variants) {
-    $fileName = "$($variant.BaseName).esm"
+    $fileName = [string]$variant.EsmFileName
     $expectedInput = Join-Path $fixtureRepository "Spriggit\$fileName"
     $call = @($deserializeCalls | Where-Object { (Get-ArgumentValue -Call $_ -Name '--InputPath') -ceq $expectedInput })
     Assert-TestCondition ($call.Count -eq 1) "Expected one deserialize call for $fileName."
@@ -324,15 +341,15 @@ try {
     Assert-TestCondition ((Get-ArgumentValue -Call $call[0] -Name '--DataFolder') -ceq (Join-Path $fixtureRoot 'starfield-data')) "Unexpected assembly data folder for $fileName."
   }
 
-  $exampleEsm = Join-Path $fixtureRepository 'Staging-Example\Venworks-Canvas-Example.esm'
+  $exampleEsm = Join-Path $fixtureRepository 'Staging-Example\Canvas-Example-Authoring.esm'
   Write-TestText -Path $exampleEsm -Text "preserve assembled local edit`n"
   $exampleEsmHash = (Get-FileHash -LiteralPath $exampleEsm -Algorithm SHA256).Hash
   $result = Invoke-ChildScript -ScriptPath $assembleScript -ArgumentList @('-VariantKeys', 'CANVAS', '-EnvironmentPath', $environmentPath)
   Assert-ChildSuccess -Result $result -Description 'Single-variant isolated Spriggit assembly'
   Assert-TestCondition (((Get-FileHash -LiteralPath $exampleEsm -Algorithm SHA256).Hash) -ceq $exampleEsmHash) 'Single-variant assembly changed an unselected staged ESM.'
 
-  $componentYaml = Join-Path $fixtureRepository 'Spriggit\Venworks-Canvas-ComponentGallery.esm'
-  $componentEsm = Join-Path $fixtureRepository 'Staging-ComponentGallery\Venworks-Canvas-ComponentGallery.esm'
+  $componentYaml = Join-Path $fixtureRepository 'Spriggit\Canvas-Gallery-Authoring.esm'
+  $componentEsm = Join-Path $fixtureRepository 'Staging-ComponentGallery\Canvas-Gallery-Authoring.esm'
   $componentEsmHash = (Get-FileHash -LiteralPath $componentEsm -Algorithm SHA256).Hash
   Remove-Item -LiteralPath $componentYaml -Recurse -Force
   $callCountBeforeSkip = @(Get-TestCalls).Count

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<canvasMovieBuild name="component-gallery"
+<movieBuild name="component-gallery"
                            role="consumer"
                            outputFile="CanvasComponentGallery.swf"
                            documentClass="../actionscript/CanvasComponentGallery.as"
@@ -20,4 +20,4 @@
     <token>URLLoader</token>
     <token>ExternalInterface</token>
   </forbiddenTokens>
-</canvasMovieBuild>
+</movieBuild>

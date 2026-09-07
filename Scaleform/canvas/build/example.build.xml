@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<canvasMovieBuild name="example"
+<movieBuild name="example"
                            role="consumer"
                            outputFile="CanvasExample.swf"
                            documentClass="../actionscript/CanvasExample.as"
@@ -20,4 +20,4 @@
     <token>URLLoader</token>
     <token>ExternalInterface</token>
   </forbiddenTokens>
-</canvasMovieBuild>
+</movieBuild>

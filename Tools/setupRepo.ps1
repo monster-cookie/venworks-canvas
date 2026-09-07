@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Creates local staging junctions for Canvas module variants whose repository staging paths have been prepared by the maintainer.
+Creates local staging junctions for selected module variants whose repository staging paths have been prepared by the maintainer.
 
 .PARAMETER VariantKeys
 One or more keys from `$Global:ModuleVariants. Omit this parameter to process all module variants. `VariantKey` remains a compatibility alias.
@@ -21,91 +21,10 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
-Import-CanvasEnvironment -Path $EnvironmentPath
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+Import-BuildEnvironment -Path $EnvironmentPath
 
-function Get-NormalizedFullPath {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path
-  )
-
-  if ([string]::IsNullOrWhiteSpace($Path)) {
-    throw 'A filesystem path cannot be empty.'
-  }
-
-  $fullPath = [System.IO.Path]::GetFullPath($Path)
-  $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
-  if ($fullPath.Length -gt $pathRoot.Length) {
-    return $fullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-  }
-  return $fullPath
-}
-
-function Test-SamePath {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Left,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Right
-  )
-
-  return [string]::Equals(
-    (Get-NormalizedFullPath -Path $Left),
-    (Get-NormalizedFullPath -Path $Right),
-    [System.StringComparison]::OrdinalIgnoreCase
-  )
-}
-
-function Assert-RepositoryStagingPath {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Path
-  )
-
-  $normalizedPath = Get-NormalizedFullPath -Path $Path
-  $parentPath = Split-Path -Parent $normalizedPath
-  if (!(Test-SamePath -Left $parentPath -Right $repositoryRoot)) {
-    throw "Staging path must be a direct child of the repository root: $normalizedPath"
-  }
-}
-
-function Get-JunctionTargetPath {
-  param(
-    [Parameter(Mandatory = $true)]
-    [System.IO.DirectoryInfo]$Item
-  )
-
-  $targets = @($Item.Target)
-  if ($targets.Count -ne 1) {
-    return $null
-  }
-  return Get-NormalizedFullPath -Path ([string]$targets[0])
-}
-
-function Assert-JunctionTarget {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$StagingPath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$ExpectedTargetPath
-  )
-
-  $stagingItem = Get-Item -LiteralPath $StagingPath -Force
-  if ($stagingItem.LinkType -ne 'Junction') {
-    throw "Staging path is not a Junction: $StagingPath"
-  }
-
-  $actualTargetPath = Get-JunctionTargetPath -Item $stagingItem
-  if ($null -eq $actualTargetPath -or !(Test-SamePath -Left $actualTargetPath -Right $ExpectedTargetPath)) {
-    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
-  }
-}
-
-function Get-PathItemIfPresent {
+function Get-BuildPathItemIfPresent {
   param(
     [Parameter(Mandatory = $true)]
     [string]$Path
@@ -119,31 +38,92 @@ function Get-PathItemIfPresent {
   }
 }
 
-$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
-$operations = @()
-$configuredStagingPaths = @($Global:ModuleVariants | ForEach-Object {
-  $configuredStagingPath = Get-NormalizedFullPath -Path $_.StagingFolderPath
-  Assert-RepositoryStagingPath -Path $configuredStagingPath
-  [pscustomobject]@{
-    VariantName = $_.VariantName
+function Assert-BuildRepositoryStagingPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $normalizedPath = Get-BuildNormalizedFullPath -Path $Path
+  $repositoryPrefix = $repositoryRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (!$normalizedPath.StartsWith($repositoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Staging path must remain inside the repository: $normalizedPath"
+  }
+}
+
+function Get-BuildJunctionTargetPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.IO.DirectoryInfo]$Item
+  )
+
+  $targets = @($Item.Target)
+  if ($targets.Count -ne 1) {
+    return $null
+  }
+  return Get-BuildNormalizedFullPath -Path ([string]$targets[0])
+}
+
+function Assert-BuildJunctionTarget {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$StagingPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ExpectedTargetPath
+  )
+
+  $stagingItem = Get-Item -LiteralPath $StagingPath -Force
+  if ($stagingItem.LinkType -ne 'Junction') {
+    throw "Staging path is not a Junction: $StagingPath"
+  }
+
+  $actualTargetPath = Get-BuildJunctionTargetPath -Item $stagingItem
+  if ($null -eq $actualTargetPath -or !(Test-BuildSamePath -Left $actualTargetPath -Right $ExpectedTargetPath)) {
+    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
+  }
+}
+
+$moduleVariants = @($Global:ModuleVariants)
+if ($moduleVariants.Count -eq 0) {
+  throw 'ModuleVariants must define at least one module variant.'
+}
+
+$configuredStagingPaths = @()
+foreach ($configuredVariant in $moduleVariants) {
+  $configuredStagingPath = Get-BuildNormalizedFullPath -Path $configuredVariant.StagingFolderPath
+  Assert-BuildRepositoryStagingPath -Path $configuredStagingPath
+  $matchingStagingPath = @($configuredStagingPaths | Where-Object {
+    Test-BuildOverlappingPaths -Left $_.Path -Right $configuredStagingPath
+  })
+  if ($matchingStagingPath.Count -ne 0) {
+    throw "$($configuredVariant.VariantName) and $($matchingStagingPath[0].VariantName) cannot use identical or nested repository staging paths: $configuredStagingPath"
+  }
+  $configuredStagingPaths += [pscustomobject]@{
+    VariantName = $configuredVariant.VariantName
     Path = $configuredStagingPath
   }
-})
+}
+
 $configuredVariantTargets = @()
-foreach ($configuredVariant in $Global:ModuleVariants) {
-  if ([string]::IsNullOrWhiteSpace($configuredVariant.PluginModulePath)) {
+foreach ($configuredVariant in $moduleVariants) {
+  $environmentValue = [System.Environment]::GetEnvironmentVariable(
+    [string]$configuredVariant.EnvironmentVariableName,
+    [System.EnvironmentVariableTarget]::Process
+  )
+  if ([string]::IsNullOrWhiteSpace($environmentValue)) {
     continue
   }
 
-  $configuredTargetPath = Get-NormalizedFullPath -Path $configuredVariant.PluginModulePath
+  $configuredTargetPath = Resolve-BuildVariantInstallPath -Variant $configuredVariant
   $matchingTarget = @($configuredVariantTargets | Where-Object {
-    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+    Test-BuildOverlappingPaths -Left $_.Path -Right $configuredTargetPath
   })
   if ($matchingTarget.Count -ne 0) {
     throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use identical or nested physical module folders: $configuredTargetPath"
   }
   $matchingStagingPath = @($configuredStagingPaths | Where-Object {
-    Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+    Test-BuildOverlappingPaths -Left $_.Path -Right $configuredTargetPath
   })
   if ($matchingStagingPath.Count -ne 0) {
     throw "$($configuredVariant.VariantName) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0].Path)"
@@ -154,17 +134,22 @@ foreach ($configuredVariant in $Global:ModuleVariants) {
   }
 }
 
-# Validate every selected path before creating a target directory or Junction.
+$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+$operations = @()
+
+# Validate every selected operation before creating any target directory or Junction.
 foreach ($variant in $variants) {
-  if ([string]::IsNullOrWhiteSpace($variant.PluginModulePath)) {
-    throw "$($variant.VariantName) physical module folder is not configured. Set $($variant.EnvironmentVariableName) in $EnvironmentPath."
+  $stagingPath = Get-BuildNormalizedFullPath -Path $variant.StagingFolderPath
+  $targetPath = Resolve-BuildVariantInstallPath -Variant $variant
+  Assert-BuildRepositoryStagingPath -Path $stagingPath
+
+  $stagingParentPath = Split-Path -Parent $stagingPath
+  $stagingParentItem = Get-BuildPathItemIfPresent -Path $stagingParentPath
+  if ($null -eq $stagingParentItem -or !$stagingParentItem.PSIsContainer) {
+    throw "$($variant.VariantName) staging parent directory must be prepared before setup: $stagingParentPath"
   }
 
-  $stagingPath = Get-NormalizedFullPath -Path $variant.StagingFolderPath
-  $targetPath = Get-NormalizedFullPath -Path $variant.PluginModulePath
-  Assert-RepositoryStagingPath -Path $stagingPath
-
-  $targetItem = Get-PathItemIfPresent -Path $targetPath
+  $targetItem = Get-BuildPathItemIfPresent -Path $targetPath
   if ($null -ne $targetItem) {
     if (!$targetItem.PSIsContainer) {
       throw "$($variant.VariantName) physical module path is not a directory: $targetPath"
@@ -175,10 +160,10 @@ foreach ($variant in $variants) {
   }
 
   $operationName = 'Create'
-  $stagingItem = Get-PathItemIfPresent -Path $stagingPath
+  $stagingItem = Get-BuildPathItemIfPresent -Path $stagingPath
   if ($null -ne $stagingItem) {
     if ($stagingItem.LinkType -eq 'Junction') {
-      Assert-JunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $targetPath
+      Assert-BuildJunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $targetPath
       $operationName = 'Configured'
     }
     elseif (![string]::IsNullOrWhiteSpace([string]$stagingItem.LinkType)) {
@@ -213,7 +198,7 @@ foreach ($operation in $operations) {
     New-Item -ItemType Directory -Force -Path $operation.TargetPath | Out-Null
   }
   New-Item -ItemType Junction -Path $operation.StagingPath -Value $operation.TargetPath | Out-Null
-  Assert-JunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.TargetPath
+  Assert-BuildJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.TargetPath
 }
 
 Write-Host -ForegroundColor Cyan "`n`n"

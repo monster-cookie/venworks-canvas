@@ -4,21 +4,25 @@ Venworks Canvas is a Starfield Player HUD host and Papyrus registration layer fo
 
 ## Packages
 
-`Tools/sharedConfig.ps1` is the only source of truth for package variants, staging paths, Papyrus ownership, Scaleform manifests, output names, UI namespaces, and Player/Ship HUD inclusion.
+`Tools/sharedConfig.ps1` is the repository-owned data source for package variants, staging paths, Papyrus namespaces, Scaleform jobs, and archive outputs. The shared executors in `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1` provide the reusable behavior; this repository keeps the Canvas values and product-owned source and patch data.
 
-| Variant | Plugin | Purpose | Staging root |
-| --- | --- | --- | --- |
-| `CANVAS` | `Venworks-Canvas.esm` | Registry, Player HUD host, and shared transport | `Staging-Canvas` |
-| `EXAMPLE` | `Venworks-Canvas-Example.esm` | Minimal independently registered consumer | `Staging-Example` |
-| `COMPONENTGALLERY` | `Venworks-Canvas-ComponentGallery.esm` | Independently registered component gallery | `Staging-ComponentGallery` |
+| Variant | ESM | Papyrus namespace | Purpose | Staging root |
+| --- | --- | --- | --- | --- |
+| `CANVAS` | `Venworks-Canvas.esm` | `Venworks:Canvas` | Registry, Player HUD host, and shared transport | `Staging-Canvas` |
+| `EXAMPLE` | `Venworks-Canvas-Example.esm` | `Venworks:CanvasExamples` | Minimal independently registered consumer | `Staging-Example` |
+| `COMPONENTGALLERY` | `Venworks-Canvas-ComponentGallery.esm` | `Venworks:CanvasComponentGallery` | Independently registered component gallery | `Staging-ComponentGallery` |
+
+Each `ModuleVariant` supplies `VariantKey`, `VariantName`, `EsmFileName`, `PackageBaseName`, `PapyrusNamespace`, `StagingFolderPath`, the `.env` variable name for the physical destination, and declarative `ScaleformBuilds` and `Archives` entries. `EsmFileName` is explicit and may differ from the archive base name. Papyrus ownership comes from the configured namespace directory, so new sources under that boundary enter the selected package automatically and similarly named sibling namespaces remain excluded.
+
+Canvas Scaleform jobs identify the Flex or patch operation, its manifest or patch input, output set, and output filenames. Canvas archive entries declare the Main BA2 filename, format, compression, size limit, Papyrus inclusion, and exact Scaleform-to-archive mappings; the shared archiver does not impose a project-wide format or asset extension policy.
 
 Each staging root must remain a Vortex junction. Packaging may replace the exact ESM and BA2 child files beneath a verified junction, but it must never delete, move, recreate, or retarget the junction itself.
 
 ## Local staging setup
 
-Fresh-checkout staging preparation is a maintainer operation. A checkout contains ordinary tracked staging directories; these are suitable for inspecting committed artifacts, but are not an installation target. Configure `MODULE_VARIANT_CANVAS_PATH`, `MODULE_VARIANT_EXAMPLE_PATH`, and `MODULE_VARIANT_COMPONENT_GALLERY_PATH` in `.env` to point to the three distinct physical Vortex module folders.
+Fresh-checkout staging preparation is a maintainer operation. A checkout contains ordinary tracked staging directories; these are suitable for inspecting committed artifacts, but are not an installation target. Configure the environment-variable names used by the selected `ModuleVariant` entries, including `MODULE_VARIANT_CANVAS_PATH`, `MODULE_VARIANT_EXAMPLE_PATH`, and `MODULE_VARIANT_COMPONENT_GALLERY_PATH`, in `.env` to point to the three distinct physical Vortex module folders.
 
-Preserve the existing package files and prepare the repository staging paths yourself before running setup. `Tools/setupRepo.ps1` creates junctions only where the selected staging paths are absent, and accepts an existing junction only when its target matches the configuration. It checks the complete selection before creating any junction. It does not empty or migrate ordinary directories, restore files through Git, or repair incorrect links. The former `-MigrateExisting` option is removed.
+Remove or relocate ordinary checkout staging directories and preserve any package files before running setup. `Tools/setupRepo.ps1` creates junctions only where the selected staging paths are absent, and accepts an existing junction only when its target matches the configuration. It checks the complete selection before creating any junction. It does not empty or migrate ordinary directories, restore files through Git, or repair incorrect links. The former `-MigrateExisting` option is removed.
 
 After preparing the paths and package contents, run these commands yourself from the repository root:
 
@@ -31,7 +35,7 @@ Use `-VariantKeys CANVAS`, `EXAMPLE`, or `COMPONENTGALLERY` to check or set up o
 
 ## Spriggit authoring
 
-Spriggit is an optional, developer-only authoring tool. It can run before build or gameplay tests to serialize selected staged ESMs to `Spriggit/<ESM>/` YAML and, when an authoring change is intended, assemble edited YAML back into the selected staged ESM. Starfield never executes Spriggit or reads YAML at runtime; runtime tests consume ESMs that a developer has already authored or assembled and placed in the configured staging target.
+Spriggit is an optional, developer-only authoring tool. It can run before build or gameplay tests to serialize selected staged ESMs to `Spriggit/<ESM>/` YAML and, when an authoring change is intended, assemble edited YAML back into the selected staged ESM. The wrappers route by each variant's explicit `EsmFileName`; they do not infer an ESM from an archive name. Starfield never executes Spriggit or reads YAML at runtime; runtime tests consume ESMs that a developer has already authored or assembled and placed in the configured staging target.
 
 Configure `TOOL_PATH_SPRIGGIT`, `SPRIGGIT_VERSION`, and `STEAM_DATA_FOLDER` in `.env`; these settings are used only by the explicit authoring wrappers. The wrappers use the existing variant definitions to route each staged ESM to its own YAML directory.
 
@@ -85,17 +89,17 @@ The bridge is one-way and lossy. Submission is not delivery or render acknowledg
 
 ## Build pipeline
 
-The production build pipeline has three entry points:
+The production build pipeline has three entry points backed by the reusable helpers in `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1`:
 
-1. `Tools/compileScripts.ps1` compiles the Papyrus sources declared by the selected variants.
-2. `Tools/buildScaleform.ps1` builds the selected Canvas consumer movies and, for `CANVAS`, applies the repository-owned Watch and Ship patches to the current vanilla interface inputs.
-3. `Tools/createPackages.ps1` validates the selected build inputs, snapshots the selected configured staging ESMs, creates uncompressed PC Main BA2 archives, and replaces only the exact child files under verified staging junctions.
+1. `Tools/compileScripts.ps1` selects variants and compiles every `.psc` file beneath each selected `PapyrusNamespace` directory.
+2. `Tools/buildScaleform.ps1` executes the selected declarative `ScaleformBuilds` jobs. Canvas-owned ActionScript, manifest, Watch, Ship, and UI protocol data remain in this repository.
+3. `Tools/createPackages.ps1` validates the selected build inputs, snapshots the selected explicit `EsmFileName` values from configured staging targets, creates the configured BA2 outputs, and replaces only the exact child files under verified staging junctions.
 
-Plugin authoring is separate from compilation and packaging. The normal package input is the ESM already present in each configured staging target. Make intended ESM edits in Creation Kit or another maintainer authoring workflow, place the authored ESM in staging, then compile and package the affected variant. Spriggit dump and assembly are optional, explicit developer commands for preparing or updating that ESM and are never invoked automatically.
+Plugin authoring is separate from compilation and packaging. The normal package input is the explicit ESM already present in each configured staging target. Make intended ESM edits in Creation Kit or another maintainer authoring workflow, place the authored ESM in staging, then compile and package the affected variant. Spriggit dump and assembly are optional, explicit developer commands for preparing or updating that ESM and are never invoked automatically.
 
-Papyrus compilation imports the current installed sources from `PAPYRUS_SCRIPTS_SOURCE_PATH` together with this repository's `Papyrus` tree. The installed Venworks Core creation supplies its own runtime scripts; Canvas does not copy Core source or compiled runtime files into its packages.
+Papyrus compilation imports the current installed sources from `PAPYRUS_SCRIPTS_SOURCE_PATH` together with this repository's `Papyrus` tree. The installed Venworks Core creation supplies its own runtime scripts; Canvas does not copy Core source or compiled runtime files into its packages. Namespace discovery uses the configured directory boundary, so a similarly prefixed namespace such as `Venworks:CanvasExamples` is not included in the `Venworks:Canvas` package.
 
-From the repository root, select the variants you want to build. `compileScripts.ps1` uses the configured installed Papyrus source path and the Canvas source tree. `buildScaleform.ps1` uses directly configured Java, JPEXS, and Apache Flex paths, or their repository-local `.work/tools` defaults; when `CANVAS` is selected, `-VanillaInterfacePath` must point to the current vanilla `Interface` inputs. Canvas does not clone a VWHUD checkout, invoke a VWHUD helper or compiler, or use a foreign cache or source tree.
+From the repository root, select the variants you want to build. Canvas keeps the default compiled-script output at `.work\canvas\scripts` and the default Scaleform output at `.work\canvas\scaleform`; packaging consumes those directories unless explicit paths are supplied. `buildScaleform.ps1` uses directly configured Java, JPEXS, and Apache Flex paths, or their repository-local `.work/tools` defaults; when a selected Canvas job consumes vanilla HUD inputs, `-VanillaInterfacePath` must point to the current vanilla `Interface` inputs. Canvas does not clone a VWHUD checkout, invoke a VWHUD helper or compiler, or use a foreign cache or source tree.
 
 ```powershell
 $canvasToolArguments = @{
@@ -112,11 +116,13 @@ $canvasToolArguments = @{
 ./Tools/createPackages.ps1 -VariantKeys $canvasToolArguments.VariantKeys
 ```
 
+The VS Code `Build Scaleform` task prompts for the current vanilla Starfield interface directory (or a game root containing `Interface`) and passes it as `-VanillaInterfacePath`; it does not store a machine-specific path.
+
 Use `-VariantKeys CANVAS`, `-VariantKeys EXAMPLE`, or `-VariantKeys COMPONENTGALLERY` consistently across compile, Scaleform build, package, and verification commands to select a subset. An omitted variant list means all variants. A consumer-only build does not require the Canvas Player or Ship HUD inputs. A selected operation does not claim that unselected packages were rebuilt or checked against current source.
 
-`createPackages.ps1` reads Archive2 and staging target paths from `.env`, rejects overlapping package targets, and verifies binary headers and exact BA2 inventories. It holds an exclusive process lock at `.work\canvas\package.lock` while preparing and installing a package transaction. Each run uses its own directory beneath `.work\canvas\package-transactions`, containing staged ESM snapshots, archive payloads, candidate packages, and recovery copies. Transient SHA-256 checks protect copies and replacements during that run; no external repository revision or binary hash is pinned.
+`createPackages.ps1` reads Archive2 and staging target paths from `.env`, applies the selected `Archives` definitions, rejects overlapping package targets, and verifies the configured source and output files. It holds an exclusive process lock at `.work\canvas\package.lock` while preparing and installing a package transaction. Each run uses its own directory beneath `.work\canvas\package-transactions`, containing staged ESM snapshots, archive payloads, candidate packages, and recovery copies. Transient SHA-256 checks protect copies and replacements during that run; no external repository revision or binary hash is pinned.
 
-Canvas packaging owns the four Canvas PEX files and the CanvasHost movie (`CanvasHost.swf`, archived as `Interface\venworkscui.swf`), the four patched Player HUD Watch files (`playerhudcomponents.swf`, `playerhudcomponents.gfx`, `playerhudcomponents_lrg.swf`, and `playerhudcomponents_lrg.gfx`), and the two patched Ship HUD loader files (`spaceshiphudmenu.swf` and `spaceshiphudmenu_lrg.swf`). Example and Component Gallery own their PEX files and namespaced consumer movies. The installed Venworks Core and VWHUD creations supply their own runtime files; Canvas does not copy, archive, or repackage foreign code. Verification checks the selected files, package headers, and exact archive entries directly and does not require evidence JSON, package receipts, Git history, or pinned hashes.
+Canvas `Archives` entries own the Canvas ESM and the configured archive payloads: the four Canvas PEX files and the CanvasHost movie (`CanvasHost.swf`, archived as `Interface\venworkscui.swf`), the four patched Player HUD Watch files (`playerhudcomponents.swf`, `playerhudcomponents.gfx`, `playerhudcomponents_lrg.swf`, and `playerhudcomponents_lrg.gfx`), and the two patched Ship HUD loader files (`spaceshiphudmenu.swf` and `spaceshiphudmenu_lrg.swf`). Example and Component Gallery own their PEX files and namespaced consumer movies. The installed Venworks Core and VWHUD creations supply their own runtime files; Canvas does not copy, archive, or repackage foreign code. Packaging verifies the configured source and output files and publishes only the selected ESM and archive names beneath their verified junctions; unrelated staged asset directories and files remain untouched. Archive format, compression, filters, and size limits come from configuration rather than a global BA2 restriction, and the checks do not require evidence JSON, package receipts, Git history, or pinned hashes.
 
 For a handled installation failure, recovery checks the original backup inventory, restores affected packages in reverse order, and verifies the restored bytes. It preserves the staging junctions throughout. Failed transactions retain their recovery directory for manual inspection. A process or power interruption can bypass automatic recovery. A retained transaction directory stops the next package operation until it is inspected. Do not delete recovery material blindly. The lock file can remain after a process exits; its presence alone does not mean another process still owns the lock.
 
@@ -134,6 +140,7 @@ Individual contract tests:
 .\Tools\testConsole.ps1
 .\Tools\testGuards.ps1
 .\Tools\testPackaging.ps1
+.\Tools\testBuildPipeline.ps1
 .\Tools\testBuildEvidence.ps1
 .\Tools\testBuildVariants.ps1
 .\Tools\testSpriggit.ps1
@@ -149,7 +156,7 @@ Artifact validation:
 .\Tools\verifyCanvas.ps1 -ArtifactsOnly -VariantKeys CANVAS,EXAMPLE,COMPONENTGALLERY
 ```
 
-Use `-ArtifactsOnly` with selected variants to validate built files and package payloads directly. Source-only validation runs isolated fixtures beneath `.work`, including actual Windows junction and process cases where supported; non-Windows runs report skipped junction cases explicitly. The tests use stubs where the game toolchain is unavailable, so they do not establish real Spriggit, Archive2, Papyrus compiler, Scaleform compiler, or Starfield behavior by themselves. Artifact verification checks the selected current sources and outputs, ESM/BA2 signatures, and archive inventories; it does not require external checkouts, evidence JSON, package receipts, Git history, or pinned hashes, and it does not establish Starfield runtime behavior.
+Use `-ArtifactsOnly` with selected variants to run the source-contract checks and validate the current Papyrus and Scaleform build inputs needed to plan the configured archives. This mode does not invoke Archive2, install packages, inspect the staging junctions, or establish installed-package or Starfield runtime behavior. Source-only validation runs isolated fixtures beneath `.work`, including actual Windows junction and process cases where supported; non-Windows runs report skipped junction cases explicitly. The tests use stubs where the game toolchain is unavailable, so they do not establish real Spriggit, Archive2, Papyrus compiler, Scaleform compiler, or Starfield behavior by themselves.
 
 Prior user-supplied PC gameplay established registration, owner checking, bounded bridge behavior, and visible loading of both permanent-name consumer panels in normal Player HUD mode without renewed Watch lag. That acceptance predates the activation and stale-queue changes described here. Repeat the affected disposable-save and HUD-transition cases for the current build before claiming new runtime acceptance.
 

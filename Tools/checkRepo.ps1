@@ -1,139 +1,159 @@
 <#
 .SYNOPSIS
-Checks Canvas module metadata, artifacts, and local staging junctions.
+Checks configured module metadata, artifacts, and local staging junctions.
 
 .PARAMETER VariantKeys
-One or more keys from `$Global:ModuleVariants. Omit this parameter to process
-all module variants. `VariantKey` remains a compatibility alias.
+One or more keys from `$Global:ModuleVariants. Omit this parameter to process all module variants. `VariantKey` remains a compatibility alias.
 
 .PARAMETER Committed
-Verifies committed staging artifacts without requiring local environment values
-or staging junctions.
+Verifies committed staging artifacts without requiring local environment values or staging junctions.
+
+.PARAMETER EnvironmentPath
+Path to the environment file that configures the physical module folders for a local check.
 #>
 [CmdletBinding()]
 param(
-  [Alias("VariantKey")]
+  [Alias('VariantKey')]
   [string[]]$VariantKeys,
 
-  [switch]$Committed
+  [switch]$Committed,
+
+  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env')
 )
 
 $PSNativeCommandUseErrorActionPreference = $true
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$loadedConfigurationRoot = Get-Variable -Name SharedConfigurationRepositoryRoot -Scope Global -ErrorAction SilentlyContinue
-$environmentConfigurationLoaded = Get-Variable -Name SharedConfigurationEnvironmentLoaded -Scope Global -ErrorAction SilentlyContinue
-if ($null -eq $loadedConfigurationRoot -or
-    (!$Committed -and ($null -eq $environmentConfigurationLoaded -or !$environmentConfigurationLoaded.Value)) -or
-    ![string]::Equals(
-      [System.IO.Path]::GetFullPath([string]$loadedConfigurationRoot.Value),
-      $repositoryRoot,
-      [System.StringComparison]::OrdinalIgnoreCase
-    )) {
-  Write-Host -ForegroundColor Green "Importing Shared Configuration"
-  if ($Committed) {
-    . "$PSScriptRoot\sharedConfig.ps1" -SkipEnvironment
-  }
-  else {
-    . "$PSScriptRoot\sharedConfig.ps1"
+$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+if (!$Committed) {
+  Import-BuildEnvironment -Path $EnvironmentPath
+}
+
+function Assert-BuildConfiguredStagingPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+
+    [Parameter(Mandatory = $true)]
+    [string]$VariantName
+  )
+
+  $normalizedPath = Get-BuildNormalizedFullPath -Path $Path
+  $repositoryPrefix = $repositoryRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (!$normalizedPath.StartsWith($repositoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Module variant '$VariantName' staging path must remain inside the repository."
   }
 }
 
-function Get-NormalizedFullPath {
+function Assert-BuildLeafFileName {
   param(
     [Parameter(Mandatory = $true)]
-    [string]$Path
-  )
-
-  if ([string]::IsNullOrWhiteSpace($Path)) {
-    throw "A filesystem path cannot be empty."
-  }
-
-  $fullPath = [System.IO.Path]::GetFullPath($Path)
-  $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
-  if ($fullPath.Length -gt $pathRoot.Length) {
-    return $fullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-  }
-  return $fullPath
-}
-
-function Test-SamePath {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$Left,
+    [string]$FileName,
 
     [Parameter(Mandatory = $true)]
-    [string]$Right
+    [string]$Extension,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Description
   )
 
-  return [string]::Equals(
-    (Get-NormalizedFullPath -Path $Left),
-    (Get-NormalizedFullPath -Path $Right),
-    [System.StringComparison]::OrdinalIgnoreCase
-  )
+  if ([string]::IsNullOrWhiteSpace($FileName) -or
+      $FileName.Contains('/') -or
+      $FileName.Contains('\') -or
+      [System.IO.Path]::GetFileName($FileName) -cne $FileName -or
+      ![System.IO.Path]::GetExtension($FileName).Equals($Extension, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "$Description must be a leaf $Extension filename: '$FileName'."
+  }
 }
 
 $moduleVariants = @($Global:ModuleVariants)
 if ($moduleVariants.Count -eq 0) {
-  throw 'ModuleVariants must define at least one Canvas package variant.'
+  throw 'ModuleVariants must define at least one module variant.'
 }
 
 $requiredUniqueProperties = @(
-  "VariantKey",
-  "VariantName",
-  "PackageBaseName",
-  "StagingFolderPath",
-  "EnvironmentVariableName",
-  "ScaleformManifest",
-  "ScaleformOutput"
+  'VariantKey',
+  'VariantName',
+  'EsmFileName',
+  'PackageBaseName',
+  'PapyrusNamespace',
+  'StagingFolderPath',
+  'EnvironmentVariableName'
 )
 foreach ($propertyName in $requiredUniqueProperties) {
-  $values = @($moduleVariants | ForEach-Object { [string]$_.$propertyName })
-  if (@($values | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0) {
-    throw "Every module variant must define $propertyName."
+  foreach ($variant in $moduleVariants) {
+    if ($null -eq $variant.PSObject.Properties[$propertyName] -or
+        [string]::IsNullOrWhiteSpace([string]$variant.$propertyName)) {
+      throw "Every module variant must define $propertyName."
+    }
   }
+  $values = @($moduleVariants | ForEach-Object { ([string]$_.$propertyName).ToUpperInvariant() })
   if (@($values | Select-Object -Unique).Count -ne $values.Count) {
     throw "Module variant property $propertyName must be unique."
   }
 }
 
-foreach ($variant in $moduleVariants) {
-  if (@($variant.PapyrusScripts).Count -eq 0 -or
-      @($variant.PapyrusScripts | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0) {
-    throw "Module variant '$($variant.VariantKey)' must declare at least one Papyrus source."
+foreach ($propertyName in @('ScaleformBuilds', 'Archives')) {
+  foreach ($variant in $moduleVariants) {
+    if ($null -eq $variant.PSObject.Properties[$propertyName]) {
+      throw "Every module variant must define $propertyName."
+    }
   }
-  if (![System.IO.Path]::GetFullPath([string]$variant.StagingFolderPath).StartsWith(
-      $repositoryRoot + [System.IO.Path]::DirectorySeparatorChar,
-      [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Module variant '$($variant.VariantKey)' staging path must remain inside the repository."
+}
+
+$configuredStagingPaths = @()
+foreach ($variant in $moduleVariants) {
+  Assert-BuildLeafFileName -FileName $variant.EsmFileName -Extension '.esm' -Description "Module variant '$($variant.VariantKey)' ESM"
+  Assert-BuildConfiguredStagingPath -Path $variant.StagingFolderPath -VariantName $variant.VariantKey
+
+  $stagingPath = Get-BuildNormalizedFullPath -Path $variant.StagingFolderPath
+  $matchingStagingPath = @($configuredStagingPaths | Where-Object {
+    Test-BuildOverlappingPaths -Left $_.Path -Right $stagingPath
+  })
+  if ($matchingStagingPath.Count -ne 0) {
+    throw "$($variant.VariantName) and $($matchingStagingPath[0].VariantName) cannot use identical or nested repository staging paths: $stagingPath"
+  }
+  $configuredStagingPaths += [pscustomobject]@{
+    VariantName = $variant.VariantName
+    Path = $stagingPath
+  }
+
+  $archiveFileNames = @()
+  foreach ($archive in @($variant.Archives)) {
+    if ($null -eq $archive) {
+      throw "Module variant '$($variant.VariantKey)' archive entries must define FileName."
+    }
+    $archiveFileName = [string]$archive.FileName
+    Assert-BuildLeafFileName -FileName $archiveFileName -Extension '.ba2' -Description "Module variant '$($variant.VariantKey)' archive"
+    if ($archiveFileNames -contains $archiveFileName) {
+      throw "Module variant '$($variant.VariantKey)' archive FileName values must be unique."
+    }
+    $archiveFileNames += $archiveFileName
   }
 }
 
 if (!$Committed) {
-  $configuredStagingPaths = @($moduleVariants | ForEach-Object {
-    [pscustomobject]@{
-      VariantName = $_.VariantName
-      Path = (Get-NormalizedFullPath -Path $_.StagingFolderPath)
-    }
-  })
   $configuredVariantTargets = @()
   foreach ($configuredVariant in $moduleVariants) {
-    if ([string]::IsNullOrWhiteSpace($configuredVariant.PluginModulePath)) {
+    $environmentValue = [System.Environment]::GetEnvironmentVariable(
+      [string]$configuredVariant.EnvironmentVariableName,
+      [System.EnvironmentVariableTarget]::Process
+    )
+    if ([string]::IsNullOrWhiteSpace($environmentValue)) {
       continue
     }
 
-    $configuredTargetPath = Get-NormalizedFullPath -Path $configuredVariant.PluginModulePath
+    $configuredTargetPath = Resolve-BuildVariantInstallPath -Variant $configuredVariant
     $matchingTarget = @($configuredVariantTargets | Where-Object {
-      Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+      Test-BuildOverlappingPaths -Left $_.Path -Right $configuredTargetPath
     })
     if ($matchingTarget.Count -ne 0) {
       throw "$($configuredVariant.VariantName) and $($matchingTarget[0].VariantName) cannot use identical or nested physical module folders: $configuredTargetPath"
     }
     $matchingStagingPath = @($configuredStagingPaths | Where-Object {
-      Test-CanvasOverlappingPaths -Left $_.Path -Right $configuredTargetPath
+      Test-BuildOverlappingPaths -Left $_.Path -Right $configuredTargetPath
     })
     if ($matchingStagingPath.Count -ne 0) {
       throw "$($configuredVariant.VariantName) physical module folder cannot overlap a repository staging path: $($matchingStagingPath[0].Path)"
@@ -147,47 +167,48 @@ if (!$Committed) {
 
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 foreach ($variant in $variants) {
-  $stagingPath = Get-NormalizedFullPath -Path $variant.StagingFolderPath
+  $stagingPath = Get-BuildNormalizedFullPath -Path $variant.StagingFolderPath
   if (!(Test-Path -LiteralPath $stagingPath -PathType Container)) {
     throw "$($variant.VariantName) staging folder does not exist: $stagingPath"
   }
 
+  $artifactRoot = $stagingPath
   if (!$Committed) {
-    if ([string]::IsNullOrWhiteSpace($variant.PluginModulePath)) {
-      throw "$($variant.VariantName) physical module folder is not configured. Set $($variant.EnvironmentVariableName) in .env."
-    }
-    $targetPath = Get-NormalizedFullPath -Path $variant.PluginModulePath
+    $targetPath = Resolve-BuildVariantInstallPath -Variant $variant
     if (!(Test-Path -LiteralPath $targetPath -PathType Container)) {
       throw "$($variant.VariantName) physical module folder does not exist: $targetPath"
     }
+    $targetItem = Get-Item -LiteralPath $targetPath -Force
+    if (![string]::IsNullOrWhiteSpace([string]$targetItem.LinkType)) {
+      throw "$($variant.VariantName) physical module folder must be an ordinary directory, not a link: $targetPath"
+    }
 
     $stagingItem = Get-Item -LiteralPath $stagingPath -Force
-    if ($stagingItem.LinkType -ne "Junction") {
+    if ($stagingItem.LinkType -ne 'Junction') {
       throw "$($variant.VariantName) staging folder is not a Junction: $stagingPath"
     }
     $targets = @($stagingItem.Target)
-    if ($targets.Count -ne 1 -or !(Test-SamePath -Left ([string]$targets[0]) -Right $targetPath)) {
+    if ($targets.Count -ne 1 -or !(Test-BuildSamePath -Left ([string]$targets[0]) -Right $targetPath)) {
       throw "$($variant.VariantName) staging Junction targets a different physical module folder."
     }
+    $artifactRoot = $targetPath
   }
 
-  $expectedArtifacts = @(
-    "$($variant.PackageBaseName).esm",
-    "$($variant.PackageBaseName) - Main.ba2"
-  )
-  foreach ($artifactName in $expectedArtifacts) {
-    $artifactPath = Join-Path $stagingPath $artifactName
+  $expectedArtifactNames = @([string]$variant.EsmFileName)
+  $expectedArtifactNames += @($variant.Archives | ForEach-Object { [string]$_.FileName })
+  foreach ($artifactName in $expectedArtifactNames) {
+    $artifactPath = Join-Path $artifactRoot $artifactName
     if (!(Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
       throw "$($variant.VariantName) is missing expected artifact: $artifactPath"
     }
-    Assert-CanvasArtifactHeader -Path $artifactPath
+    Assert-BuildArtifactHeader -Path $artifactPath
   }
 
-  Write-Host -ForegroundColor Green "$($variant.VariantName) staging and artifacts are valid."
+  Write-Host -ForegroundColor Green "$($variant.VariantName) staging and configured artifacts are valid."
 }
 
 Write-Host -ForegroundColor Cyan "`n`n"
-Write-Host -ForegroundColor Cyan "**************************************************"
-Write-Host -ForegroundColor Cyan "**     Selected Module Variants Are Valid       **"
-Write-Host -ForegroundColor Cyan "**************************************************"
+Write-Host -ForegroundColor Cyan '**************************************************'
+Write-Host -ForegroundColor Cyan '**     Selected Module Variants Are Valid       **'
+Write-Host -ForegroundColor Cyan '**************************************************'
 Write-Host -ForegroundColor Cyan "`n`n"

@@ -15,7 +15,7 @@ if (!$IsWindows) {
 }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testWorkRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot '.work\canvas\authoring-remediation-tests'))
+$testWorkRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot '.work\pipeline-reset\setup-tests'))
 $fixtureRoot = Join-Path $testWorkRoot ('setup-' + [guid]::NewGuid().ToString('N'))
 $powerShellPath = (Get-Process -Id $PID).Path
 $createdCases = [System.Collections.Generic.List[object]]::new()
@@ -50,12 +50,16 @@ function Write-TestText {
 }
 
 function Write-TestArtifacts {
-  param([Parameter(Mandatory = $true)][string]$TargetPath)
+  param(
+    [Parameter(Mandatory = $true)][string]$TargetPath,
+    [Parameter(Mandatory = $true)][string]$EsmFileName,
+    [Parameter(Mandatory = $true)][string]$ArchiveFileName
+  )
 
   $esmBytes = [byte[]]::new(42)
   [Text.Encoding]::ASCII.GetBytes('TES4').CopyTo($esmBytes, 0)
   [BitConverter]::GetBytes([uint32]18).CopyTo($esmBytes, 4)
-  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath 'Venworks-Canvas-Example.esm'), $esmBytes)
+  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath $EsmFileName), $esmBytes)
 
   $ba2Bytes = [byte[]]::new(70)
   [Text.Encoding]::ASCII.GetBytes('BTDX').CopyTo($ba2Bytes, 0)
@@ -63,7 +67,32 @@ function Write-TestArtifacts {
   [Text.Encoding]::ASCII.GetBytes('GNRL').CopyTo($ba2Bytes, 8)
   [BitConverter]::GetBytes([uint32]1).CopyTo($ba2Bytes, 12)
   [BitConverter]::GetBytes([uint64]68).CopyTo($ba2Bytes, 16)
-  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath 'Venworks-Canvas-Example - Main.ba2'), $ba2Bytes)
+  [System.IO.File]::WriteAllBytes((Join-Path $TargetPath $ArchiveFileName), $ba2Bytes)
+}
+
+function Get-TestSharedConfiguration {
+  return @'
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+
+$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$Global:ModuleVariants = @(
+  [ModuleVariant]::new(
+    'CANVAS', 'Test Canvas', 'Canvas-Plugin.esm', 'Canvas-Packages', 'Test:Canvas',
+    (Join-Path $repositoryRoot 'Staging-Canvas'), 'MODULE_VARIANT_CANVAS_PATH', @(),
+    @(@{ FileName = 'Canvas-Payload.ba2' })
+  )
+  [ModuleVariant]::new(
+    'EXAMPLE', 'Test Example', 'Example-Plugin.esm', 'Example-Packages', 'Test:Examples',
+    (Join-Path $repositoryRoot 'Staging-Example'), 'MODULE_VARIANT_EXAMPLE_PATH', @(),
+    @(@{ FileName = 'Example-Payload.ba2' })
+  )
+  [ModuleVariant]::new(
+    'COMPONENTGALLERY', 'Test Component Gallery', 'ComponentGallery-Plugin.esm', 'ComponentGallery-Packages', 'Test:ComponentGallery',
+    (Join-Path $repositoryRoot 'Staging-ComponentGallery'), 'MODULE_VARIANT_COMPONENT_GALLERY_PATH', @(),
+    @(@{ FileName = 'ComponentGallery-Payload.ba2' })
+  )
+)
+'@
 }
 
 function New-SetupCase {
@@ -75,11 +104,12 @@ function New-SetupCase {
   $caseRoot = Join-Path $fixtureRoot $Name
   $caseRepository = Join-Path $caseRoot 'repository'
   $caseTools = Join-Path $caseRepository 'Tools'
-  $targetRoot = Join-Path $caseRoot 'targets with spaces'
+  $targetRoot = Join-Path $caseRoot 'targets with spaces=values'
   New-Item -ItemType Directory -Force -Path $caseTools, $targetRoot | Out-Null
-  foreach ($fileName in @('sharedConfig.ps1', 'sharedCanvas.ps1', 'sharedCanvasPackaging.ps1', 'setupRepo.ps1', 'checkRepo.ps1')) {
+  foreach ($fileName in @('sharedBuild.ps1', 'setupRepo.ps1', 'checkRepo.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination (Join-Path $caseTools $fileName)
   }
+  Write-TestText -Path (Join-Path $caseTools 'sharedConfig.ps1') -Text (Get-TestSharedConfiguration)
   $case = [pscustomobject]@{
     Root = $caseRoot
     Repository = $caseRepository
@@ -113,9 +143,19 @@ function Invoke-SetupCase {
 }
 
 function Invoke-CheckCase {
-  param([Parameter(Mandatory = $true)][pscustomobject]$Case)
+  param(
+    [Parameter(Mandatory = $true)][pscustomobject]$Case,
+    [switch]$Committed
+  )
 
-  $output = @(& $powerShellPath -NoProfile -File $Case.CheckScript -VariantKeys EXAMPLE 2>&1 | ForEach-Object { [string]$_ })
+  $arguments = @('-NoProfile', '-File', $Case.CheckScript, '-VariantKeys', 'EXAMPLE')
+  if ($Committed) {
+    $arguments += '-Committed'
+  }
+  else {
+    $arguments += @('-EnvironmentPath', $Case.EnvironmentPath)
+  }
+  $output = @(& $powerShellPath @arguments 2>&1 | ForEach-Object { [string]$_ })
   return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
 }
 
@@ -221,13 +261,21 @@ try {
     $result = Invoke-SetupCase -Case $freshCheck -ArgumentList @('-VariantKeys', 'EXAMPLE')
     Assert-TestCondition ($result.ExitCode -eq 0) "$($environmentCase.Name) setup failed: $([string]::Join([Environment]::NewLine, $result.Output))"
     Assert-JunctionRoute -Path (Join-Path $freshCheck.Repository 'Staging-Example') -Target $freshCheck.ExampleTarget
-    Write-TestArtifacts -TargetPath $freshCheck.ExampleTarget
+    Write-TestArtifacts -TargetPath $freshCheck.ExampleTarget -EsmFileName 'Example-Plugin.esm' -ArchiveFileName 'Example-Payload.ba2'
 
     $result = Invoke-CheckCase -Case $freshCheck
     Assert-TestCondition ($result.ExitCode -eq 0) "$($environmentCase.Name) fresh repository check failed: $([string]::Join([Environment]::NewLine, $result.Output))"
   }
 
-  Write-Output 'Setup tests passed: complete preflight, populated-directory preservation, retired migration, invalid Junction and target rejection, three missing-path creations, harmless repetition, and fresh checker handling of unquoted and paired-quoted paths with spaces.'
+  $committed = New-SetupCase -Name 'committed-explicit-artifacts'
+  $committedStaging = Join-Path $committed.Repository 'Staging-Example'
+  New-Item -ItemType Directory -Path $committedStaging | Out-Null
+  Write-TestArtifacts -TargetPath $committedStaging -EsmFileName 'Example-Plugin.esm' -ArchiveFileName 'Example-Payload.ba2'
+  Remove-Item -LiteralPath $committed.EnvironmentPath -Force
+  $result = Invoke-CheckCase -Case $committed -Committed
+  Assert-TestCondition ($result.ExitCode -eq 0) "Committed explicit artifact check failed: $([string]::Join([Environment]::NewLine, $result.Output))"
+
+  Write-Output 'Setup tests passed: complete preflight, populated-directory preservation, retired migration, invalid Junction and target rejection, three missing-path creations, harmless repetition, explicit local/committed ESM and archive routing, and fresh checker handling of unquoted and paired-quoted paths with spaces and equals signs.'
 }
 finally {
   foreach ($case in $createdCases) {

@@ -3,7 +3,7 @@
 Deserializes selected per-ESM Spriggit YAML directories to their configured staging paths.
 
 .PARAMETER VariantKeys
-One or more keys from `$Global:ModuleVariants. Omit this parameter to process all module variants. `VariantKey` remains a compatibility alias.
+One or more configured module variant keys. Omit this parameter to process all variants.
 
 .PARAMETER EnvironmentPath
 Path to the environment file that configures Spriggit and the Starfield data folder.
@@ -19,16 +19,9 @@ param(
 $PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$workRoot = Join-Path $repositoryRoot '.work\canvas'
-$env:DOTNET_CLI_HOME = Join-Path $workRoot 'spriggit-dotnet-home'
-$env:DOTNET_NOLOGO = '1'
-$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
-
-Import-CanvasEnvironment -Path $EnvironmentPath
+Import-BuildEnvironment -Path $EnvironmentPath
 foreach ($requiredName in @('TOOL_PATH_SPRIGGIT', 'STEAM_DATA_FOLDER')) {
   $value = [Environment]::GetEnvironmentVariable($requiredName, 'Process')
   if ([string]::IsNullOrWhiteSpace($value)) {
@@ -36,17 +29,21 @@ foreach ($requiredName in @('TOOL_PATH_SPRIGGIT', 'STEAM_DATA_FOLDER')) {
   }
 }
 
-$spriggitPath = Resolve-CanvasExecutable `
+$spriggitPath = Resolve-BuildExecutable `
   -Path $env:TOOL_PATH_SPRIGGIT `
   -FileName 'Spriggit.CLI.exe' `
   -Description 'Spriggit CLI executable'
-$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $inputRoot = Join-Path $repositoryRoot 'Spriggit'
+$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 $assembledCount = 0
 $skippedCount = 0
 
 foreach ($variant in $variants) {
-  $fileName = "$($variant.PackageBaseName).esm"
+  $fileName = [string]$variant.EsmFileName
+  if ([string]::IsNullOrWhiteSpace($fileName)) {
+    throw "Module variant '$($variant.VariantKey)' does not configure EsmFileName."
+  }
   $pluginInputPath = Join-Path $inputRoot $fileName
   if (!(Test-Path -LiteralPath $pluginInputPath -PathType Container)) {
     Write-Warning "Skipping '$fileName': Spriggit YAML does not exist at '$pluginInputPath'. Staged ESM, if any, was not changed."
@@ -54,7 +51,7 @@ foreach ($variant in $variants) {
     continue
   }
 
-  $pluginOutputPath = Join-Path $variant.StagingFolderPath $fileName
+  $pluginOutputPath = Join-Path ([string]$variant.StagingFolderPath) $fileName
   try {
     & $spriggitPath deserialize `
       --InputPath $pluginInputPath `

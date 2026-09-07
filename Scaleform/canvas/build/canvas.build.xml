@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<canvasMovieBuild name="canvas-host"
+<movieBuild name="canvas-host"
                            role="host"
                            outputFile="CanvasHost.swf"
                            documentClass="../actionscript/CanvasHost.as"
@@ -44,4 +44,4 @@
     <token>ExternalInterface</token>
     <token>navigateToURL</token>
   </forbiddenTokens>
-</canvasMovieBuild>
+</movieBuild>

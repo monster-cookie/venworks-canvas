@@ -6,7 +6,7 @@ Checks UUID reference vectors and source-level guard contracts; does not execute
 param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
 . (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 $canonical = 'a8098c1a-f86e-4b1e-9d7c-5a102bf38460'
 foreach ($inputValue in @($canonical, $canonical.ToUpperInvariant(), '{A8098c1A-f86E-4b1e-9D7c-5A102bF38460}', $canonical.Replace('-', ''))) {

@@ -1,33 +1,32 @@
 <#
 .SYNOPSIS
-Compiles the Papyrus scripts owned by one or more Canvas package variants.
+Compiles the Papyrus scripts owned by one or more configured module variants.
 .DESCRIPTION
-Variant membership comes exclusively from sharedConfig.ps1. Canvas sources are compiled
-against the currently installed Papyrus sources into an owned temporary candidate before
-the selected outputs are promoted beneath .work.
+Variant membership comes from each variant's exact Papyrus namespace. Sources compile into
+a unique work candidate before selected outputs are promoted, preserving unselected outputs.
 #>
 [CmdletBinding()]
 param(
+  [Alias('VariantKey')]
   [string[]]$VariantKeys,
 
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
 
-  [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\scripts')
+  [string]$OutputDirectory
 )
 
-$PSNativeCommandUseErrorActionPreference = $true
+$PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
+. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$workRoot = Join-Path $repositoryRoot '.work\canvas'
-$sourceRoot = Join-Path $repositoryRoot 'Papyrus'
-$resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
-Import-CanvasEnvironment -Path $EnvironmentPath
+foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot', 'ScriptsDirectory')) {
+  if ($null -eq $Global:BuildSettings -or [string]::IsNullOrWhiteSpace([string]$Global:BuildSettings[$settingName])) {
+    throw "BuildSettings.$settingName must be configured."
+  }
+}
 
+Import-BuildEnvironment -Path $EnvironmentPath
 foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAGS', 'PAPYRUS_SCRIPTS_SOURCE_PATH')) {
   $value = [Environment]::GetEnvironmentVariable($requiredName, 'Process')
   if ([string]::IsNullOrWhiteSpace($value)) {
@@ -35,7 +34,17 @@ foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAG
   }
 }
 
-$compilerPath = Resolve-CanvasExecutable `
+$workRoot = Get-BuildNormalizedFullPath -Path ([string]$Global:BuildSettings.WorkRoot)
+$sourceRoot = Resolve-BuildRequiredDirectory `
+  -Path ([string]$Global:BuildSettings.PapyrusSourceRoot) `
+  -Description 'Project Papyrus source root'
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  $OutputDirectory = [string]$Global:BuildSettings.ScriptsDirectory
+}
+$resolvedOutputDirectory = Get-BuildNormalizedFullPath -Path $OutputDirectory
+$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+
+$compilerPath = Resolve-BuildExecutable `
   -Path $env:TOOL_PATH_PAPYRUS_COMPILER `
   -FileName 'PapyrusCompiler.exe' `
   -Description 'Starfield Papyrus compiler'
@@ -43,42 +52,40 @@ $flagsPath = $env:PAPYRUS_COMPILER_FLAGS
 if (Test-Path -LiteralPath $flagsPath -PathType Container) {
   $flagsPath = Join-Path $flagsPath 'Starfield_Papyrus_Flags.flg'
 }
-$resolvedFlagsPath = Resolve-CanvasRequiredFile -Path $flagsPath -Description 'Starfield Papyrus flags file'
-$resolvedInstalledSourcePath = Resolve-CanvasRequiredDirectory `
+$resolvedFlagsPath = Resolve-BuildRequiredFile -Path $flagsPath -Description 'Starfield Papyrus flags file'
+$resolvedInstalledSourcePath = Resolve-BuildRequiredDirectory `
   -Path $env:PAPYRUS_SCRIPTS_SOURCE_PATH `
   -Description 'Installed Papyrus source directory'
 
-Assert-CanvasRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
-New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
+Assert-BuildRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
+[IO.Directory]::CreateDirectory($resolvedOutputDirectory) | Out-Null
 
-$sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-$sources = [System.Collections.Generic.List[string]]::new()
+$relativeOutputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$sources = [Collections.Generic.List[object]]::new()
 foreach ($variant in $variants) {
-  foreach ($relativeSource in @($variant.PapyrusScripts)) {
-    if ($sourceSet.Add([string]$relativeSource)) {
-      $sources.Add([string]$relativeSource)
+  foreach ($source in @(Get-BuildPapyrusSources -Variant $variant -SourceRoot $sourceRoot)) {
+    if ($relativeOutputs.Add([string]$source.RelativeOutput)) {
+      $sources.Add($source)
+    }
+    elseif (@($sources | Where-Object {
+          [string]::Equals([string]$_.RelativeSource, [string]$source.RelativeSource, [StringComparison]::OrdinalIgnoreCase)
+        }).Count -eq 0) {
+      throw "Selected Papyrus namespaces produce the same output '$($source.RelativeOutput)'."
     }
   }
 }
 if ($sources.Count -eq 0) {
-  throw 'The selected variants do not declare any Papyrus scripts.'
-}
-
-$sourcePaths = @{}
-foreach ($relativeSource in $sources) {
-  $sourcePaths[$relativeSource] = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $sourceRoot $relativeSource) `
-    -Description "Canvas Papyrus source '$relativeSource'"
+  throw 'The selected variants do not own any Papyrus sources.'
 }
 
 $transactionRoot = Join-Path $workRoot ('script-build-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $transactionRoot | Out-Null
-$compiledOutputs = [System.Collections.Generic.List[object]]::new()
+Assert-BuildRemovalPath -Path $transactionRoot -AllowedRoot $workRoot
+[IO.Directory]::CreateDirectory($transactionRoot) | Out-Null
+$compiledOutputs = [Collections.Generic.List[object]]::new()
 try {
-  foreach ($relativeSource in $sources) {
-    $sourcePath = [string]$sourcePaths[$relativeSource]
+  foreach ($source in $sources) {
     $compilerArguments = @(
-      $sourcePath
+      [string]$source.Source
       '-f'
       '-optimize'
       "-flags=$resolvedFlagsPath"
@@ -87,37 +94,34 @@ try {
       '-ignorecwd'
     )
 
-    $nativeCommandPreference = $PSNativeCommandUseErrorActionPreference
-    $PSNativeCommandUseErrorActionPreference = $false
     try {
-      & $compilerPath @compilerArguments
+      & $compilerPath @compilerArguments | Out-Host
       $compilerExitCode = $LASTEXITCODE
     }
-    finally {
-      $PSNativeCommandUseErrorActionPreference = $nativeCommandPreference
+    catch {
+      throw "Papyrus compilation failed for '$($source.RelativeSource)' with exit code $LASTEXITCODE. $($_.Exception.Message)"
     }
     if ($compilerExitCode -ne 0) {
-      throw "Papyrus compilation failed for '$relativeSource' with exit code $compilerExitCode."
+      throw "Papyrus compilation failed for '$($source.RelativeSource)' with exit code $compilerExitCode."
     }
 
-    $outputName = [System.IO.Path]::ChangeExtension($relativeSource, '.pex')
-    $candidatePath = Join-Path $transactionRoot $outputName
+    $candidatePath = Join-Path $transactionRoot ([string]$source.RelativeOutput)
     if (!(Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
-      throw "Papyrus compiler did not produce a fresh output for '$relativeSource': $candidatePath"
+      throw "Papyrus compiler did not produce a fresh output for '$($source.RelativeSource)': $candidatePath"
     }
     $compiledOutputs.Add([pscustomobject]@{
       CandidatePath = $candidatePath
-      DestinationPath = Join-Path $resolvedOutputDirectory $outputName
+      DestinationPath = Join-Path $resolvedOutputDirectory ([string]$source.RelativeOutput)
     })
   }
 
   foreach ($compiledOutput in $compiledOutputs) {
     $destinationPath = [string]$compiledOutput.DestinationPath
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
     $temporaryPath = "$destinationPath.$PID-$([guid]::NewGuid().ToString('N')).new"
     try {
       Copy-Item -LiteralPath ([string]$compiledOutput.CandidatePath) -Destination $temporaryPath
-      [System.IO.File]::Move($temporaryPath, $destinationPath, $true)
+      [IO.File]::Move($temporaryPath, $destinationPath, $true)
     }
     finally {
       if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
@@ -128,9 +132,9 @@ try {
 }
 finally {
   if (Test-Path -LiteralPath $transactionRoot -PathType Container) {
-    Assert-CanvasRemovalPath -Path $transactionRoot -AllowedRoot $workRoot
+    Assert-BuildRemovalPath -Path $transactionRoot -AllowedRoot $workRoot
     Remove-Item -LiteralPath $transactionRoot -Recurse -Force
   }
 }
 
-Write-Host -ForegroundColor Green "Compiled $($compiledOutputs.Count) selected Canvas Papyrus scripts to $resolvedOutputDirectory"
+Write-Host -ForegroundColor Green "Compiled $($compiledOutputs.Count) selected Papyrus scripts to $resolvedOutputDirectory"

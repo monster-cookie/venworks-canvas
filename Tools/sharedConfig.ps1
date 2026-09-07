@@ -1,213 +1,90 @@
-[CmdletBinding()]
-param(
-  [switch]$SkipEnvironment
-)
+# Project values for the reusable build scripts maintained in VWTEMPLATE.
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
 
-# Abort on first error
-$PSNativeCommandUseErrorActionPreference = $true
-$ErrorActionPreference = "Stop"
-
-class CanvasModuleVariant {
-  [string]$VariantKey
-  [string]$VariantName
-  [string]$PackageBaseName
-  [string]$StagingFolderPath
-  [string]$EnvironmentVariableName
-  [string]$PluginModulePath
-  [string[]]$PapyrusScripts
-  [string]$ScaleformManifest
-  [string]$ScaleformOutput
-  [string]$UiNamespace
-  [bool]$IncludesPlayerHud
-  [bool]$IncludesShipHud
-
-  CanvasModuleVariant(
-    [string]$variantKey,
-    [string]$variantName,
-    [string]$packageBaseName,
-    [string]$stagingFolderPath,
-    [string]$environmentVariableName,
-    [string]$pluginModulePath,
-    [string[]]$papyrusScripts,
-    [string]$scaleformManifest,
-    [string]$scaleformOutput,
-    [string]$uiNamespace,
-    [bool]$includesPlayerHud,
-    [bool]$includesShipHud
-  ) {
-    $this.VariantKey = $variantKey
-    $this.VariantName = $variantName
-    $this.PackageBaseName = $packageBaseName
-    $this.StagingFolderPath = $stagingFolderPath
-    $this.EnvironmentVariableName = $environmentVariableName
-    $this.PluginModulePath = $pluginModulePath
-    $this.PapyrusScripts = $papyrusScripts
-    $this.ScaleformManifest = $scaleformManifest
-    $this.ScaleformOutput = $scaleformOutput
-    $this.UiNamespace = $uiNamespace
-    $this.IncludesPlayerHud = $includesPlayerHud
-    $this.IncludesShipHud = $includesShipHud
-  }
-}
-
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$sharedConfigEnvironmentPath = Join-Path $repositoryRoot ".env"
-
-if (!$SkipEnvironment) {
-  if (!(Test-Path -LiteralPath $sharedConfigEnvironmentPath -PathType Leaf)) {
-    throw "ERROR: .env file must be created and configured to run this."
-  }
-
-  Write-Host -ForegroundColor Green "Importing ENV Settings from .env file"
-  foreach ($environmentLine in Get-Content -LiteralPath $sharedConfigEnvironmentPath) {
-    $trimmedLine = $environmentLine.Trim()
-    if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith("#")) {
-      continue
-    }
-
-    $separatorIndex = $environmentLine.IndexOf("=")
-    if ($separatorIndex -le 0) {
-      throw "Invalid .env entry: expected NAME=VALUE."
-    }
-
-    $name = $environmentLine.Substring(0, $separatorIndex).Trim()
-    $value = $environmentLine.Substring($separatorIndex + 1).Trim()
-    if ([string]::IsNullOrWhiteSpace($name)) {
-      throw "Invalid .env entry: environment variable name cannot be empty."
-    }
-    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
-        ($value.StartsWith("'") -and $value.EndsWith("'"))) {
-      $value = $value.Substring(1, $value.Length - 2)
-    }
-
-    Set-Item -LiteralPath "env:$name" -Value $value
-  }
-
-  Write-Host -ForegroundColor Yellow "`nTool Settings:"
-  Write-Host -ForegroundColor Yellow "BGS Papyrus Compiler path is $ENV:TOOL_PATH_PAPYRUS_COMPILER"
-  Write-Host -ForegroundColor Yellow "BGS Archive2 path is $ENV:TOOL_PATH_ARCHIVER"
-  Write-Host -ForegroundColor Yellow "BGS xtexconv path is $ENV:TOOL_PATH_XTEXCONV"
-  Write-Host -ForegroundColor Yellow "BGS AssetWatcher path is $ENV:TOOL_PATH_ASSET_WATCHER"
-  Write-Host -ForegroundColor Yellow "BGS AssetWatcher Plugins path is $ENV:TOOL_PATH_ASSET_WATCHER_PLUGINS"
-  Write-Host -ForegroundColor Yellow "`nSpriggit Settings:"
-  Write-Host -ForegroundColor Yellow "Spriggit CLI path is $ENV:TOOL_PATH_SPRIGGIT"
-  Write-Host -ForegroundColor Yellow "Spriggit Version is $ENV:SPRIGGIT_VERSION"
-  Write-Host -ForegroundColor Yellow "`nSteam Settings:"
-  Write-Host -ForegroundColor Yellow "Starfield game folder is set to $ENV:STEAM_GAME_FOLDER."
-  Write-Host -ForegroundColor Yellow "Starfield data folder is set to $ENV:STEAM_DATA_FOLDER."
-  Write-Host -ForegroundColor Yellow "`nPapyrus Settings:"
-  Write-Host -ForegroundColor Yellow "BGS Papyrus Compiler Flags files is $ENV:PAPYRUS_COMPILER_FLAGS"
-  Write-Host -ForegroundColor Yellow "BGS Papyrus Script path is $ENV:PAPYRUS_SCRIPTS_PATH"
-  Write-Host -ForegroundColor Yellow "BGS Papyrus Source path is $ENV:PAPYRUS_SCRIPTS_SOURCE_PATH"
-  Write-Host -ForegroundColor Yellow "`nModule Settings:"
-  Write-Host -ForegroundColor Yellow "Legacy Module Database Folder is $ENV:MODULE_DATABASE_PATH"
-  Write-Host -ForegroundColor Yellow "Canvas Module Folder is $ENV:MODULE_VARIANT_CANVAS_PATH"
-  Write-Host -ForegroundColor Yellow "Example Module Folder is $ENV:MODULE_VARIANT_EXAMPLE_PATH"
-  Write-Host -ForegroundColor Yellow "Component Gallery Module Folder is $ENV:MODULE_VARIANT_COMPONENT_GALLERY_PATH"
-  Write-Host -ForegroundColor Yellow "Module Scripting Folder is $ENV:MODULE_SCRIPTS_PATH"
-  Write-Host -ForegroundColor Yellow "Module Scripting Source Folder is $ENV:MODULE_SCRIPTS_SOURCE_PATH"
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$Global:BuildSettings = @{
+  WorkRoot = Join-Path $repositoryRoot '.work/canvas'
+  PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
+  ScriptsDirectory = Join-Path $repositoryRoot '.work/canvas/scripts'
+  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform/canvas'
+  ScaleformDirectory = Join-Path $repositoryRoot '.work/canvas/scaleform'
 }
 
 $Global:ModuleVariants = @(
-  [CanvasModuleVariant]::new(
-    "CANVAS",
-    "Venworks Canvas",
-    "Venworks-Canvas",
-    (Join-Path $repositoryRoot "Staging-Canvas"),
-    "MODULE_VARIANT_CANVAS_PATH",
-    "$ENV:MODULE_VARIANT_CANVAS_PATH",
+  [ModuleVariant]::new(
+    'CANVAS', 'Venworks Canvas', 'Venworks-Canvas.esm', 'Venworks-Canvas',
+    'Venworks:Canvas', (Join-Path $repositoryRoot 'Staging-Canvas'), 'MODULE_VARIANT_CANVAS_PATH',
     @(
-      "Venworks\Canvas\GlobalConfig.psc"
-      "Venworks\Canvas\Enumerations.psc"
-      "Venworks\Canvas\Base\BaseQuest.psc"
-      "Venworks\Canvas\Registry.psc"
+      @{
+        Name = 'canvas-host'; Kind = 'Flex'; OutputSet = 'movies'
+        ManifestPath = 'Scaleform/canvas/build/canvas.build.xml'
+        Outputs = @(@{ OutputFile = 'CanvasHost.swf' })
+      }
+      @{
+        Name = 'player-watch'; Kind = 'Patch'; OutputSet = 'player-hud'
+        PatchPath = 'Scaleform/canvas/patches/player-hud-watch-disabled.xml'
+        Outputs = @(
+          @{ InputFile = 'playerhudcomponents.swf'; OutputFile = 'playerhudcomponents.swf' }
+          @{ InputFile = 'playerhudcomponents.gfx'; OutputFile = 'playerhudcomponents.gfx' }
+          @{ InputFile = 'playerhudcomponents_lrg.swf'; OutputFile = 'playerhudcomponents_lrg.swf' }
+          @{ InputFile = 'playerhudcomponents_lrg.gfx'; OutputFile = 'playerhudcomponents_lrg.gfx' }
+        )
+      }
+      @{
+        Name = 'ship-loader'; Kind = 'Patch'; OutputSet = 'ship-hud'
+        PatchPath = 'Scaleform/canvas/patches/spaceship-hud-auxiliary-loader.xml'
+        Outputs = @(
+          @{ InputFile = 'spaceshiphudmenu.swf'; OutputFile = 'spaceshiphudmenu.swf' }
+          @{ InputFile = 'spaceshiphudmenu_lrg.swf'; OutputFile = 'spaceshiphudmenu_lrg.swf' }
+        )
+      }
     ),
-    "build\canvas.build.xml",
-    "CanvasHost.swf",
-    "",
-    $true,
-    $true
+    @(@{
+      FileName = 'Venworks-Canvas - Main.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048
+      IncludePapyrus = $true
+      Assets = @(
+        @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+        @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
+        @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
+        @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
+        @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.gfx'; Target = 'Interface/playerhudcomponents_lrg.gfx' }
+        @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+        @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+      )
+    })
   )
-
-  [CanvasModuleVariant]::new(
-    "EXAMPLE",
-    "Venworks Canvas Example",
-    "Venworks-Canvas-Example",
-    (Join-Path $repositoryRoot "Staging-Example"),
-    "MODULE_VARIANT_EXAMPLE_PATH",
-    "$ENV:MODULE_VARIANT_EXAMPLE_PATH",
-    @("Venworks\CanvasExamples\ExampleRegistrar.psc"),
-    "build\example.build.xml",
-    "CanvasExample.swf",
-    "venworks.canvas.example",
-    $false,
-    $false
+  [ModuleVariant]::new(
+    'EXAMPLE', 'Venworks Canvas Example', 'Venworks-Canvas-Example.esm', 'Venworks-Canvas-Example',
+    'Venworks:CanvasExamples', (Join-Path $repositoryRoot 'Staging-Example'), 'MODULE_VARIANT_EXAMPLE_PATH',
+    @(@{
+      Name = 'canvas-example'; Kind = 'Flex'; OutputSet = 'movies'
+      ManifestPath = 'Scaleform/canvas/build/example.build.xml'
+      Outputs = @(@{ OutputFile = 'CanvasExample.swf' })
+    }),
+    @(@{
+      FileName = 'Venworks-Canvas-Example - Main.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048
+      IncludePapyrus = $true
+      Assets = @(
+        @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf' }
+        @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf' }
+      )
+    })
   )
-
-  [CanvasModuleVariant]::new(
-    "COMPONENTGALLERY",
-    "Venworks Canvas Component Gallery",
-    "Venworks-Canvas-ComponentGallery",
-    (Join-Path $repositoryRoot "Staging-ComponentGallery"),
-    "MODULE_VARIANT_COMPONENT_GALLERY_PATH",
-    "$ENV:MODULE_VARIANT_COMPONENT_GALLERY_PATH",
-    @("Venworks\CanvasComponentGallery\ComponentGalleryRegistrar.psc"),
-    "build\component-gallery.build.xml",
-    "CanvasComponentGallery.swf",
-    "venworks.canvas.component-gallery",
-    $false,
-    $false
+  [ModuleVariant]::new(
+    'COMPONENTGALLERY', 'Venworks Canvas Component Gallery', 'Venworks-Canvas-ComponentGallery.esm', 'Venworks-Canvas-ComponentGallery',
+    'Venworks:CanvasComponentGallery', (Join-Path $repositoryRoot 'Staging-ComponentGallery'), 'MODULE_VARIANT_COMPONENT_GALLERY_PATH',
+    @(@{
+      Name = 'canvas-component-gallery'; Kind = 'Flex'; OutputSet = 'movies'
+      ManifestPath = 'Scaleform/canvas/build/component-gallery.build.xml'
+      Outputs = @(@{ OutputFile = 'CanvasComponentGallery.swf' })
+    }),
+    @(@{
+      FileName = 'Venworks-Canvas-ComponentGallery - Main.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048
+      IncludePapyrus = $true
+      Assets = @(
+        @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf' }
+        @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf' }
+      )
+    })
   )
 )
-
-function Global:Get-ModuleVariants {
-  [CmdletBinding()]
-  param(
-    [Alias("VariantKey")]
-    [string[]]$VariantKeys
-  )
-
-  if ($null -eq $VariantKeys -or $VariantKeys.Count -eq 0) {
-    return @($Global:ModuleVariants)
-  }
-
-  $normalizedKeys = @($VariantKeys | ForEach-Object {
-    if ([string]::IsNullOrWhiteSpace($_)) {
-      throw "Variant keys cannot be empty."
-    }
-    $_.Trim().ToUpperInvariant()
-  })
-  if (@($normalizedKeys | Select-Object -Unique).Count -ne $normalizedKeys.Count) {
-    throw "Variant keys cannot be repeated."
-  }
-
-  $selectedVariants = foreach ($normalizedKey in $normalizedKeys) {
-    $matchingVariants = @($Global:ModuleVariants | Where-Object {
-      [string]$_.VariantKey -eq $normalizedKey
-    })
-    if ($matchingVariants.Count -ne 1) {
-      throw "Unknown module variant key '$normalizedKey'."
-    }
-    $matchingVariants[0]
-  }
-
-  return @($selectedVariants)
-}
-
-$Global:Databases = @($Global:ModuleVariants | ForEach-Object { "$($_.PackageBaseName).esm" })
-
-$Global:ScriptingNamespaceModuleCompany = "Venworks"
-$Global:ScriptingNamespaceModuleName = "Canvas"
-$Global:SharedConfigurationRepositoryRoot = $repositoryRoot
-$Global:SharedConfigurationEnvironmentLoaded = !$SkipEnvironment
-$Global:SharedConfigurationLoaded = $true
-
-if (!$SkipEnvironment) {
-  Write-Host -ForegroundColor Yellow "Papyrus Scripting namespace for module is $Global:ScriptingNamespaceModuleCompany`:$Global:ScriptingNamespaceModuleName"
-
-  Write-Host -ForegroundColor Yellow "`nGame Database Files:"
-  foreach ($database in $Global:Databases) {
-    Write-Host -ForegroundColor Yellow $database
-  }
-  Write-Host -ForegroundColor Yellow "`n"
-}
