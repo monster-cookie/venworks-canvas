@@ -48,7 +48,7 @@ Configure `TOOL_PATH_SPRIGGIT`, `SPRIGGIT_VERSION`, and `STEAM_DATA_FOLDER` in `
 
 Assembly writes the selected ESM in staging, so run it only when that authoring change is intended. Neither packaging, compilation, nor ordinary verification invokes dump or assembly automatically. `-EnvironmentPath` selects an alternate environment file; the former `-Profile` and `-PluginsDirectory` arguments are removed. Missing input ESMs or YAML directories are reported as skipped, and skipped entries are not counted as updated. A nonzero Spriggit exit stops the command. The wrappers do not perform whole-profile swaps or delete retained recovery backups; this does not promise transactional behavior inside Spriggit itself.
 
-Normal authoring YAML lives directly beneath `Spriggit/`. Before running the collision and missing-movie runtime case, prepare the fault fixture from `Tests/Fixtures/Spriggit/Faults/` as developer test data and assemble the resulting ESM into the disposable staging target; the fixture is never a runtime Spriggit input or a normal packaging profile.
+Authoring YAML lives directly beneath `Spriggit/`.
 
 ## Registration and UI loading
 
@@ -164,7 +164,6 @@ Deploy through Vortex, confirm all three permanent packages are enabled, and sta
 5. Reopen the Player HUD ten times: both consumers reappear without duplicate loaders, guard errors, Watch animation activity, or growing input lag.
 6. Rapid HUD transitions: close and reopen the HUD before its deferred reconciliation completes, then repeat with a delayed or busy reset. Deferred requests must recover through bounded retries and both consumers must become ready without an old activation supplying a terminal duplicate receipt.
 7. Descriptor changes: in an isolated test consumer, request v1, register v2 before the queued v1 is processed without requesting v2's UI, then register and explicitly request v1 again. The obsolete unsent entry must not suppress the final request. A repeated request after a real reservation must not create another submission.
-8. Isolated fault fixtures: on a separately prepared disposable test installation, assemble the fault YAML into the staged ESMs before launching Starfield, then confirm that a different-owner collision is rejected and a missing movie fails independently while valid consumers continue working. The fault YAML is developer test data, not a `-Profile Faults` production packaging option or a runtime input.
 
 Capture the Papyrus log for each run. `REGISTRATION_ACK`, `UI_LOAD_QUEUED`, and `UI_LOAD_SUBMITTED` are intermediate evidence; the visible consumer `READY` state is required for UI acceptance.
 

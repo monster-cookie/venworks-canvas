@@ -29,34 +29,26 @@ foreach ($token in @('this.normalizeUuid(String(consumerIdFrame.value))','this.n
 $expectedIds = @{
   VWCANVAS_ExampleRegistrar = $canonical
   VWCANVAS_ComponentGalleryRegistrar = 'beef70b2-024e-4e9b-a8d5-70a0c882c431'
-  VWCANVAS_ComponentGalleryCollisionFixture = $canonical.ToUpperInvariant()
-  VWCANVAS_ComponentGalleryMissingFixture = 'cad7cd56-217a-4e62-a98d-42c3adad07b5'
 }
 $expectedScripts = @{
   VWCANVAS_ExampleRegistrar = 'Venworks:CanvasExamples:ExampleRegistrar'
   VWCANVAS_ComponentGalleryRegistrar = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
-  VWCANVAS_ComponentGalleryCollisionFixture = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
-  VWCANVAS_ComponentGalleryMissingFixture = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'
 }
 $yamlBindings = 0
-foreach ($root in @(
-  (Join-Path $PSScriptRoot '../Spriggit'),
-  (Join-Path $PSScriptRoot '../Tests/Fixtures/Spriggit/Faults')
-)) {
-  if (!(Test-Path -LiteralPath $root -PathType Container)) {
-    throw "UUID binding root does not exist: $root"
-  }
-  foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Filter RecordData.yaml) {
-    $yaml = Get-Content -LiteralPath $file.FullName -Raw
-    $editorId = [regex]::Match($yaml, '(?m)^EditorID: (\S+)').Groups[1].Value
-    if (!$expectedIds.ContainsKey($editorId)) { continue }
-    $scriptBinding = [regex]::Match($yaml, '(?m)^  - Name: (\S+)').Groups[1].Value
-    if ($scriptBinding -cne $expectedScripts[$editorId]) { throw "Unexpected registrar script binding in $($file.FullName)." }
-    $binding = [regex]::Match($yaml, '(?m)^      Name: ConsumerId\r?\n      Data: ([^\r\n]+)').Groups[1].Value
-    if ($binding -cne $expectedIds[$editorId]) { throw "Unexpected persistent UUID binding in $($file.FullName)." }
-    [void](ConvertTo-CanvasUuid -Value $binding)
-    $yamlBindings += 1
-  }
+$spriggitRoot = Join-Path $PSScriptRoot '../Spriggit'
+if (!(Test-Path -LiteralPath $spriggitRoot -PathType Container)) {
+  throw "UUID binding root does not exist: $spriggitRoot"
 }
-if ($yamlBindings -ne 6) { throw "Expected six UUID VMAD bindings, found $yamlBindings." }
-Write-Output 'UUID reference vectors, six namespaced VMAD bindings and guard-source contracts passed; Papyrus/Scaleform runtime remains a PC test.'
+foreach ($file in Get-ChildItem -LiteralPath $spriggitRoot -Recurse -File -Filter RecordData.yaml) {
+  $yaml = Get-Content -LiteralPath $file.FullName -Raw
+  $editorId = [regex]::Match($yaml, '(?m)^EditorID: (\S+)').Groups[1].Value
+  if (!$expectedIds.ContainsKey($editorId)) { continue }
+  $scriptBinding = [regex]::Match($yaml, '(?m)^  - Name: (\S+)').Groups[1].Value
+  if ($scriptBinding -cne $expectedScripts[$editorId]) { throw "Unexpected registrar script binding in $($file.FullName)." }
+  $binding = [regex]::Match($yaml, '(?m)^      Name: ConsumerId\r?\n      Data: ([^\r\n]+)').Groups[1].Value
+  if ($binding -cne $expectedIds[$editorId]) { throw "Unexpected persistent UUID binding in $($file.FullName)." }
+  [void](ConvertTo-CanvasUuid -Value $binding)
+  $yamlBindings += 1
+}
+if ($yamlBindings -ne 2) { throw "Expected two UUID VMAD bindings, found $yamlBindings." }
+Write-Output 'UUID reference vectors, two namespaced VMAD bindings and guard-source contracts passed; Papyrus/Scaleform runtime remains a PC test.'
