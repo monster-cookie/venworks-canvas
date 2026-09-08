@@ -58,6 +58,11 @@ function Get-PipelineToolingContract {
         Length = [int64]994
         Sha256 = 'e8bfe5fc4195379edab4044b0495d6cf10cf1be19ebeb400690344981d1538dd'
       }
+      FlexConfig = [pscustomobject]@{
+        RelativePath = 'frameworks\flex-config.xml'
+        Length = [int64]19529
+        Sha256 = '08cc21404b146d3f623f4176a8e19734d35e81ea852d802283748708511d4fca'
+      }
       MxmlcJar = [pscustomobject]@{
         RelativePath = 'lib\mxmlc.jar'
         Length = [int64]2107651
@@ -203,9 +208,9 @@ function Test-PipelineFlexInstallation {
   param([Parameter(Mandatory = $true)][string]$Root, [Parameter(Mandatory = $true)]$Contract)
   return (
     (Test-PipelineFileContract -Path (Join-Path $Root $Contract.Installed.FlexDescription.RelativePath) -FileContract $Contract.Installed.FlexDescription) -and
+    (Test-PipelineFileContract -Path (Join-Path $Root $Contract.Installed.FlexConfig.RelativePath) -FileContract $Contract.Installed.FlexConfig) -and
     (Test-PipelineFileContract -Path (Join-Path $Root $Contract.Installed.MxmlcJar.RelativePath) -FileContract $Contract.Installed.MxmlcJar) -and
-    (Test-PipelineFileContract -Path (Join-Path $Root $Contract.Installed.CompcJar.RelativePath) -FileContract $Contract.Installed.CompcJar) -and
-    (Test-Path -LiteralPath (Join-Path $Root 'frameworks\flex-config.xml') -PathType Leaf)
+    (Test-PipelineFileContract -Path (Join-Path $Root $Contract.Installed.CompcJar.RelativePath) -FileContract $Contract.Installed.CompcJar)
   )
 }
 

@@ -120,6 +120,7 @@ function Initialize-TestPipelineFixture {
       JavaExecutable = (Get-TestFileContract -Path (Join-Path $javaSource 'fixture-jdk\bin\java.exe') -RelativePath 'bin\java.exe')
       JpexsJar = (Get-TestFileContract -Path (Join-Path $jpexsSource 'ffdec.jar') -RelativePath 'ffdec.jar')
       FlexDescription = (Get-TestFileContract -Path (Join-Path $flexSource 'flex-sdk-description.xml') -RelativePath 'flex-sdk-description.xml')
+      FlexConfig = (Get-TestFileContract -Path (Join-Path $flexSource 'frameworks\flex-config.xml') -RelativePath 'frameworks\flex-config.xml')
       MxmlcJar = (Get-TestFileContract -Path (Join-Path $flexSource 'lib\mxmlc.jar') -RelativePath 'lib\mxmlc.jar')
       CompcJar = (Get-TestFileContract -Path (Join-Path $flexSource 'lib\compc.jar') -RelativePath 'lib\compc.jar')
       PlayerGlobal = (Get-TestFileContract -Path $playerGlobalPath -RelativePath 'frameworks\libs\player\11.1\playerglobal.swc')
@@ -151,6 +152,8 @@ Assert-TestCondition ($production.Installed.JavaExecutable.Length -eq 50304) 'Pr
 Assert-TestCondition ($production.Installed.JavaExecutable.Sha256 -ceq '82051fdab26319d77d20cc0065045d05ec00b3e3d05f44935d7c06b96b621d55') 'Production Temurin java.exe SHA-256 changed unexpectedly.'
 Assert-TestCondition ($production.Versions.Jpexs -ceq '26.2.1') 'Production JPEXS pin changed unexpectedly.'
 Assert-TestCondition ($production.Versions.ApacheFlex -ceq '4.16.1') 'Production Apache Flex pin changed unexpectedly.'
+Assert-TestCondition ($production.Installed.FlexConfig.Length -eq 19529) 'Production Apache Flex configuration length changed unexpectedly.'
+Assert-TestCondition ($production.Installed.FlexConfig.Sha256 -ceq '08cc21404b146d3f623f4176a8e19734d35e81ea852d802283748708511d4fca') 'Production Apache Flex configuration SHA-256 changed unexpectedly.'
 Assert-TestCondition ($production.Versions.AdobeFlex -ceq '4.6.0.23201B') 'Production Adobe Flex pin changed unexpectedly.'
 Assert-TestCondition ($production.Artifacts.AdobeFlex.Length -eq 343973963) 'Production Adobe Flex archive length changed unexpectedly.'
 Assert-TestCondition ($production.Artifacts.AdobeFlex.Sha256 -ceq '622b63f29de44600ff8d4231174a70fcb3085812c0e146a42e91877ca8b46798') 'Production Adobe Flex archive SHA-256 changed unexpectedly.'
@@ -186,6 +189,13 @@ try {
   Invoke-PipelineToolingInstall -Contract $fixture.Contract -RepositoryRoot $repositoryRoot -ToolRoot $toolRoot `
     -WorkspaceRoot $workspaceRoot -ArtifactCachePath $fixture.Cache -Offline 6>&1 | Out-Null
   Assert-TestCondition (Test-PipelineFileContract -Path $installedJavaPath -FileContract $fixture.Contract.Installed.JavaExecutable) 'Setup did not repair a zero-byte java.exe from the pinned archive.'
+
+  $installedFlexConfigPath = Join-Path $toolRoot 'flex\frameworks\flex-config.xml'
+  [System.IO.File]::WriteAllText($installedFlexConfigPath, '<corrupt />')
+  Assert-TestCondition (!(Test-PipelineFlexInstallation -Root (Join-Path $toolRoot 'flex') -Contract $fixture.Contract)) 'A corrupt flex-config.xml was incorrectly reusable.'
+  Invoke-PipelineToolingInstall -Contract $fixture.Contract -RepositoryRoot $repositoryRoot -ToolRoot $toolRoot `
+    -WorkspaceRoot $workspaceRoot -ArtifactCachePath $fixture.Cache -Offline 6>&1 | Out-Null
+  Assert-TestCondition (Test-PipelineFileContract -Path $installedFlexConfigPath -FileContract $fixture.Contract.Installed.FlexConfig) 'Setup did not repair flex-config.xml from the pinned Apache Flex archive.'
 
   $downloadTools = Join-Path $fixtureRoot 'download-tools'
   $downloadWorkspace = Join-Path $fixtureRoot 'download-workspace'

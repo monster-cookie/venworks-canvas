@@ -433,7 +433,7 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndIf
   Int registeredIndex = FindConsumerIndexLocked(result.ConsumerId)
   ; A saved or exhausted positive timer is not a permanent gate. Negative submission ownership never expires here.
-  If (UiPumpBase > 0 && now >= UiPumpExpiresAt)
+  If (UiPumpBase > 0 && (now >= UiPumpExpiresAt || UiPumpExpiresAt > now + 30.0))
     UiPumpBase = 0
     UiCompletedSubmissionTicket = 0
     UiPumpExpiresAt = 0.0

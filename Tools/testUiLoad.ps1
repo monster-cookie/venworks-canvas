@@ -90,7 +90,8 @@ function Assert-UiLoadSourceContract {
     'entry.Submitted = True', 'attempt < 20', 'result.Epoch == UiEpoch', 'UiPumpBase = -ticket', 'UiCompletedSubmissionTicket = timerId - attempt',
     'attempt >= 51 && attempt <= 70', 'attempt < 70', 'UiPumpBase == -ticket && UiCompletedSubmissionTicket == ticket',
     'UiAppliedActivationRequest != UiActivationRequest', 'UiAppliedActivationRequest = UiActivationRequest',
-    'UiPumpBase > 0 && now >= UiPumpExpiresAt', 'UiLoads = new UiLoadEntry[0]'
+    'UiPumpBase > 0 && now >= UiPumpExpiresAt',
+    'UiPumpBase > 0 && (now >= UiPumpExpiresAt || UiPumpExpiresAt > now + 30.0)', 'UiLoads = new UiLoadEntry[0]'
   )) {
     if (![regex]::IsMatch($Registry, [regex]::Escape($token) + '(?![A-Za-z0-9_])')) { throw "Missing load-queue invariant: $token" }
   }
@@ -326,9 +327,9 @@ foreach ($packet in $invalid) {
   if (!$caught) { throw 'Invalid UI packet was accepted.' }
   $rejected += 1
 }
-$enumerations = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Enumerations.psc') -Raw
-$registry = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Registry.psc') -Raw
-$movie = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/canvas/actionscript/CanvasHost.as') -Raw
+$enumerations = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Enumerations.psc') -Raw) -replace '\r\n?', "`n"
+$registry = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Papyrus/Venworks/Canvas/Registry.psc') -Raw) -replace '\r\n?', "`n"
+$movie = (Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/canvas/actionscript/CanvasHost.as') -Raw) -replace '\r\n?', "`n"
 Assert-UiLoadSourceContract -Enumerations $enumerations -Registry $registry -Movie $movie
 
 # C-005: old submitted work cannot satisfy a request while a newer HUD activation awaits reset.
@@ -469,6 +470,7 @@ $mutations = @(
   @('Registry', 'UiAppliedActivationRequest != UiActivationRequest', 'True'),
   @('Registry', 'result.Epoch == UiEpoch', 'True'),
   @('Registry', 'UiPumpBase > 0 && now >= UiPumpExpiresAt', 'False'),
+  @('Registry', 'UiPumpBase > 0 && (now >= UiPumpExpiresAt || UiPumpExpiresAt > now + 30.0)', 'False'),
   @('Registry', 'ElseIf (UiCompletedSubmissionTicket == -UiPumpBase)', 'ElseIf (False)'),
   @('Registry', 'result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0', 'result.TimerId > 0'),
   @('Registry', 'UiLoads = new UiLoadEntry[0]', 'Consumers = new ConsumerRegistration[0]'),

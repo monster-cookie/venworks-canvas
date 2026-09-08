@@ -72,7 +72,7 @@ $jpexsPath = Join-Path $jpexsRoot $contract.Installed.JpexsJar.RelativePath
 $flexDescriptionPath = Join-Path $flexRoot $contract.Installed.FlexDescription.RelativePath
 $mxmlcPath = Join-Path $flexRoot $contract.Installed.MxmlcJar.RelativePath
 $compcPath = Join-Path $flexRoot $contract.Installed.CompcJar.RelativePath
-$flexConfigPath = Join-Path $flexRoot 'frameworks\flex-config.xml'
+$flexConfigPath = Join-Path $flexRoot $contract.Installed.FlexConfig.RelativePath
 $playerGlobalPath = Join-Path $flexRoot $contract.Installed.PlayerGlobal.RelativePath
 
 $javaPinned = $toolRootSafe -and (Test-PipelineJavaInstallation -Root $javaRoot -Contract $contract)
