@@ -16,7 +16,7 @@ Path to the Apache Flex SDK containing mxmlc.jar, flex-config.xml, and playerglo
 .PARAMETER VanillaInterfacePath
 Directory containing the current input movies for selected patch jobs, either directly or beneath an Interface child directory.
 .PARAMETER OutputDirectory
-Build output directory. Defaults to BuildSettings.ScaleformDirectory and also accepts the OutputDir alias.
+Alternative build output directory used instead of publishing final loose files to the selected variants' staging targets. It must be beneath BuildSettings.WorkRoot and also accepts the OutputDir alias.
 .PARAMETER WorkDirectory
 Temporary build directory. Defaults beneath BuildSettings.WorkRoot and also accepts the WorkDir alias.
 .PARAMETER KeepWork
@@ -55,6 +55,7 @@ if ($null -eq $sharedConfiguration -or ![bool]$sharedConfiguration.Value) {
   . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
 }
 . (Join-Path $PSScriptRoot 'sharedScaleform.ps1')
+. (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $allVariants = @(Get-ModuleVariants)
@@ -70,23 +71,63 @@ if ($jobs.Count -eq 0) {
   return
 }
 
-if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-  $OutputDirectory = [string]$Global:BuildSettings.ScaleformDirectory
+$useStagingOutput = [string]::IsNullOrWhiteSpace($OutputDirectory)
+$stagingOperations = if ($useStagingOutput) {
+  @(Get-BuildStagingOperations -SelectedVariants $variants -AllVariants $allVariants)
+}
+else { @() }
+if ($useStagingOutput) {
+  $OutputDirectory = Join-Path ([string]$Global:BuildSettings.WorkRoot) ('scaleform-output-' + [guid]::NewGuid().ToString('N'))
 }
 if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
   $WorkDirectory = Join-Path ([string]$Global:BuildSettings.WorkRoot) 'scaleform-build'
 }
 
-$results = @(Invoke-BuildScaleformJobs `
-  -Jobs $jobs `
-  -JavaPath $JavaPath `
-  -JpexsJarPath $JpexsJarPath `
-  -FlexSdkPath $FlexSdkPath `
-  -ScaleformSourceRoot ([string]$Global:BuildSettings.ScaleformSourceRoot) `
-  -InputDirectory $VanillaInterfacePath `
-  -OutputDirectory $OutputDirectory `
-  -WorkDirectory $WorkDirectory `
-  -AllowedRoot ([string]$Global:BuildSettings.WorkRoot) `
-  -KeepWork:$KeepWork)
+$results = @()
+try {
+  $results = @(Invoke-BuildScaleformJobs `
+    -Jobs $jobs `
+    -JavaPath $JavaPath `
+    -JpexsJarPath $JpexsJarPath `
+    -FlexSdkPath $FlexSdkPath `
+    -ScaleformSourceRoot ([string]$Global:BuildSettings.ScaleformSourceRoot) `
+    -InputDirectory $VanillaInterfacePath `
+    -OutputDirectory $OutputDirectory `
+    -WorkDirectory $WorkDirectory `
+    -AllowedRoot ([string]$Global:BuildSettings.WorkRoot) `
+    -KeepWork:$KeepWork)
 
-Write-Host -ForegroundColor Green "Built $($results.Count) selected Scaleform outputs for $([string]::Join(', ', @($variants.VariantKey))) at $([System.IO.Path]::GetFullPath($OutputDirectory))"
+  if ($useStagingOutput) {
+    $publicationPlans = @(Get-BuildScaleformStagingPlans -Variants $variants -Results $results)
+    $stagingOperationsByKey = @{}
+    foreach ($operation in $stagingOperations) {
+      $stagingOperationsByKey[[string]$operation.Key] = $operation
+    }
+    foreach ($plan in $publicationPlans) {
+      $allowedRoot = [string]$stagingOperationsByKey[[string]$plan.VariantKey].StagingPath
+      [void](Assert-BuildPublicationDestination -Path ([string]$plan.DestinationPath) -AllowedRoot $allowedRoot)
+    }
+    foreach ($operation in $stagingOperations) {
+      Assert-BuildJunctionTarget -StagingPath ([string]$operation.StagingPath) -ExpectedTargetPath ([string]$operation.InstallPath)
+    }
+    foreach ($plan in $publicationPlans) {
+      $allowedRoot = [string]$stagingOperationsByKey[[string]$plan.VariantKey].StagingPath
+      Publish-BuildScaleformFile -CandidatePath ([string]$plan.CandidatePath) -DestinationPath ([string]$plan.DestinationPath) -AllowedRoot $allowedRoot
+    }
+    Write-Host -ForegroundColor Green "Built and staged $($results.Count) selected Scaleform outputs across $($publicationPlans.Count) loose-file targets for $([string]::Join(', ', @($variants.VariantKey)))"
+  }
+  else {
+    Write-Host -ForegroundColor Green "Built $($results.Count) selected Scaleform outputs for $([string]::Join(', ', @($variants.VariantKey))) at alternative output $([System.IO.Path]::GetFullPath($OutputDirectory))"
+  }
+}
+finally {
+  if ($useStagingOutput -and (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
+    if ($KeepWork) {
+      Write-Host -ForegroundColor Yellow "Scaleform output candidates retained at $([System.IO.Path]::GetFullPath($OutputDirectory))"
+    }
+    else {
+      Assert-BuildRemovalPath -Path $OutputDirectory -AllowedRoot ([string]$Global:BuildSettings.WorkRoot)
+      Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
+    }
+  }
+}

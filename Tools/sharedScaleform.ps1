@@ -478,22 +478,8 @@ function Publish-BuildScaleformFile {
   )
 
   $resolvedCandidate = Assert-BuildScaleformFile -Path $CandidatePath -Description 'Scaleform file candidate'
-  $resolvedDestination = [System.IO.Path]::GetFullPath($DestinationPath)
-  Assert-BuildRemovalPath -Path $resolvedDestination -AllowedRoot $AllowedRoot
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedDestination) | Out-Null
-  $expectedHash = Get-BuildFileSha256 -Path $resolvedCandidate
-  $temporaryPath = "$resolvedDestination.$PID-$([guid]::NewGuid().ToString('N')).new"
-  try {
-    Copy-Item -LiteralPath $resolvedCandidate -Destination $temporaryPath
-    if ((Get-BuildFileSha256 -Path $temporaryPath) -cne $expectedHash) {
-      throw "Scaleform publication copy differs for '$resolvedDestination'."
-    }
-    [System.IO.File]::Move($temporaryPath, $resolvedDestination, $true)
-    [void](Assert-BuildScaleformFile -Path $resolvedDestination -Description 'Published Scaleform file')
-  }
-  finally {
-    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
-  }
+  $resolvedDestination = Publish-BuildFileAtomically -CandidatePath $resolvedCandidate -DestinationPath $DestinationPath -AllowedRoot $AllowedRoot -Description 'Scaleform file'
+  [void](Assert-BuildScaleformFile -Path $resolvedDestination -Description 'Published Scaleform file')
 }
 
 function Invoke-BuildScaleformMovieBuild {
@@ -782,7 +768,7 @@ function Invoke-BuildScaleformJobs {
         if ([string]$result.OutputFile -cne $expectedOutput) {
           throw "Scaleform job '$($job.Name)' emitted '$($result.OutputFile)' instead of '$expectedOutput'."
         }
-        $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $expectedOutput; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $expectedOutput) })
+        $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $expectedOutput; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $expectedOutput); VariantKey = $job.VariantKey })
       }
       $expectedFiles = @($group.Group | ForEach-Object { [string]$_.Outputs[0].OutputFile })
       Assert-BuildScaleformOutputSet -Directory $candidateDirectory -ExpectedFiles $expectedFiles -Description "Selected '$($group.Name)' Scaleform movies"
@@ -812,7 +798,7 @@ function Invoke-BuildScaleformJobs {
       New-Item -ItemType Directory -Path $candidateDirectory, $patchWorkDirectory | Out-Null
       foreach ($output in @($job.Outputs)) {
         [void](Invoke-BuildPatchedScaleformMovie -InputPath (Join-Path $resolvedInputDirectory $output.InputFile) -OutputPath (Join-Path $candidateDirectory $output.OutputFile) -PatchPath $job.PatchPath -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsPath -FlexSdkPath $resolvedFlexSdkPath -WorkDirectory $patchWorkDirectory -KeepWork:$KeepWork)
-        $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $output.OutputFile; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $output.OutputFile) })
+        $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $output.OutputFile; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $output.OutputFile); VariantKey = $job.VariantKey })
       }
       $expectedFiles = @($job.Outputs | ForEach-Object { [string]$_.OutputFile })
       Publish-BuildValidatedScaleformOutputSet -CandidateDirectory $candidateDirectory -DestinationDirectory (Join-Path $resolvedOutputDirectory $job.OutputSet) -WorkDirectory $runDirectory -AllowedRoot $resolvedAllowedRoot -ExpectedFiles $expectedFiles -Description $job.Name

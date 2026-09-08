@@ -136,6 +136,30 @@ function Test-BuildOverlappingPaths {
     $rightPath.StartsWith($leftPrefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-BuildJunctionTarget {
+  param([Parameter(Mandatory = $true)][IO.DirectoryInfo]$Item)
+
+  $targets = @($Item.Target)
+  if ($targets.Count -ne 1) { return $null }
+  return Get-BuildNormalizedFullPath -Path ([string]$targets[0])
+}
+
+function Assert-BuildJunctionTarget {
+  param(
+    [Parameter(Mandatory = $true)][string]$StagingPath,
+    [Parameter(Mandatory = $true)][string]$ExpectedTargetPath
+  )
+
+  $item = Get-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
+  if ($null -eq $item -or !$item.PSIsContainer -or [string]$item.LinkType -cne 'Junction') {
+    throw "Staging path must be an existing Junction prepared by the maintainer: $StagingPath"
+  }
+  $actualTarget = Get-BuildJunctionTarget -Item $item
+  if ($null -eq $actualTarget -or !(Test-BuildSamePath -Left $actualTarget -Right $ExpectedTargetPath)) {
+    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
+  }
+}
+
 function Write-BuildUtf8WithoutBom {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -208,6 +232,71 @@ function Assert-BuildRemovalPath {
   if (!$fullPath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to remove path outside the allowed build root: $fullPath"
   }
+}
+
+function Assert-BuildPublicationDestination {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$AllowedRoot
+  )
+
+  $resolvedRoot = Resolve-BuildRequiredDirectory -Path $AllowedRoot -Description 'Build publication root'
+  $resolvedPath = Get-BuildNormalizedFullPath -Path $Path
+  Assert-BuildRemovalPath -Path $resolvedPath -AllowedRoot $resolvedRoot
+  $relativePath = [IO.Path]::GetRelativePath($resolvedRoot, $resolvedPath)
+  $segments = @($relativePath.Split([char[]]@('\', '/'), [StringSplitOptions]::RemoveEmptyEntries))
+  $currentPath = $resolvedRoot
+  for ($index = 0; $index -lt $segments.Count; $index++) {
+    $currentPath = Join-Path $currentPath $segments[$index]
+    $item = Get-Item -LiteralPath $currentPath -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item) { continue }
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+      throw "Build publication path contains a nested reparse point: $($item.FullName)"
+    }
+    if ($index -lt $segments.Count - 1 -and !$item.PSIsContainer) {
+      throw "Build publication parent path is a file: $($item.FullName)"
+    }
+    if ($index -eq $segments.Count - 1 -and $item.PSIsContainer) {
+      throw "Build publication destination is a directory: $($item.FullName)"
+    }
+  }
+  return $resolvedPath
+}
+
+function Publish-BuildFileAtomically {
+  param(
+    [Parameter(Mandatory = $true)][string]$CandidatePath,
+    [Parameter(Mandatory = $true)][string]$DestinationPath,
+    [Parameter(Mandatory = $true)][string]$AllowedRoot,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  $resolvedCandidate = Resolve-BuildRequiredFile -Path $CandidatePath -Description "$Description candidate"
+  $candidateItem = Get-Item -LiteralPath $resolvedCandidate -Force
+  if (($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "$Description candidate cannot be a reparse point: $resolvedCandidate"
+  }
+  $resolvedDestination = Assert-BuildPublicationDestination -Path $DestinationPath -AllowedRoot $AllowedRoot
+  [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($resolvedDestination)) | Out-Null
+  [void](Assert-BuildPublicationDestination -Path $resolvedDestination -AllowedRoot $AllowedRoot)
+  $expectedHash = Get-BuildFileSha256 -Path $resolvedCandidate
+  $temporaryPath = "$resolvedDestination.$PID-$([guid]::NewGuid().ToString('N')).new"
+  try {
+    Copy-Item -LiteralPath $resolvedCandidate -Destination $temporaryPath
+    if ((Get-BuildFileSha256 -Path $temporaryPath) -cne $expectedHash) {
+      throw "$Description publication copy differs for '$resolvedDestination'."
+    }
+    [IO.File]::Move($temporaryPath, $resolvedDestination, $true)
+    if ((Get-BuildFileSha256 -Path $resolvedDestination) -cne $expectedHash) {
+      throw "$Description publication destination differs for '$resolvedDestination'."
+    }
+  }
+  finally {
+    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+      Remove-Item -LiteralPath $temporaryPath -Force
+    }
+  }
+  return $resolvedDestination
 }
 
 function Import-BuildEnvironment {
@@ -324,6 +413,55 @@ function Resolve-BuildVariantInstallPath {
     throw "Module variant '$($Variant.VariantKey)' installation path is not configured. Set $variableName."
   }
   return Get-BuildNormalizedFullPath -Path $configuredPath
+}
+
+function Get-BuildStagingOperations {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$SelectedVariants,
+    [Parameter(Mandatory = $true)][object[]]$AllVariants
+  )
+
+  $allStagingPaths = @($AllVariants | ForEach-Object { Get-BuildNormalizedFullPath -Path ([string]$_.StagingFolderPath) })
+  $selectedKeys = @($SelectedVariants | ForEach-Object { [string]$_.VariantKey })
+  $configuredTargets = @($AllVariants | ForEach-Object {
+    $configured = [Environment]::GetEnvironmentVariable([string]$_.EnvironmentVariableName, 'Process')
+    if (![string]::IsNullOrWhiteSpace($configured)) {
+      [pscustomobject]@{ Key = [string]$_.VariantKey; Path = Get-BuildNormalizedFullPath -Path $configured }
+    }
+  })
+  for ($left = 0; $left -lt $configuredTargets.Count; $left++) {
+    for ($right = $left + 1; $right -lt $configuredTargets.Count; $right++) {
+      if (($configuredTargets[$left].Key -in $selectedKeys -or $configuredTargets[$right].Key -in $selectedKeys) -and
+          (Test-BuildOverlappingPaths -Left $configuredTargets[$left].Path -Right $configuredTargets[$right].Path)) {
+        throw "$($configuredTargets[$left].Key) and $($configuredTargets[$right].Key) configured physical module folders overlap."
+      }
+    }
+  }
+
+  $operations = [Collections.Generic.List[object]]::new()
+  foreach ($variant in @($SelectedVariants)) {
+    $key = [string]$variant.VariantKey
+    $stagingPath = Get-BuildNormalizedFullPath -Path ([string]$variant.StagingFolderPath)
+    $targetPath = Resolve-BuildVariantInstallPath -Variant $variant
+    if (@($allStagingPaths | Where-Object { Test-BuildOverlappingPaths -Left $_ -Right $targetPath }).Count -ne 0) {
+      throw "$key physical module folder cannot overlap a repository staging path: $targetPath"
+    }
+    if (@($operations | Where-Object { Test-BuildOverlappingPaths -Left ([string]$_.InstallPath) -Right $targetPath }).Count -ne 0) {
+      throw "Selected physical module folders must be disjoint: $targetPath"
+    }
+    Assert-BuildJunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $targetPath
+    $targetItem = Get-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
+    if ($null -eq $targetItem -or !$targetItem.PSIsContainer -or $null -ne $targetItem.LinkType) {
+      throw "$key physical module target must be an existing real directory: $targetPath"
+    }
+    $operations.Add([pscustomobject]@{
+      Key = $key
+      Variant = $variant
+      StagingPath = $stagingPath
+      InstallPath = $targetPath
+    })
+  }
+  return @($operations)
 }
 
 function Invoke-BuildJavaJar {

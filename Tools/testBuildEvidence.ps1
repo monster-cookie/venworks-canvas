@@ -13,6 +13,7 @@ if ($null -eq $sharedConfiguration -or ![bool]$sharedConfiguration.Value) {
   . (Join-Path $PSScriptRoot 'sharedConfig.ps1')
 }
 . (Join-Path $PSScriptRoot 'sharedScaleform.ps1')
+. (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 function Assert-TestRejected {
   param(
@@ -441,6 +442,50 @@ try {
     throw 'Publishing a selected movie changed an unselected movie output.'
   }
 
+  $mappedStagingRoot = Join-Path $fixtureRoot 'mapped-staging'
+  New-Item -ItemType Directory -Path $mappedStagingRoot | Out-Null
+  $mappedResult = [pscustomobject]@{
+    VariantKey = 'MAPPED'
+    JobName = 'consumer'
+    OutputSet = 'movies'
+    OutputFile = 'Consumer.swf'
+    Path = $movieCandidate
+  }
+  $mappedVariant = [pscustomobject]@{
+    VariantKey = 'MAPPED'
+    StagingFolderPath = $mappedStagingRoot
+    Archives = @(@{
+      Assets = @(
+        @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/normal.swf' }
+        @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/large.swf' }
+      )
+    })
+  }
+  $mappedPlans = @(Get-BuildScaleformStagingPlans -Variants @($mappedVariant) -Results @($mappedResult))
+  Assert-BuildExactNames -Actual @($mappedPlans.Target) -Expected @('Interface/Consumers/normal.swf', 'Interface/Consumers/large.swf') -Description 'One-to-many Scaleform staging targets'
+  foreach ($plan in $mappedPlans) {
+    Publish-BuildScaleformFile -CandidatePath ([string]$plan.CandidatePath) -DestinationPath ([string]$plan.DestinationPath) -AllowedRoot $mappedStagingRoot
+  }
+  foreach ($target in @($mappedPlans.Target)) {
+    [void](Assert-BuildScaleformFile -Path (Join-Path $mappedStagingRoot $target) -Description "Mapped staging target '$target'")
+  }
+  Assert-TestRejected -Description 'Unmapped selected Scaleform output' -ExpectedMessage 'does not have a staging target mapping' -Action {
+    $unmappedVariant = $mappedVariant.PSObject.Copy()
+    $unmappedVariant.Archives = @()
+    [void](Get-BuildScaleformStagingPlans -Variants @($unmappedVariant) -Results @($mappedResult))
+  }
+  Assert-TestRejected -Description 'Ambiguous Scaleform staging target' -ExpectedMessage 'is ambiguously mapped' -Action {
+    $ambiguousVariant = $mappedVariant.PSObject.Copy()
+    $ambiguousVariant.Archives = @(@{
+      Assets = @(
+        @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/normal.swf' }
+        @{ Root = 'Scaleform'; Source = 'other/Other.swf'; Target = 'Interface/Consumers/normal.swf' }
+      )
+    })
+    $otherResult = [pscustomobject]@{ VariantKey = 'MAPPED'; JobName = 'other'; OutputSet = 'other'; OutputFile = 'Other.swf'; Path = $movieCandidate }
+    [void](Get-BuildScaleformStagingPlans -Variants @($ambiguousVariant) -Results @($mappedResult, $otherResult))
+  }
+
   $hazardRoot = Join-Path $fixtureRoot 'flex-hazard'
   $hazardOutput = Join-Path $hazardRoot 'output'
   $hazardWork = Join-Path $hazardRoot 'work'
@@ -505,6 +550,7 @@ try {
   [System.IO.File]::WriteAllBytes($orchestrationJpexs, [byte[]](0))
   $priorMovieHash = Get-BuildFileSha256 -Path $orchestrationPriorMovie
   $orchestrationJob = [pscustomobject]@{
+    VariantKey = 'RECOVERY'
     Name = 'recovery-job'
     Kind = 'Patch'
     OutputSet = 'recovery-set'
@@ -606,10 +652,10 @@ try {
   }
   try {
     $Global:SharedConfigurationLoaded = $true
+    $wrapperOutput = Join-Path $fixtureRoot 'wrapper-output'
     $Global:BuildSettings = @{
       WorkRoot = $fixtureRoot
       ScaleformSourceRoot = $auxiliarySourceRoot
-      ScaleformDirectory = Join-Path $fixtureRoot 'wrapper-output'
     }
     $Global:ModuleVariants = @($emptyVariant, $unselectedVariant)
     & $builderPath `
@@ -673,7 +719,7 @@ try {
         })
       }
     )
-    $unselectedChildOutput = Join-Path ([string]$Global:BuildSettings.ScaleformDirectory) 'hud\child\child.swf'
+    $unselectedChildOutput = Join-Path $wrapperOutput 'hud\child\child.swf'
     Write-TestScaleformMovie -Path $unselectedChildOutput -Marker 'unselected-child'
     $unselectedChildHash = Get-BuildFileSha256 -Path $unselectedChildOutput
     Assert-TestRejected -Description 'Selected parent Patch directory ownership' -ExpectedMessage 'owns a directory containing' -Action {

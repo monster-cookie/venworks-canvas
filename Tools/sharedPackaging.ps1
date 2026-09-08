@@ -64,7 +64,7 @@ function Resolve-BuildPackageAssetSource {
     [Parameter(Mandatory = $true)][object]$Asset,
     [Parameter(Mandatory = $true)][object]$Variant,
     [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-    [Parameter(Mandatory = $true)][string]$ScaleformDirectory
+    [AllowEmptyString()][string]$ScaleformDirectory
   )
 
   $rootName = [string](Get-BuildPackagePropertyValue -InputObject $Asset -Name 'Root')
@@ -76,9 +76,20 @@ function Resolve-BuildPackageAssetSource {
   if ($relativeSource -cne '.' -and @($segments | Where-Object { [string]::IsNullOrEmpty($_) -or $_ -ceq '.' -or $_ -ceq '..' }).Count -ne 0) {
     throw "Package asset Source contains an empty or traversal segment: '$relativeSource'."
   }
+  $effectiveRootName = $rootName
   $sourceRoot = switch ($rootName) {
     'Repository' { $RepositoryRoot }
-    'Scaleform' { $ScaleformDirectory }
+    'Scaleform' {
+      if ([string]::IsNullOrWhiteSpace($ScaleformDirectory)) {
+        $target = [string](Get-BuildPackagePropertyValue -InputObject $Asset -Name 'Target' -DefaultValue '')
+        [void](Resolve-BuildArchiveTarget -Root ([string]$Variant.StagingFolderPath) -Target $target)
+        $relativeSource = $target
+        $segments = $relativeSource.Split([char[]]@('\', '/'), [StringSplitOptions]::None)
+        $effectiveRootName = 'Staging'
+        [string]$Variant.StagingFolderPath
+      }
+      else { $ScaleformDirectory }
+    }
     'Staging' { [string]$Variant.StagingFolderPath }
     default { throw "Unknown package asset Root '$rootName'. Expected Repository, Scaleform, or Staging." }
   }
@@ -90,7 +101,7 @@ function Resolve-BuildPackageAssetSource {
   }
   $item = Get-Item -LiteralPath $resolvedRoot -Force -ErrorAction SilentlyContinue
   if ($null -eq $item) { throw "$($Variant.VariantKey) package asset does not exist: $sourcePath" }
-  if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $rootName -cne 'Staging') {
+  if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $effectiveRootName -cne 'Staging') {
     throw "Package asset root is a reparse point outside the configured Staging root: $($item.FullName)"
   }
   if ($relativeSource -cne '.') {
@@ -104,7 +115,7 @@ function Resolve-BuildPackageAssetSource {
       }
     }
   }
-  return [pscustomobject]@{ Root = $rootName; Item = $item }
+  return [pscustomobject]@{ Root = $effectiveRootName; Item = $item }
 }
 
 function Get-BuildPackageDirectoryFiles {
@@ -178,13 +189,99 @@ function Test-BuildArchivePayloadIncluded {
   return $true
 }
 
+function Get-BuildScaleformStagingPlans {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$Variants,
+    [Parameter(Mandatory = $true)][object[]]$Results
+  )
+
+  $variantsByKey = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($variant in @($Variants)) {
+    $variantKey = [string]$variant.VariantKey
+    if ([string]::IsNullOrWhiteSpace($variantKey) -or $variantsByKey.ContainsKey($variantKey)) {
+      throw "Scaleform staging requires unique, non-empty selected variant keys."
+    }
+    $variantsByKey.Add($variantKey, $variant)
+  }
+
+  $resultsByKey = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($result in @($Results)) {
+    $variantKey = [string]$result.VariantKey
+    $outputSet = [string]$result.OutputSet
+    $outputFile = [string]$result.OutputFile
+    if (!$variantsByKey.ContainsKey($variantKey)) {
+      throw "Scaleform result '$outputSet/$outputFile' belongs to an unselected or unknown variant '$variantKey'."
+    }
+    $relativeSource = "$($outputSet.Replace('\', '/').TrimEnd('/'))/$($outputFile.Replace('\', '/').TrimStart('/'))"
+    $resultKey = "$variantKey`n$relativeSource"
+    if ($resultsByKey.ContainsKey($resultKey)) {
+      throw "Scaleform result '$relativeSource' is ambiguous for selected variant '$variantKey'."
+    }
+    $resultsByKey.Add($resultKey, $result)
+  }
+
+  $plans = [Collections.Generic.List[object]]::new()
+  $mappedResultKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $targetsByKey = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($variant in @($Variants)) {
+    $variantKey = [string]$variant.VariantKey
+    foreach ($archive in @($variant.Archives)) {
+      foreach ($asset in @((Get-BuildPackagePropertyValue -InputObject $archive -Name 'Assets' -DefaultValue @()))) {
+        if ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Root') -ine 'Scaleform') { continue }
+        $relativeSource = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')
+        if ([string]::IsNullOrWhiteSpace($relativeSource) -or [IO.Path]::IsPathRooted($relativeSource) -or $relativeSource.Contains(':')) {
+          throw "Scaleform staging Source must be a non-rooted relative file path: '$relativeSource'."
+        }
+        $sourceSegments = $relativeSource.Split([char[]]@('\', '/'), [StringSplitOptions]::None)
+        if (@($sourceSegments | Where-Object { [string]::IsNullOrEmpty($_) -or $_ -ceq '.' -or $_ -ceq '..' }).Count -ne 0) {
+          throw "Scaleform staging Source contains an empty or traversal segment: '$relativeSource'."
+        }
+        $normalizedSource = $relativeSource.Replace('\', '/')
+        $resultKey = "$variantKey`n$normalizedSource"
+        if (!$resultsByKey.ContainsKey($resultKey)) {
+          throw "Scaleform staging mapping '$normalizedSource' does not match a selected output for variant '$variantKey'."
+        }
+
+        $target = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target' -DefaultValue '')
+        $destinationPath = Resolve-BuildArchiveTarget -Root ([string]$variant.StagingFolderPath) -Target $target
+        $normalizedTarget = $target.Replace('\', '/')
+        $targetKey = "$variantKey`n$normalizedTarget"
+        if ($targetsByKey.ContainsKey($targetKey)) {
+          if (![string]::Equals($targetsByKey[$targetKey], $normalizedSource, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Scaleform staging target '$normalizedTarget' is ambiguously mapped for variant '$variantKey'."
+          }
+          continue
+        }
+        $targetsByKey.Add($targetKey, $normalizedSource)
+        [void]$mappedResultKeys.Add($resultKey)
+        $plans.Add([pscustomobject]@{
+          VariantKey = $variantKey
+          Variant = $variant
+          Source = $normalizedSource
+          Target = $normalizedTarget
+          CandidatePath = [string]$resultsByKey[$resultKey].Path
+          DestinationPath = $destinationPath
+        })
+      }
+    }
+  }
+
+  foreach ($resultKey in $resultsByKey.Keys) {
+    if (!$mappedResultKeys.Contains($resultKey)) {
+      $result = $resultsByKey[$resultKey]
+      throw "Scaleform output '$($result.OutputSet)/$($result.OutputFile)' does not have a staging target mapping for variant '$($result.VariantKey)'."
+    }
+  }
+  return @($plans)
+}
+
 function Get-BuildPackageArchivePlans {
   param(
     [Parameter(Mandatory = $true)][object[]]$Variants,
     [Parameter(Mandatory = $true)][string]$RepositoryRoot,
     [Parameter(Mandatory = $true)][string]$PapyrusSourceRoot,
-    [Parameter(Mandatory = $true)][string]$ScriptsDirectory,
-    [Parameter(Mandatory = $true)][string]$ScaleformDirectory
+    [AllowEmptyString()][string]$ScriptsDirectory,
+    [AllowEmptyString()][string]$ScaleformDirectory
   )
 
   $plans = [Collections.Generic.List[object]]::new()
@@ -233,9 +330,13 @@ function Get-BuildPackageArchivePlans {
       }
 
       if ($includePapyrus) {
+        $variantScriptsDirectory = if ([string]::IsNullOrWhiteSpace($ScriptsDirectory)) {
+          Join-Path ([string]$variant.StagingFolderPath) 'Scripts'
+        }
+        else { $ScriptsDirectory }
         foreach ($script in @(Get-BuildPapyrusSources -Variant $variant -SourceRoot $PapyrusSourceRoot)) {
           $relativeOutput = [string]$script.RelativeOutput
-          $compiledPath = Join-Path $ScriptsDirectory $relativeOutput
+          $compiledPath = Join-Path $variantScriptsDirectory $relativeOutput
           $archiveTarget = Join-Path 'Scripts' $relativeOutput
           if (!(Test-BuildArchivePayloadIncluded -Archive $archive -Target $archiveTarget)) { continue }
           $payloads.Add((New-BuildPackagePayload -Source $compiledPath -Target $archiveTarget -Description "$($variant.VariantKey) compiled Papyrus payload '$archiveTarget'"))
@@ -260,70 +361,18 @@ function Get-BuildPackageArchivePlans {
   return @($plans)
 }
 
-function Get-BuildJunctionTarget {
-  param([Parameter(Mandatory = $true)][IO.DirectoryInfo]$Item)
-
-  $targets = @($Item.Target)
-  if ($targets.Count -ne 1) { return $null }
-  return Get-BuildNormalizedFullPath -Path ([string]$targets[0])
-}
-
-function Assert-BuildJunctionTarget {
-  param(
-    [Parameter(Mandatory = $true)][string]$StagingPath,
-    [Parameter(Mandatory = $true)][string]$ExpectedTargetPath
-  )
-
-  $item = Get-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
-  if ($null -eq $item -or !$item.PSIsContainer -or [string]$item.LinkType -cne 'Junction') {
-    throw "Staging path must be an existing Junction prepared by the maintainer: $StagingPath"
-  }
-  $actualTarget = Get-BuildJunctionTarget -Item $item
-  if ($null -eq $actualTarget -or !(Test-BuildSamePath -Left $actualTarget -Right $ExpectedTargetPath)) {
-    throw "Staging Junction does not target its configured physical module folder: $StagingPath"
-  }
-}
-
 function Get-BuildPackageInstallOperations {
   param(
     [Parameter(Mandatory = $true)][object[]]$SelectedVariants,
     [Parameter(Mandatory = $true)][object[]]$AllVariants
   )
 
-  $allStagingPaths = @($AllVariants | ForEach-Object { Get-BuildNormalizedFullPath -Path ([string]$_.StagingFolderPath) })
-  $selectedKeys = @($SelectedVariants | ForEach-Object { [string]$_.VariantKey })
-  $configuredTargets = @($AllVariants | ForEach-Object {
-    $configured = [Environment]::GetEnvironmentVariable([string]$_.EnvironmentVariableName, 'Process')
-    if (![string]::IsNullOrWhiteSpace($configured)) {
-      [pscustomobject]@{ Key = [string]$_.VariantKey; Path = Get-BuildNormalizedFullPath -Path $configured }
-    }
-  })
-  for ($left = 0; $left -lt $configuredTargets.Count; $left++) {
-    for ($right = $left + 1; $right -lt $configuredTargets.Count; $right++) {
-      if (($configuredTargets[$left].Key -in $selectedKeys -or $configuredTargets[$right].Key -in $selectedKeys) -and
-          (Test-BuildOverlappingPaths -Left $configuredTargets[$left].Path -Right $configuredTargets[$right].Path)) {
-        throw "$($configuredTargets[$left].Key) and $($configuredTargets[$right].Key) configured physical module folders overlap."
-      }
-    }
-  }
-
   $operations = [Collections.Generic.List[object]]::new()
-  foreach ($variant in @($SelectedVariants)) {
-    $key = [string]$variant.VariantKey
-    $stagingPath = Get-BuildNormalizedFullPath -Path ([string]$variant.StagingFolderPath)
-    $targetPath = Resolve-BuildVariantInstallPath -Variant $variant
-    if (@($allStagingPaths | Where-Object { Test-BuildOverlappingPaths -Left $_ -Right $targetPath }).Count -ne 0) {
-      throw "$key physical module folder cannot overlap a repository staging path: $targetPath"
-    }
-    if (@($operations | Where-Object { Test-BuildOverlappingPaths -Left ([string]$_.InstallPath) -Right $targetPath }).Count -ne 0) {
-      throw "Selected physical module folders must be disjoint: $targetPath"
-    }
-    Assert-BuildJunctionTarget -StagingPath $stagingPath -ExpectedTargetPath $targetPath
-    $targetItem = Get-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
-    if ($null -eq $targetItem -or !$targetItem.PSIsContainer -or $null -ne $targetItem.LinkType) {
-      throw "$key physical module target must be an existing real directory: $targetPath"
-    }
-
+  foreach ($stagingOperation in @(Get-BuildStagingOperations -SelectedVariants $SelectedVariants -AllVariants $AllVariants)) {
+    $variant = $stagingOperation.Variant
+    $key = [string]$stagingOperation.Key
+    $stagingPath = [string]$stagingOperation.StagingPath
+    $targetPath = [string]$stagingOperation.InstallPath
     $pluginName = [string]$variant.EsmFileName
     Assert-BuildPackageLeafName -Name $pluginName -Extension '.esm' -Description "$key EsmFileName"
     $archiveNames = @($variant.Archives | ForEach-Object {

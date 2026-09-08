@@ -8,9 +8,9 @@ Builds only the listed module variant keys. When omitted, every configured varia
 .PARAMETER EnvironmentPath
 Specifies the environment file for the first successful shared-configuration initialization in the current PowerShell session. Later guarded script calls reuse that initialized configuration and ignore another EnvironmentPath until a new session starts.
 .PARAMETER ScriptsDirectory
-Overrides the configured directory containing compiled Papyrus PEX files for this packaging run.
+Uses an alternative directory containing compiled Papyrus PEX files for this packaging run instead of each selected variant's staged Scripts directory.
 .PARAMETER ScaleformDirectory
-Overrides the configured directory containing built Scaleform output sets for this packaging run.
+Uses an alternative directory containing built Scaleform output sets for this packaging run instead of each selected variant's staged Scaleform target files.
 .PARAMETER ArchiveRootsDirectory
 Overrides the transaction workspace beneath the configured build work root. Failed transactions remain there for recovery inspection.
 #>
@@ -34,8 +34,6 @@ if (!(Test-Path -LiteralPath 'Variable:Global:SharedConfigurationLoaded') -or !$
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-if ([string]::IsNullOrWhiteSpace($ScriptsDirectory)) { $ScriptsDirectory = [string]$Global:BuildSettings.ScriptsDirectory }
-if ([string]::IsNullOrWhiteSpace($ScaleformDirectory)) { $ScaleformDirectory = [string]$Global:BuildSettings.ScaleformDirectory }
 if ([string]::IsNullOrWhiteSpace($ArchiveRootsDirectory)) { $ArchiveRootsDirectory = Join-Path ([string]$Global:BuildSettings.WorkRoot) 'package-transactions' }
 if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) { throw 'TOOL_PATH_ARCHIVER must be configured by the initialized build environment.' }
 $archive2Path = Resolve-BuildExecutable -Path $env:TOOL_PATH_ARCHIVER -FileName 'Archive2.exe' -Description 'Archive2 executable'

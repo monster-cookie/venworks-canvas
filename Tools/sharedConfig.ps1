@@ -21,9 +21,7 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
   WorkRoot = Join-Path $repositoryRoot '.work/canvas'
   PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
-  ScriptsDirectory = Join-Path $repositoryRoot '.work/canvas/scripts'
   ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform/canvas'
-  ScaleformDirectory = Join-Path $repositoryRoot '.work/canvas/scaleform'
 }
 
 $Global:ModuleVariants = @(

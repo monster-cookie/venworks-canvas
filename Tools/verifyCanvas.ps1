@@ -15,10 +15,10 @@ Select configured module variants. Omit to select all variants.
 Required environment file for the first successful configuration load in this PowerShell session. Later calls reuse that configuration; start a new process to select another file.
 
 .PARAMETER ScaleformDirectory
-Directory containing the Scaleform outputs to inspect when SourceOnly is not selected.
+Alternative directory containing Scaleform output sets to inspect instead of each selected variant's staged target files when SourceOnly is not selected.
 
 .PARAMETER ScriptsDirectory
-Directory containing compiled Papyrus scripts to inspect when SourceOnly is not selected.
+Alternative directory containing compiled Papyrus scripts to inspect instead of each selected variant's staged Scripts directory when SourceOnly is not selected.
 #>
 [CmdletBinding()]
 param(
@@ -26,8 +26,8 @@ param(
   [switch]$ArtifactsOnly,
   [string[]]$VariantKeys,
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '../.env'),
-  [string]$ScaleformDirectory = (Join-Path $PSScriptRoot '../.work/canvas/scaleform'),
-  [string]$ScriptsDirectory = (Join-Path $PSScriptRoot '../.work/canvas/scripts')
+  [string]$ScaleformDirectory,
+  [string]$ScriptsDirectory
 )
 
 $PSNativeCommandUseErrorActionPreference = $true
