@@ -26,6 +26,29 @@ function Get-ConsoleFunctions {
   return $functions
 }
 
+function Get-ActionScriptFunctionBody {
+  param([string]$Source, [string]$Name)
+  $pattern = '(?ms)^      public function ' + [regex]::Escape($Name) + '\([^\r\n]*\) : void\s*\r?\n      \{\r?\n(?<body>.*?)^      \}'
+  $match = [regex]::Match($Source, $pattern)
+  if (!$match.Success) { throw "Missing CanvasExample.$Name" }
+  return $match.Groups['body'].Value
+}
+
+function Assert-ExamplePingUiContract {
+  param([string]$Source)
+  Assert-ConsolePattern $Source '(?m)^      private var pingReceived:Boolean;\s*$' 'Example owns one movie-lifetime ping receipt state'
+  $uiData = Get-ActionScriptFunctionBody -Source $Source -Name 'handleUIData'
+  $canvasEvent = Get-ActionScriptFunctionBody -Source $Source -Name 'handleCanvasEvent'
+  $lifecycle = Get-ActionScriptFunctionBody -Source $Source -Name 'handleLifecycle'
+  Assert-ConsolePattern $canvasEvent '(?s)if\(this\.marker != null && param1 == "venworks\.canvas\.example\.ping"\).*?this\.pingReceived = true;\s+this\.marker\.text = "pong";' 'only the exact ping topic records and displays lowercase pong'
+  Assert-ConsolePattern $uiData 'if\(this\.marker != null && !this\.pingReceived && param1 == "PlayerData"\)' 'later PlayerData callbacks preserve pong'
+  Assert-ConsolePattern $lifecycle 'if\(this\.marker != null && !this\.pingReceived && param1 == "ready"\)' 'later lifecycle callbacks preserve pong'
+  if ([regex]::Matches($Source, 'this\.pingReceived\s*=\s*true;').Count -ne 1 -or
+      [regex]::Matches($Source, 'this\.marker\.text\s*=\s*"pong";').Count -ne 1) {
+    throw 'CanvasExample must set ping receipt state and lowercase pong only in its exact event callback.'
+  }
+}
+
 function Assert-CanvasConsoleContract {
   param([hashtable]$Sources, [string]$Readme, [object[]]$Definitions)
   foreach ($definition in $Definitions) {
@@ -86,6 +109,15 @@ function Assert-CanvasConsoleContract {
     elseif ($name -eq 'Registry') {
       Assert-ConsolePattern $functions[$action].Body '(?s)target.EnsureMenuSubscriptions\(\)\s+OperationResult result = target.TryEnsureStorage\(\)\s+target.LogOperation\(result\).*?Return result.Status' 'host recovery preserves its detailed busy result and logs outside the guard'
     }
+    elseif ($name -eq 'ExampleRegistrar') {
+      if (!$functions.ContainsKey('PublishConsolePing')) { throw 'Missing ExampleRegistrar.PublishConsolePing' }
+      Assert-ConsolePattern $functions[$action].Body '(?s)String result = target.PublishConsolePing\(\).*?CONSOLE_RESULT \| Status=.*?Return result' 'Example console action returns the actual publish result'
+      Assert-ConsolePattern $functions.PublishConsolePing.Body '(?s)If \(Registry == None\).*?Return "DEFERRED_REGISTRY_UNAVAILABLE"\s+EndIf\s+OperationResult result = Registry.TryPublishCanvasEvent\("venworks\.canvas\.example\.ping", "ping"\)\s+Registry.LogOperation\(result\)\s+Return result.Status' 'Example publishes one fixed ping and preserves the registry receipt'
+      $publishCode = [regex]::Replace($functions.PublishConsolePing.Body, '"[^"\r\n]*"|(?m);[^\r\n]*', '')
+      if ($publishCode -match '\b(?:TryLockGuard|LockGuard|While|StartTimer|CancelTimer|Wait\w*|RegisterConsumer|TryRegisterConsumer|RegisterWithRetry|AttemptRegistration|RequestUiLoad|TryRequestUiLoad)\b') {
+        throw 'ExampleRegistrar.PublishConsolePing introduced registration, UI work, a guard or retry behavior.'
+      }
+    }
     foreach ($functionName in @('ConsoleResolve', $action)) {
       $command = 'cgf "' + $qualifiedScriptName + '.' + $functionName + '"'
       if (!$Readme.Contains($command)) { throw "README is missing $command" }
@@ -108,6 +140,7 @@ function Assert-CanvasConsoleContract {
 $definitions = @(
   @{ Script = 'Registry'; ScriptName = 'Venworks:Canvas:Registry'; Source = 'Venworks/Canvas/Registry.psc'; Suffix = 'Registry'; Plugin = 'Venworks-Canvas.esm'; LocalId = '000800'; Action = 'ConsoleEnsureStorage'; Parameters = '' }
   @{ Script = 'ComponentGalleryRegistrar'; ScriptName = 'Venworks:CanvasComponentGallery:ComponentGalleryRegistrar'; Source = 'Venworks/CanvasComponentGallery/ComponentGalleryRegistrar.psc'; Suffix = 'ComponentGallery'; Plugin = 'Venworks-Canvas-ComponentGallery.esm'; LocalId = '000800'; Action = 'ConsoleCheckUiLoadRequest'; Parameters = 'String requestedConsumerId' }
+  @{ Script = 'ExampleRegistrar'; ScriptName = 'Venworks:CanvasExamples:ExampleRegistrar'; Source = 'Venworks/CanvasExamples/ExampleRegistrar.psc'; Suffix = 'Example'; Plugin = 'Venworks-Canvas-Example.esm'; LocalId = '000800'; Action = 'ConsolePing'; Parameters = '' }
 )
 $sourceRoot = Join-Path $PSScriptRoot '../Papyrus'
 $sources = @{}
@@ -115,7 +148,9 @@ foreach ($definition in $definitions) {
   $sources[$definition.Script] = Get-Content -LiteralPath (Join-Path $sourceRoot $definition.Source) -Raw
 }
 $readme = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../README.md') -Raw
+$exampleMovie = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/canvas/actionscript/CanvasExample.as') -Raw
 Assert-CanvasConsoleContract -Sources $sources -Readme $readme -Definitions $definitions
+Assert-ExamplePingUiContract -Source $exampleMovie
 $mutations = @(
   @{ Script = 'ComponentGalleryRegistrar'; From = 'Venworks:Core:Utilities:Console.ConsoleEcho('; To = 'Venworks:Core:Logging.ConsoleEcho(' }
   @{ Script = 'Registry'; From = '"VWCANVAS: Registry.ConsoleEnsureStorage | "'; To = '"VWCORE: Registry.ConsoleEnsureStorage | "' }
@@ -133,6 +168,17 @@ $mutations = @(
   @{ Script = 'Registry'; From = 'target.LogOperation(result)'; To = '; omitted' }
   @{ Script = 'ComponentGalleryRegistrar'; From = 'Return "CONSOLE_RESOLVED"'; To = ('target.RegisterWithRetry()' + [Environment]::NewLine + '  Return "CONSOLE_RESOLVED"') }
   @{ Script = 'Registry'; From = 'VWCANVAS_CONSOLE/1'; To = 'old-build' }
+  @{ Script = 'ExampleRegistrar'; From = 'ConsolePing() Global'; To = 'ConsolePing()' }
+  @{ Script = 'ExampleRegistrar'; From = 'Game.GetFormFromFile(0x000800,'; To = 'Game.GetFormFromFile(0xFE004800,' }
+  @{ Script = 'ExampleRegistrar'; From = '"Venworks-Canvas-Example.esm"'; To = '"Venworks-Canvas-ComponentGallery.esm"' }
+  @{ Script = 'ExampleRegistrar'; From = 'target.PublishConsolePing()'; To = '"EVENT_SUBMITTED"' }
+  @{ Script = 'ExampleRegistrar'; From = '"venworks.canvas.example.ping", "ping"'; To = '"venworks.canvas.example.other", "ping"' }
+  @{ Script = 'ExampleRegistrar'; From = 'Registry.LogOperation(result)'; To = '; omitted' }
+  @{ Script = 'ExampleRegistrar'; From = 'Return result.Status'; To = 'Return "EVENT_SUBMITTED"' }
+  @{ Script = 'CanvasExample'; From = 'this.pingReceived = true;'; To = 'this.pingReceived = false;' }
+  @{ Script = 'CanvasExample'; From = 'this.marker.text = "pong";'; To = 'this.marker.text = "PONG";' }
+  @{ Script = 'CanvasExample'; From = '!this.pingReceived && param1 == "PlayerData"'; To = 'param1 == "PlayerData"' }
+  @{ Script = 'CanvasExample'; From = 'param1 == "venworks.canvas.example.ping"'; To = 'param1 == "venworks.canvas.example.other"' }
   @{ Script = 'README'; From = '.ConsoleCheckUiLoadRequest"'; To = '.CheckUiLoadRequest"' }
   @{ Script = 'README'; From = 'help "VWCANVAS_ComponentGalleryRegistrar"'; To = 'help "VWCANVAS Component Gallery Registrar"' }
 )
@@ -140,12 +186,16 @@ $rejected = 0
 foreach ($mutation in $mutations) {
   $candidate = @{} + $sources
   $candidateReadme = $readme
-  $original = if ($mutation.Script -eq 'README') { $readme } else { $candidate[$mutation.Script] }
+  $candidateExampleMovie = $exampleMovie
+  $original = if ($mutation.Script -eq 'README') { $readme } elseif ($mutation.Script -eq 'CanvasExample') { $exampleMovie } else { $candidate[$mutation.Script] }
   if (!$original.Contains($mutation.From)) { throw "Mutation did not match: $($mutation.From)" }
   $changed = $original.Replace($mutation.From, $mutation.To)
-  if ($mutation.Script -eq 'README') { $candidateReadme = $changed } else { $candidate[$mutation.Script] = $changed }
+  if ($mutation.Script -eq 'README') { $candidateReadme = $changed } elseif ($mutation.Script -eq 'CanvasExample') { $candidateExampleMovie = $changed } else { $candidate[$mutation.Script] = $changed }
   $caught = $false
-  try { Assert-CanvasConsoleContract -Sources $candidate -Readme $candidateReadme -Definitions $definitions } catch { $caught = $true }
+  try {
+    Assert-CanvasConsoleContract -Sources $candidate -Readme $candidateReadme -Definitions $definitions
+    Assert-ExamplePingUiContract -Source $candidateExampleMovie
+  } catch { $caught = $true }
   if (!$caught) { throw "Invalid console contract was accepted: $($mutation.From)" }
   $rejected += 1
 }

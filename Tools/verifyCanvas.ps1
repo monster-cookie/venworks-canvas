@@ -60,6 +60,7 @@ foreach ($sourceContractTest in @(
   'testBuildEvidence.ps1',
   'testSpriggit.ps1',
   'testSetup.ps1',
+  'testScaleformSetup.ps1',
   'testUiLoad.ps1',
   'testUiReceive.ps1',
   'testUuid.ps1'

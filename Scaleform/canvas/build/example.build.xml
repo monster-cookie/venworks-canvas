@@ -8,10 +8,16 @@
                            stageHeight="1080"
                            frameRate="30">
   <requiredTokens>
-    <token>VWCANVAS_CONSUMER/1</token>
+    <token>VWCANVAS_CONSUMER/2</token>
     <token>venworks.canvas.example</token>
     <token>"version":1</token>
     <token>getCanvasRegistration</token>
+    <token>minimumContractVersion</token>
+    <token>maximumContractVersion</token>
+    <token>handleUIData</token>
+    <token>handleCanvasEvent</token>
+    <token>handleLifecycle</token>
+    <token>venworks.canvas.example.ping</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>

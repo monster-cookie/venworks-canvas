@@ -16,12 +16,40 @@ package
       public function getCanvasRegistration() : Object
       {
          return {
-            "protocol":"VWCANVAS_CONSUMER/1",
+            "protocol":"VWCANVAS_CONSUMER/2",
             "consumerId":"beef70b2-024e-4e9b-a8d5-70a0c882c431",
             "assetNamespace":"venworks.canvas.component-gallery",
             "version":1,
+            "minimumContractVersion":2,
+            "maximumContractVersion":2,
+            "uiChannels":["PlayerData"],
+            "eventTopics":["venworks.canvas.example.ping"],
             "marker":"COMPONENT-GALLERY"
          };
+      }
+
+      public function handleUIData(param1:String, param2:Object) : void
+      {
+         if(this.marker != null && param1 == "PlayerData")
+         {
+            this.marker.text = "VWCANVAS COMPONENT GALLERY | DATA " + param1;
+         }
+      }
+
+      public function handleCanvasEvent(param1:String, param2:String) : void
+      {
+         if(this.marker != null && param1 == "venworks.canvas.example.ping")
+         {
+            this.marker.text = "VWCANVAS COMPONENT GALLERY | EVENT " + param2.substr(0,32);
+         }
+      }
+
+      public function handleLifecycle(param1:String, param2:Object) : void
+      {
+         if(this.marker != null && param1 == "ready")
+         {
+            this.marker.text = "VWCANVAS COMPONENT GALLERY | READY V" + param2.contractVersion;
+         }
       }
 
       public function dispose() : void

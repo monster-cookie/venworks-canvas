@@ -85,19 +85,35 @@ function Assert-UiLoadSourceContract {
   foreach ($token in @(
     'pending >= 32', 'packet == ""', 'REJECTED_UI_PROTOCOL', 'IsPrintableAscii(packet, 1, 512)', 'UiLoads[existing].Packet == packet',
     'UiLoads[existing].Owner == owner', 'UI_LOAD_ALREADY_REQUESTED', 'UI_LOAD_QUEUED',
-    'ticket == UiPumpBase', 'now < UiNextSubmitTime', 'UiNextSubmitTime = now + 1.0',
+    'ticket == UiPumpBase', 'NextUiTicketLocked()', 'UiPumpBase = -submissionTicket', 'UiCompletedSubmissionTicket = submissionTicket',
     'registration.Owner == entry.Owner', 'BuildUiLoadPacket(registration) == entry.Packet',
-    'entry.Submitted = True', 'attempt < 20', 'result.Epoch == UiEpoch', 'UiPumpBase = -ticket',
-    'attempt >= 51 && attempt <= 70', 'attempt < 70', 'UiPumpBase == -ticket',
+    'entry.Submitted = True', 'attempt < 20', 'result.Epoch == UiEpoch', 'UiPumpBase = -ticket', 'UiCompletedSubmissionTicket = timerId - attempt',
+    'attempt >= 51 && attempt <= 70', 'attempt < 70', 'UiPumpBase == -ticket && UiCompletedSubmissionTicket == ticket',
     'UiAppliedActivationRequest != UiActivationRequest', 'UiAppliedActivationRequest = UiActivationRequest',
-    'now >= UiPumpExpiresAt', 'UiPumpExpiresAt - now > 30.0', 'UiLoads = new UiLoadEntry[0]'
+    'UiPumpBase > 0 && now >= UiPumpExpiresAt', 'UiLoads = new UiLoadEntry[0]'
   )) {
     if (![regex]::IsMatch($Registry, [regex]::Escape($token) + '(?![A-Za-z0-9_])')) { throw "Missing load-queue invariant: $token" }
   }
   $pump = Get-TestPapyrusBody $Registry 'PumpUiLoad'
-  if ([regex]::Matches($Registry, 'Game\.ShowCustomWatchAlert\(').Count -ne 1 -or
-      $pump -notmatch '(?s)TryTakeUiLoad.*?If \(result.Status == "UI_LOAD_RESERVED"\).*?If \(UiAppliedActivationRequest == UiActivationRequest && PlayerHudRequested && result.Epoch == UiEpoch\).*?Game.ShowCustomWatchAlert\(result.Packet\).*?result.Status = "UI_LOAD_SUBMITTED"') {
-    throw 'Only a reserved current-activation packet may reach the single native submission site.'
+  $eventPublish = Get-TestPapyrusBody $Registry 'TryPublishCanvasEvent'
+  $finish = Get-TestPapyrusBody $Registry 'FinishUiLoad'
+  $release = Get-TestPapyrusBody $Registry 'ReleaseUiPump'
+  $activation = Get-TestPapyrusBody $Registry 'RefreshUiActivation'
+  if ([regex]::Matches($Registry, 'Game\.ShowCustomWatchAlert\(').Count -ne 2 -or
+      $pump -notmatch '(?s)TryTakeUiLoad.*?If \(result.Status == "UI_LOAD_RESERVED"\).*?If \(UiAppliedActivationRequest == UiActivationRequest && PlayerHudRequested && result.Epoch == UiEpoch\).*?Game.ShowCustomWatchAlert\(result.Packet\).*?result.Status = "UI_LOAD_SUBMITTED".*?Else.*?result.Status = "UI_LOAD_CANCELLED_ACTIVATION".*?EndIf.*?UiCompletedSubmissionTicket = timerId - attempt.*?StartTimer\(1\.0, timerId - attempt \+ 51\)') {
+    throw 'Only reserved current-activation UI loads and named events may reach their fixed native submission sites.'
+  }
+  if ($eventPublish -notmatch '(?s)TryLockGuard RegistryGuard.*?UiPumpBase > 0 \|\| HasPendingUiLoadLocked\(\).*?result.Status = "DEFERRED_EVENT_UI_PENDING".*?ElseIf \(UiPumpBase < 0\).*?result.Status = "DEFERRED_EVENT_RATE_LIMIT".*?submissionTicket = NextUiTicketLocked\(\).*?UiPumpBase = -submissionTicket.*?EndTryLockGuard\s+If \(result.Status == "EVENT_RESERVED"\).*?Game.ShowCustomWatchAlert\(result.Packet\).*?Else.*?result.Status = "EVENT_CANCELLED_ACTIVATION".*?EndIf.*?UiCompletedSubmissionTicket = submissionTicket.*?StartTimer\(1\.0, submissionTicket \+ 51\)') {
+    throw 'Named events must preserve UI priority and one shared ticket through native return or activation cancellation.'
+  }
+  if ($finish -notmatch '(?s)If \(UiPumpBase == -ticket && UiCompletedSubmissionTicket == ticket\).*?UiPumpBase = 0.*?UiCompletedSubmissionTicket = 0.*?StartUiPumpLocked\(now\)' -or
+      $release -notmatch 'If \(UiPumpBase == ticket\)' -or $release -match 'UiPumpBase == -ticket') {
+    throw 'Cooldown cleanup must release only matching completed ownership; retry exhaustion cannot reclaim a native submission.'
+  }
+  if ($activation -notmatch '(?s)If \(UiAppliedActivationRequest != UiActivationRequest \|\| UiActive != PlayerHudRequested\).*?If \(UiPumpBase >= 0\).*?ElseIf \(UiCompletedSubmissionTicket == -UiPumpBase\).*?result.TimerId = -UiPumpBase \+ 51.*?result.Status = "UI_ACTIVATION_RESET".*?EndTryLockGuard.*?If \(result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0\).*?StartTimer\(1\.0, result.TimerId\)' -or
+      [regex]::Matches($Registry, '(?m)^Float UiNextSubmitTime = 0\.0$').Count -ne 1 -or [regex]::Matches($Registry, '\bUiNextSubmitTime\b').Count -ne 1 -or
+      $Registry.Contains('UiPumpExpiresAt - now > 30.0')) {
+    throw 'Activation recovery must preserve negative ownership, restart completed cleanup only for an applied change, and never use the retired wall-clock admission gate.'
   }
   if ((Get-TestPapyrusBody $Registry 'RefreshUiActivation') -match '\bConsumers\s*=') { throw 'UI recreation must preserve registration storage.' }
   foreach ($token in @(
@@ -119,6 +135,19 @@ function Assert-UiLoadSourceContract {
     throw 'The receiver must compare only the ASCII prefix without normalizing the complete packet.'
   }
   if ($Movie.Contains('this.receiveSnapshot(') -or $Movie.Contains('this.receiveDiagnostic(')) { throw 'Legacy ingress must stay unreachable.' }
+  $registrationValidator = [regex]::Match($Movie, '(?ms)      private function validateConsumerRegistration\([^\r\n]*\) : Object\s*\{(?<body>.*?)^      \}')
+  if (!$registrationValidator.Success) { throw 'Missing consumer registration validator.' }
+  $validatorBody = $registrationValidator.Groups['body'].Value
+  $legacyStart = $validatorBody.IndexOf('if(protocol == LEGACY_CONSUMER_PROTOCOL)')
+  $v2Start = $validatorBody.IndexOf('if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL)')
+  if ($legacyStart -lt 0 -or $v2Start -le $legacyStart) { throw 'Consumer protocol branches are missing or out of order.' }
+  $legacyBranch = $validatorBody.Substring($legacyStart, $v2Start - $legacyStart)
+  if ($legacyBranch.Contains('assetNamespace') -or !$legacyBranch.Contains('this.normalizeUuid(String(param1.consumerId)) != param2.name || int(param1.version) != int(this.versions[param2.name])')) {
+    throw 'Legacy v1 admission must retain exactly its protocol, normalized UUID and integer revision compatibility fields.'
+  }
+  if (!$validatorBody.Substring($v2Start).Contains('typeof param1.assetNamespace != "string"') -or !$validatorBody.Substring($v2Start).Contains('this.getAssetNamespace(String(this.paths[param2.name]))')) {
+    throw 'V2 admission must retain strict descriptor namespace validation.'
+  }
 }
 
 function New-TestUiLifecycleModel {
@@ -423,8 +452,9 @@ $mutations = @(
   @('Registry', 'UiLoads[existing].Owner == owner', 'True'),
   @('Registry', 'result.TimerId = StartUiPumpLocked(now)', 'result.TimerId = 0'),
   @('Registry', 'ticket == UiPumpBase', 'True'),
-  @('Registry', 'now < UiNextSubmitTime', 'False'),
-  @('Registry', 'UiNextSubmitTime = now + 1.0', 'UiNextSubmitTime = now'),
+  @('Registry', 'UiPumpBase = -submissionTicket', 'UiPumpBase = 0'),
+  @('Registry', 'UiCompletedSubmissionTicket = submissionTicket', 'UiCompletedSubmissionTicket = 0'),
+  @('Registry', 'UiCompletedSubmissionTicket = timerId - attempt', 'UiCompletedSubmissionTicket = 0'),
   @('Registry', 'registration.Owner == entry.Owner', 'True'),
   @('Registry', 'BuildUiLoadPacket(registration) == entry.Packet', 'True'),
   @('Registry', 'UiAppliedActivationRequest == UiActivationRequest && UiActive', 'UiActive'),
@@ -434,16 +464,20 @@ $mutations = @(
   @('Registry', 'entry.Submitted = True', 'entry.Submitted = False'),
   @('Registry', 'attempt < 20', 'True'),
   @('Registry', 'UiPumpBase = -ticket', 'UiPumpBase = 0'),
+  @('Registry', 'UiPumpBase == -ticket && UiCompletedSubmissionTicket == ticket', 'UiPumpBase == -ticket'),
   @('Registry', 'attempt < 70', 'True'),
   @('Registry', 'UiAppliedActivationRequest != UiActivationRequest', 'True'),
   @('Registry', 'result.Epoch == UiEpoch', 'True'),
-  @('Registry', 'now >= UiPumpExpiresAt', 'False'),
+  @('Registry', 'UiPumpBase > 0 && now >= UiPumpExpiresAt', 'False'),
+  @('Registry', 'ElseIf (UiCompletedSubmissionTicket == -UiPumpBase)', 'ElseIf (False)'),
+  @('Registry', 'result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0', 'result.TimerId > 0'),
   @('Registry', 'UiLoads = new UiLoadEntry[0]', 'Consumers = new ConsumerRegistration[0]'),
   @('Movie', 'this.reconcile(desired,false)', 'this.reconcile(desired,true)'),
   @('Movie', 'MAX_UI_LOAD_CHARACTERS:int = 512', 'MAX_UI_LOAD_CHARACTERS:int = 4096'),
   @('Movie', 'protocol.value != "1"', 'false'),
   @('Movie', 'cursor != packet.length', 'false'),
   @('Movie', 'this.normalizeUuid(String(id.value))', 'String(id.value)'),
+  @('Movie', 'this.normalizeUuid(String(param1.consumerId)) != param2.name || int(param1.version) != int(this.versions[param2.name])', 'this.normalizeUuid(String(param1.consumerId)) != param2.name || int(param1.version) != int(this.versions[param2.name]) || typeof param1.assetNamespace != "string"'),
   @('Movie', 'this.parseUiLoad(param1)', 'this.receiveSnapshot(param1)'),
   @('Movie', 'this.matchAsciiPrefix(packet,UI_LOAD_PREFIX)', '1')
 )

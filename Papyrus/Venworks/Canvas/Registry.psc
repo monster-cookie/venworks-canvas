@@ -42,6 +42,7 @@ Int UiActivationRequest = 0
 Int UiAppliedActivationRequest = -1
 Int UiTimerSerial = 1000
 Int UiPumpBase = 0
+Int UiCompletedSubmissionTicket = 0
 Float UiNextSubmitTime = 0.0
 Float UiPumpExpiresAt = 0.0
 Int MessageId = 0
@@ -55,6 +56,9 @@ Int MaxDisplayNameCharacters = 80
 Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
+Int MaxCanvasEventTopicCharacters = 96
+Int MaxCanvasEventBodyCharacters = 400
+Int MaxCanvasEventPacketCharacters = 512
 
 ; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
 String Function ConsoleResolve() Global
@@ -159,7 +163,7 @@ EndFunction
 
 ; Busy/unavailable outcomes are distinct from terminal descriptor or ownership rejection.
 Bool Function IsDeferred(String status) Global
-  Return status == "DEFERRED_REGISTRY_BUSY" || status == "DEFERRED_ATTEMPT_BUSY" || status == "DEFERRED_REGISTRY_UNAVAILABLE" || status == "DEFERRED_UI_INACTIVE" || status == "DEFERRED_UI_QUEUE_FULL"
+  Return status == "DEFERRED_REGISTRY_BUSY" || status == "DEFERRED_ATTEMPT_BUSY" || status == "DEFERRED_REGISTRY_UNAVAILABLE" || status == "DEFERRED_UI_INACTIVE" || status == "DEFERRED_UI_QUEUE_FULL" || status == "DEFERRED_EVENT_BUSY" || status == "DEFERRED_EVENT_UI_PENDING" || status == "DEFERRED_EVENT_RATE_LIMIT"
 EndFunction
 
 ; Validation is outside RegistryGuard; registration completes in one acquired transaction.
@@ -304,13 +308,24 @@ Function RefreshUiActivation(Int timerId)
       UiEpoch += 1
       UiActive = PlayerHudRequested
       UiLoads = new UiLoadEntry[0]
-      UiPumpBase = 0
+      ; A positive timer can be retired with the old activation. Negative ownership survives until native completion and cooldown.
+      If (UiPumpBase >= 0)
+        UiPumpBase = 0
+        UiCompletedSubmissionTicket = 0
+        UiPumpExpiresAt = 0.0
+      ElseIf (UiCompletedSubmissionTicket == -UiPumpBase)
+        ; Only a changed activation restarts recovery for a completed submission whose cleanup timer was lost or exhausted.
+        result.TimerId = -UiPumpBase + 51
+      EndIf
       UiAppliedActivationRequest = UiActivationRequest
       result.Status = "UI_ACTIVATION_RESET"
     EndIf
     result.Epoch = UiEpoch
   EndTryLockGuard
   LogOperation(result)
+  If (result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0)
+    StartTimer(1.0, result.TimerId)
+  EndIf
   If (result.Status == "DEFERRED_REGISTRY_BUSY" && timerId < 119)
     StartTimer(0.5, timerId + 1)
   EndIf
@@ -334,6 +349,81 @@ String Function BuildUiLoadPacket(ConsumerRegistration registration)
   Return BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)
 EndFunction
 
+; Frames one validated named event. Topic and body contents are not normalized or interpreted.
+String Function BuildCanvasEventPacket(String eventTopic, String body)
+  Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
+  Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
+  String payload = EncodeField("1") + EncodeField(eventTopic) + EncodeField(body)
+  Return BuildEventPacket(headers.V1, packetTypes.CanvasEvent, payload)
+EndFunction
+
+; One nonblocking, lossy publish attempt. The receipt acknowledges native submission, never UI delivery.
+OperationResult Function TryPublishCanvasEvent(String eventTopic, String body)
+  OperationResult result = NewResult("DEFERRED_EVENT_BUSY")
+  result.Detail = GetCanvasEventRejectionReason(eventTopic, body)
+  If (result.Detail != "")
+    result.Status = "REJECTED_EVENT_ARGUMENTS"
+    Return result
+  EndIf
+  result.Packet = BuildCanvasEventPacket(eventTopic, body)
+  If (!IsPrintableAscii(result.Packet, 1, MaxCanvasEventPacketCharacters))
+    result.Status = "REJECTED_EVENT_PACKET"
+    result.Packet = ""
+    Return result
+  EndIf
+  Float now = Utility.GetCurrentRealTime()
+  Int submissionTicket = 0
+  TryLockGuard RegistryGuard
+    result.Status = "REJECTED_EVENT_INACTIVE"
+    If (UiAppliedActivationRequest == UiActivationRequest && UiActive && PlayerHudRequested)
+      ; Only positive timer ownership expires. A negative value owns an active or cooling native submission.
+      If (UiPumpBase > 0 && now >= UiPumpExpiresAt)
+        UiPumpBase = 0
+        UiCompletedSubmissionTicket = 0
+        UiPumpExpiresAt = 0.0
+      EndIf
+      If (UiPumpBase > 0 || HasPendingUiLoadLocked())
+        result.Status = "DEFERRED_EVENT_UI_PENDING"
+      ElseIf (UiPumpBase < 0)
+        result.Status = "DEFERRED_EVENT_RATE_LIMIT"
+      Else
+        result.Status = "EVENT_RESERVED"
+        result.Epoch = UiEpoch
+        submissionTicket = NextUiTicketLocked()
+        UiPumpBase = -submissionTicket
+        UiCompletedSubmissionTicket = 0
+        UiPumpExpiresAt = 0.0
+      EndIf
+    EndIf
+  EndTryLockGuard
+  If (result.Status == "EVENT_RESERVED")
+    If (UiAppliedActivationRequest == UiActivationRequest && PlayerHudRequested && result.Epoch == UiEpoch)
+      Game.ShowCustomWatchAlert(result.Packet)
+      result.Status = "EVENT_SUBMITTED"
+    Else
+      result.Status = "EVENT_CANCELLED_ACTIVATION"
+    EndIf
+    UiCompletedSubmissionTicket = submissionTicket
+    StartTimer(1.0, submissionTicket + 51)
+  EndIf
+  Return result
+EndFunction
+
+; UI work has priority over one-shot events. Caller holds RegistryGuard.
+Bool Function HasPendingUiLoadLocked()
+  If (UiLoads == None)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < UiLoads.Length)
+    If (UiLoads[index] != None && !UiLoads[index].Submitted)
+      Return True
+    EndIf
+    index += 1
+  EndWhile
+  Return False
+EndFunction
+
 ; Caller holds RegistryGuard. Coalesce one entry per UUID, cap pending work rather than registrations.
 Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   ; Do not let receipts from the previous HUD generation satisfy a request before its deferred reset.
@@ -342,9 +432,11 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
     Return
   EndIf
   Int registeredIndex = FindConsumerIndexLocked(result.ConsumerId)
-  ; A saved or exhausted timer ticket is not a permanent gate, including after a process-clock reset.
-  If (UiPumpBase != 0 && (now >= UiPumpExpiresAt || UiPumpExpiresAt - now > 30.0))
+  ; A saved or exhausted positive timer is not a permanent gate. Negative submission ownership never expires here.
+  If (UiPumpBase > 0 && now >= UiPumpExpiresAt)
     UiPumpBase = 0
+    UiCompletedSubmissionTicket = 0
+    UiPumpExpiresAt = 0.0
   EndIf
   ConsumerRegistration registration = Consumers[registeredIndex]
   If (!IsDescriptorValid(owner, registration.ConsumerId, registration.DisplayName, registration.NormalMovieUrl, registration.LargeMovieUrl, registration.DescriptorVersion))
@@ -415,13 +507,19 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndIf
 EndFunction
 
-; Monotonic timer tickets make duplicate or superseded timer callbacks inert. Caller holds RegistryGuard.
-Int Function StartUiPumpLocked(Float now)
+; Monotonic tickets make duplicate, superseded and cross-transport timer callbacks inert. Caller holds RegistryGuard.
+Int Function NextUiTicketLocked()
   UiTimerSerial += 100
   If (UiTimerSerial > 2000000000)
     UiTimerSerial = 1000
   EndIf
-  UiPumpBase = UiTimerSerial
+  Return UiTimerSerial
+EndFunction
+
+; Starts one positive UI timer owner. Caller holds RegistryGuard and supplies the previously sampled clock.
+Int Function StartUiPumpLocked(Float now)
+  UiPumpBase = NextUiTicketLocked()
+  UiCompletedSubmissionTicket = 0
   UiPumpExpiresAt = now + 30.0
   Return UiPumpBase + 1
 EndFunction
@@ -452,11 +550,12 @@ Function PumpUiLoad(Int timerId)
     Else
       result.Status = "UI_LOAD_CANCELLED_ACTIVATION"
     EndIf
-    FinishUiLoad(timerId - attempt + 51)
+    UiCompletedSubmissionTicket = timerId - attempt
+    StartTimer(1.0, timerId - attempt + 51)
   EndIf
   LogOperation(result)
   ScheduleUiPump(result)
-  If (result.Status == "DEFERRED_REGISTRY_BUSY" || result.Status == "DEFERRED_UI_RATE_LIMIT")
+  If (result.Status == "DEFERRED_REGISTRY_BUSY")
     If (attempt < 20)
       StartTimer(0.5, timerId + 1)
     Else
@@ -473,46 +572,43 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
     result.Status = "UI_LOAD_IDLE"
     If (UiAppliedActivationRequest == UiActivationRequest && UiActive && PlayerHudRequested && UiLoads != None && ticket == UiPumpBase)
       EnsureStorageLocked(result)
-      If (now < UiNextSubmitTime && UiNextSubmitTime - now <= 1.0)
-        result.Status = "DEFERRED_UI_RATE_LIMIT"
-      Else
-        UiPumpBase = 0
-        Int index = 0
-        While (index < UiLoads.Length && result.Packet == "")
-          UiLoadEntry entry = UiLoads[index]
-          If (entry == None)
-            UiLoads.Remove(index)
-          ElseIf (!entry.Submitted)
-            Int registeredIndex = FindConsumerIndexLocked(entry.ConsumerId)
-            If (entry.Owner != None && registeredIndex >= 0)
-              ConsumerRegistration registration = Consumers[registeredIndex]
-              If (registration.Owner == entry.Owner && BuildUiLoadPacket(registration) == entry.Packet)
-                result.Packet = entry.Packet
-                result.ConsumerId = entry.ConsumerId
-                result.DescriptorVersion = registration.DescriptorVersion
-                result.Epoch = UiEpoch
-                result.Status = "UI_LOAD_RESERVED"
-                UiNextSubmitTime = now + 1.0
-                ; Keep an expiring ticket across submission so another caller cannot start a concurrent pump.
-                UiPumpBase = -ticket
-                entry.Submitted = True
-              Else
-                UiLoads.Remove(index)
-              EndIf
+      UiPumpBase = 0
+      UiPumpExpiresAt = 0.0
+      Int index = 0
+      While (index < UiLoads.Length && result.Packet == "")
+        UiLoadEntry entry = UiLoads[index]
+        If (entry == None)
+          UiLoads.Remove(index)
+        ElseIf (!entry.Submitted)
+          Int registeredIndex = FindConsumerIndexLocked(entry.ConsumerId)
+          If (entry.Owner != None && registeredIndex >= 0)
+            ConsumerRegistration registration = Consumers[registeredIndex]
+            If (registration.Owner == entry.Owner && BuildUiLoadPacket(registration) == entry.Packet)
+              result.Packet = entry.Packet
+              result.ConsumerId = entry.ConsumerId
+              result.DescriptorVersion = registration.DescriptorVersion
+              result.Epoch = UiEpoch
+              result.Status = "UI_LOAD_RESERVED"
+              ; Hold the same ticket across native submission and the following one-second cooldown.
+              UiPumpBase = -ticket
+              UiCompletedSubmissionTicket = 0
+              entry.Submitted = True
             Else
               UiLoads.Remove(index)
             EndIf
           Else
-            index += 1
+            UiLoads.Remove(index)
           EndIf
-        EndWhile
-      EndIf
+        Else
+          index += 1
+        EndIf
+      EndWhile
     EndIf
   EndTryLockGuard
   Return result
 EndFunction
 
-; Complete a reservation after native submission, spacing the next timer from completion rather than reservation.
+; Release only a completed reservation after its one-second cooldown, then arrange any pending UI work.
 Function FinishUiLoad(Int timerId)
   Int attempt = timerId % 100
   Int ticket = timerId - attempt
@@ -520,9 +616,10 @@ Function FinishUiLoad(Int timerId)
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
     result.Status = "UI_LOAD_IDLE"
-    If (UiPumpBase == -ticket)
+    If (UiPumpBase == -ticket && UiCompletedSubmissionTicket == ticket)
       UiPumpBase = 0
-      UiNextSubmitTime = now + 1.0
+      UiCompletedSubmissionTicket = 0
+      UiPumpExpiresAt = 0.0
       If (UiActive && PlayerHudRequested && UiLoads != None)
         Int index = 0
         While (index < UiLoads.Length && result.TimerId == 0)
@@ -540,16 +637,18 @@ Function FinishUiLoad(Int timerId)
       StartTimer(0.5, timerId + 1)
     Else
       ReleaseUiPump(ticket)
-      LogUserWarning(ModuleName, "FinishUiLoad", "UI_LOAD_RETRY_EXHAUSTED | Submission is not retried; remaining queued requests await recovery.")
+      LogUserWarning(ModuleName, "FinishUiLoad", "UI_LOAD_RETRY_EXHAUSTED | Submission ownership remains closed; a later HUD activation can recover completed cleanup.")
     EndIf
   EndIf
 EndFunction
 
-; Bounded exhaustion must not leave a permanent active latch; failure here is recovered by HUD activation.
+; Bounded pump exhaustion retires only positive timer ownership. Active or cooling native ownership is never reclaimed here.
 Function ReleaseUiPump(Int ticket)
   TryLockGuard RegistryGuard
-    If (UiPumpBase == ticket || UiPumpBase == -ticket)
+    If (UiPumpBase == ticket)
       UiPumpBase = 0
+      UiCompletedSubmissionTicket = 0
+      UiPumpExpiresAt = 0.0
     EndIf
   EndTryLockGuard
 EndFunction
@@ -613,6 +712,60 @@ EndFunction
 ; Returns whether a proposed owner and descriptor satisfy the canonical contract; validation has no publication side effects.
 Bool Function IsDescriptorValid(Quest owner, String consumerId, String displayName, String normalMovieUrl, String largeMovieUrl, Int descriptorVersion)
   Return GetDescriptorRejectionReason(owner, consumerId, displayName, normalMovieUrl, largeMovieUrl, descriptorVersion) == ""
+EndFunction
+
+; Returns an empty string for a valid publish request. Empty bodies are valid; accepted case is preserved on the wire.
+String Function GetCanvasEventRejectionReason(String eventTopic, String body)
+  String rejection = GetCanvasEventTopicRejectionReason(eventTopic)
+  If (rejection != "")
+    Return rejection
+  EndIf
+  If (body == "")
+    Return ""
+  EndIf
+  Return GetPrintableAsciiRejectionReason(body, 0, MaxCanvasEventBodyCharacters, "body")
+EndFunction
+
+; Requires at least two dot-separated ASCII segments with alphanumeric boundaries and rejects Canvas-owned topics.
+String Function GetCanvasEventTopicRejectionReason(String eventTopic)
+  Int[] characters = Utility.SplitStringChars(eventTopic)
+  If (characters == None)
+    Return "topic split=None | range=3.." + MaxCanvasEventTopicCharacters
+  EndIf
+  If (characters.Length < 3 || characters.Length > MaxCanvasEventTopicCharacters)
+    Return "topic length=" + characters.Length + " | range=3.." + MaxCanvasEventTopicCharacters
+  EndIf
+  If (!IsAsciiLetterOrDigit(characters[0]) || !IsAsciiLetterOrDigit(characters[characters.Length - 1]))
+    Return "topic segments must begin and end with an ASCII letter or digit"
+  EndIf
+  Int[] reserved = Utility.SplitStringChars("canvas.")
+  Bool reservedPrefix = characters.Length >= reserved.Length
+  Int index = 0
+  While (reservedPrefix && index < reserved.Length)
+    reservedPrefix = FoldAscii(characters[index]) == reserved[index]
+    index += 1
+  EndWhile
+  If (reservedPrefix)
+    Return "topic namespace canvas.* is reserved"
+  EndIf
+  Bool hasNamespace = False
+  index = 0
+  While (index < characters.Length)
+    Int current = characters[index]
+    If (current == 46)
+      If (index == 0 || index + 1 >= characters.Length || !IsAsciiLetterOrDigit(characters[index - 1]) || !IsAsciiLetterOrDigit(characters[index + 1]))
+        Return "topic contains an empty or punctuated segment | index=" + index
+      EndIf
+      hasNamespace = True
+    ElseIf (!IsAsciiLetterOrDigit(current) && current != 45 && current != 95)
+      Return "topic character | index=" + index + " | code=" + current
+    EndIf
+    index += 1
+  EndWhile
+  If (!hasNamespace)
+    Return "topic must contain a namespace separator"
+  EndIf
+  Return ""
 EndFunction
 
 ; Returns whether the supplied UUID is structurally valid and non-nil, regardless of accepted text shape or case.
@@ -782,7 +935,7 @@ Function LogOperation(OperationResult result)
     LogUserInformational(ModuleName, "LogOperation", "REGISTRY_PRUNED | Records=" + result.Pruned)
   EndIf
   String diagnosticText = result.Status + " | Consumer=" + result.ConsumerId + " | Version=" + result.DescriptorVersion + " | Consumers=" + result.Count + " | Epoch=" + result.Epoch + " | " + result.Detail
-  If (IsRegistrationAccepted(result.Status) || result.Status == "REGISTRY_READY" || result.Status == "UNREGISTERED" || result.Status == "REGISTERED_UI_LOAD_ELIGIBLE" || result.Status == "UI_LOAD_QUEUED" || result.Status == "UI_LOAD_ALREADY_REQUESTED" || result.Status == "UI_LOAD_SUBMITTED" || result.Status == "UI_ACTIVATION_RESET" || result.Status == "UI_LOAD_IDLE")
+  If (IsRegistrationAccepted(result.Status) || result.Status == "REGISTRY_READY" || result.Status == "UNREGISTERED" || result.Status == "REGISTERED_UI_LOAD_ELIGIBLE" || result.Status == "UI_LOAD_QUEUED" || result.Status == "UI_LOAD_ALREADY_REQUESTED" || result.Status == "UI_LOAD_SUBMITTED" || result.Status == "UI_ACTIVATION_RESET" || result.Status == "UI_LOAD_IDLE" || result.Status == "EVENT_SUBMITTED")
     LogUserInformational(ModuleName, "LogOperation", diagnosticText)
   Else
     LogUserWarning(ModuleName, "LogOperation", diagnosticText)

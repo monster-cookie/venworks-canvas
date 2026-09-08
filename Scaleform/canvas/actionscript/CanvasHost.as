@@ -17,6 +17,8 @@ package
 
       private static const UI_LOAD_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load|";
 
+      private static const CANVAS_EVENT_PREFIX:String = ENVELOPE_PREFIX + "canvas.event|";
+
       private static const MAX_UI_LOAD_CHARACTERS:int = 512;
 
       private static const SNAPSHOT_TYPE:String = "canvas.registry.snapshot";
@@ -27,7 +29,21 @@ package
 
       private static const DIAGNOSTIC_PREFIX:String = ENVELOPE_PREFIX + DIAGNOSTIC_TYPE + "|";
 
-      private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/1";
+      private static const LEGACY_CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/1";
+
+      private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/2";
+
+      private static const HOST_CONTRACT_VERSION:int = 2;
+
+      private static const MAX_UI_CHANNELS:int = 18;
+
+      private static const MAX_EVENT_TOPICS:int = 16;
+
+      private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
+
+      private static const MAX_EVENT_BODY_CHARACTERS:int = 400;
+
+      private static const MAX_CANVAS_EVENT_CHARACTERS:int = 512;
 
       private static const PROVIDER:String = "CustomAlertsData";
 
@@ -54,6 +70,8 @@ package
       private var alertDiagnosticCount:int = 0;
 
       private var subscribed:Boolean = false;
+
+      private var consumerSubscriptions:CanvasSubscriptions;
 
       private var disposed:Boolean = false;
 
@@ -86,6 +104,12 @@ package
       private var paths:Object = {};
 
       private var versions:Object = {};
+
+      private var loaderGenerations:Object = {};
+
+      private var consumerContracts:Object = {};
+
+      private var nextLoaderGeneration:int = 0;
 
       private var diagnostics:TextField;
 
@@ -159,9 +183,16 @@ package
          {
             this.unloadConsumer(consumerId);
          }
+         if(this.consumerSubscriptions != null)
+         {
+            this.consumerSubscriptions.dispose();
+         }
+         this.consumerSubscriptions = null;
          this.loaders = {};
          this.paths = {};
          this.versions = {};
+         this.loaderGenerations = {};
+         this.consumerContracts = {};
          this.resetPendingGeneration();
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {
@@ -201,6 +232,7 @@ package
             this.appendDiagnostic("WATCH PRESENTATION DISABLED");
             // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
             this.dataManager = watch.getCanvasWatchDataManager();
+            this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
             var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
             if(provider == null)
             {
@@ -221,6 +253,11 @@ package
                catch(cleanupError:Error) { this.appendDiagnostic("BRIDGE CLEANUP ERROR"); }
             }
             this.subscribed = false;
+            if(this.consumerSubscriptions != null)
+            {
+               this.consumerSubscriptions.dispose();
+               this.consumerSubscriptions = null;
+            }
             this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
          }
       }
@@ -232,6 +269,7 @@ package
          var alert:Object = null;
          var text:String = null;
          var uiLoadPrefixMatch:int = 0;
+         var canvasEventPrefixMatch:int = 0;
          var envelopePrefixMatch:int = 0;
          if(this.disposed)
          {
@@ -279,14 +317,23 @@ package
                }
                else
                {
-                  envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
-                  if(envelopePrefixMatch > 0)
+                  canvasEventPrefixMatch = this.matchAsciiPrefix(text,CANVAS_EVENT_PREFIX);
+                  if(canvasEventPrefixMatch > 0)
                   {
-                     this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                     this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                     this.receiveEnvelope(text);
                   }
                   else
                   {
-                     this.appendAlertDiagnostic("OTHER",text.length);
+                     envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
+                     if(envelopePrefixMatch > 0)
+                     {
+                        this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                     }
+                     else
+                     {
+                        this.appendAlertDiagnostic("OTHER",text.length);
+                     }
                   }
                }
             }
@@ -369,7 +416,7 @@ package
 
       private function receiveEnvelope(param1:String) : void
       {
-         // Legacy snapshot/diagnostic ingress remains disabled. One request only upserts its own consumer.
+         // Legacy snapshot/diagnostic ingress remains disabled. Only fixed load and named-event packets are accepted.
          if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
          {
             try
@@ -383,6 +430,22 @@ package
             catch(loadCommandError:Error)
             {
                this.appendDiagnostic("UI LOAD REJECTED | " + this.sanitizeText(loadCommandError,100));
+            }
+         }
+         else if(this.matchAsciiPrefix(param1,CANVAS_EVENT_PREFIX) > 0)
+         {
+            try
+            {
+               var canvasEvent:Object = this.parseCanvasEvent(param1);
+               this.appendDiagnostic("RX EVENT " + canvasEvent.topic + " | LENGTH " + String(canvasEvent.body).length);
+               if(this.consumerSubscriptions != null)
+               {
+                  this.consumerSubscriptions.publishEvent(String(canvasEvent.topic),String(canvasEvent.body));
+               }
+            }
+            catch(eventCommandError:Error)
+            {
+               this.appendDiagnostic("CANVAS EVENT REJECTED | " + this.sanitizeText(eventCommandError,100));
             }
          }
       }
@@ -425,6 +488,41 @@ package
          };
          this.validateDescriptor(descriptor);
          return descriptor;
+      }
+
+      private function parseCanvasEvent(packet:String) : Object
+      {
+         if(packet == null || packet.length > MAX_CANVAS_EVENT_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
+         {
+            throw new Error("invalid Canvas event packet size or characters");
+         }
+         if(this.matchAsciiPrefix(packet,CANVAS_EVENT_PREFIX) == 0)
+         {
+            throw new Error("invalid Canvas event envelope");
+         }
+         var cursor:int = CANVAS_EVENT_PREFIX.length;
+         var protocol:Object = this.readFrame(packet,cursor,1);
+         cursor = int(protocol.next);
+         if(protocol.value != "1")
+         {
+            throw new Error("unsupported Canvas event protocol");
+         }
+         var topic:Object = this.readFrame(packet,cursor,MAX_EVENT_TOPIC_CHARACTERS);
+         cursor = int(topic.next);
+         var body:Object = this.readFrame(packet,cursor,MAX_EVENT_BODY_CHARACTERS);
+         cursor = int(body.next);
+         if(cursor != packet.length)
+         {
+            throw new Error("trailing Canvas event data");
+         }
+         if(!this.isEventTopicValid(String(topic.value)))
+         {
+            throw new Error("invalid or reserved Canvas event topic");
+         }
+         return {
+            "topic":String(topic.value),
+            "body":String(body.value)
+         };
       }
 
       private function receiveDiagnostic(param1:String) : void
@@ -741,6 +839,148 @@ package
          return int(value);
       }
 
+      private function validateConsumerRegistration(param1:Object, param2:Loader, param3:Object) : Object
+      {
+         if(param1 == null)
+         {
+            throw new Error("invalid consumer protocol");
+         }
+         var protocol:Object = param1.protocol;
+         if(protocol == LEGACY_CONSUMER_PROTOCOL)
+         {
+            if(this.normalizeUuid(String(param1.consumerId)) != param2.name || int(param1.version) != int(this.versions[param2.name]))
+            {
+               throw new Error("legacy consumer identity did not match its descriptor");
+            }
+            return {
+               "protocol":protocol,
+               "contractVersion":1,
+               "bridge":param3,
+               "uiChannels":[],
+               "eventTopics":[]
+            };
+         }
+         if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL)
+         {
+            throw new Error("unsupported consumer protocol");
+         }
+         var expectedNamespace:String = this.getAssetNamespace(String(this.paths[param2.name]));
+         if(typeof param1.consumerId != "string" || this.normalizeUuid(param1.consumerId) != param2.name || typeof param1.assetNamespace != "string" || param1.assetNamespace.toLowerCase() != expectedNamespace)
+         {
+            throw new Error("consumer identity did not match its descriptor");
+         }
+         var descriptorVersion:int = this.strictContractInteger(param1.version,"version");
+         if(descriptorVersion != int(this.versions[param2.name]))
+         {
+            throw new Error("consumer version did not match its descriptor");
+         }
+         var minimumContractVersion:int = this.strictContractInteger(param1.minimumContractVersion,"minimumContractVersion");
+         var maximumContractVersion:int = this.strictContractInteger(param1.maximumContractVersion,"maximumContractVersion");
+         if(minimumContractVersion > maximumContractVersion || minimumContractVersion > HOST_CONTRACT_VERSION || maximumContractVersion < HOST_CONTRACT_VERSION)
+         {
+            throw new Error("incompatible consumer contract range");
+         }
+         var uiChannels:Array = this.validateStringList(param1.uiChannels,MAX_UI_CHANNELS,true);
+         var eventTopics:Array = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+         if(!("handleUIData" in param3) || typeof param3["handleUIData"] != "function" || !("handleCanvasEvent" in param3) || typeof param3["handleCanvasEvent"] != "function" || !("handleLifecycle" in param3) || typeof param3["handleLifecycle"] != "function")
+         {
+            throw new Error("consumer is missing fixed v2 callbacks");
+         }
+         return {
+            "protocol":String(protocol),
+            "contractVersion":HOST_CONTRACT_VERSION,
+            "bridge":param3,
+            "uiChannels":uiChannels,
+            "eventTopics":eventTopics
+         };
+      }
+
+      private function strictContractInteger(param1:Object, param2:String) : int
+      {
+         if(typeof param1 != "number")
+         {
+            throw new Error(param2 + " must be a number");
+         }
+         var value:Number = Number(param1);
+         if(!isFinite(value) || value < 1 || value > 9999 || value != Math.floor(value))
+         {
+            throw new Error(param2 + " must be an integer in 1..9999");
+         }
+         return int(value);
+      }
+
+      private function validateStringList(param1:Object, param2:int, param3:Boolean) : Array
+      {
+         if(!(param1 is Array))
+         {
+            throw new Error(param3 ? "uiChannels must be an array" : "eventTopics must be an array");
+         }
+         var source:Array = param1 as Array;
+         if(source.length > param2)
+         {
+            throw new Error(param3 ? "too many UI channels" : "too many event topics");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         var index:int = 0;
+         var value:String = null;
+         while(index < source.length)
+         {
+            if(typeof source[index] != "string")
+            {
+               throw new Error(param3 ? "invalid UI channel" : "invalid event topic");
+            }
+            value = source[index];
+            if(seen.hasOwnProperty("$" + value) || (param3 && !this.isAllowedUiChannel(value)) || (!param3 && !this.isEventTopicValid(value)))
+            {
+               throw new Error(param3 ? "invalid or duplicate UI channel" : "invalid or duplicate event topic");
+            }
+            seen["$" + value] = true;
+            result.push(value);
+            index++;
+         }
+         return result;
+      }
+
+      private function isAllowedUiChannel(param1:String) : Boolean
+      {
+         return param1 == "LocalEnvironmentData" || param1 == "LocalEnvData_Frequent" || param1 == "PlayerData" || param1 == "PlayerFrequentData" || param1 == "PlayerInventoryData" || param1 == "WeaponData" || param1 == "HudJetpackData" || param1 == "HUDStarbornPowersData" || param1 == "FavoritesData" || param1 == "ControlMapData" || param1 == "EnvironmentEffectsData" || param1 == "PersonalEffectsData" || param1 == "StarmapSystemBodyInfoProvider" || param1 == "HudCompassData" || param1 == "HudCrosshairData" || param1 == "HUDStealthData" || param1 == "HUDVehicleData" || param1 == "HUDOpacityData";
+      }
+
+      private function isEventTopicValid(param1:String) : Boolean
+      {
+         if(param1 == null || param1.length < 3 || param1.length > MAX_EVENT_TOPIC_CHARACTERS || !/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)+$/.test(param1))
+         {
+            return false;
+         }
+         return param1.substr(0,7).toLowerCase() != "canvas.";
+      }
+
+      private function getAssetNamespace(param1:String) : String
+      {
+         var match:Array = /^VenworksCanvas\/Consumers\/([a-z0-9][a-z0-9.-]{1,62}[a-z0-9])\/(normal|large)\.swf$/i.exec(param1);
+         if(match == null || String(match[0]).length != param1.length || String(match[1]).indexOf("..") >= 0)
+         {
+            throw new Error("invalid consumer asset namespace");
+         }
+         return String(match[1]).toLowerCase();
+      }
+
+      private function createLifecycleContext(param1:Object) : Object
+      {
+         return {
+            "contractVersion":int(param1.contractVersion),
+            "features":["uiData","canvasEvents","lifecycle"],
+            "uiChannels":param1.uiChannels.concat(),
+            "eventTopics":param1.eventTopics.concat()
+         };
+      }
+
+      private function isConsumerCurrent(param1:String, param2:Object, param3:int) : Boolean
+      {
+         return !this.disposed && this.loaders[param1] === param2 && int(this.loaderGenerations[param1]) == param3;
+      }
+
       private function reconcile(param1:Object, param2:Boolean) : void
       {
          var consumerId:String = null;
@@ -789,10 +1029,16 @@ package
       {
          param1 = this.normalizeUuid(param1);
          var loader:Loader = new Loader();
+         this.nextLoaderGeneration++;
+         if(this.nextLoaderGeneration < 1)
+         {
+            this.nextLoaderGeneration = 1;
+         }
          loader.name = param1;
          this.loaders[param1] = loader;
          this.paths[param1] = param2;
          this.versions[param1] = param3;
+         this.loaderGenerations[param1] = this.nextLoaderGeneration;
          loader.contentLoaderInfo.addEventListener(Event.INIT,this.onConsumerInit,false,0,true);
          loader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onConsumerComplete,false,0,true);
          loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onConsumerError,false,0,true);
@@ -814,6 +1060,7 @@ package
          var loader:Loader = param1.currentTarget.loader as Loader;
          var bridge:Object = null;
          var record:Object = null;
+         var contract:Object = null;
          if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
@@ -826,9 +1073,15 @@ package
                throw new Error("missing getCanvasRegistration()");
             }
             record = bridge["getCanvasRegistration"]();
-            if(record == null || record.protocol != CONSUMER_PROTOCOL || this.normalizeUuid(String(record.consumerId)) != loader.name || int(record.version) != int(this.versions[loader.name]))
+            contract = this.validateConsumerRegistration(record,loader,bridge);
+            this.consumerContracts[loader.name] = contract;
+            if(contract.contractVersion == HOST_CONTRACT_VERSION)
             {
-               throw new Error("consumer identity did not match its descriptor");
+               if(this.consumerSubscriptions == null)
+               {
+                  throw new Error("consumer subscriptions unavailable");
+               }
+               this.consumerSubscriptions.addConsumer(loader.name,bridge,loader,int(this.loaderGenerations[loader.name]),contract.uiChannels,contract.eventTopics);
             }
          }
          catch(validationError:Error)
@@ -841,11 +1094,41 @@ package
       private function onConsumerComplete(param1:Event) : void
       {
          var loader:Loader = param1.currentTarget.loader as Loader;
+         var contract:Object = null;
          if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }
          this.removeLoaderListeners(loader);
+         contract = this.consumerContracts[loader.name];
+         if(contract == null)
+         {
+            this.appendDiagnostic("INVALID " + loader.name + " | missing initialized contract");
+            this.unloadConsumer(loader.name);
+            return;
+         }
+         if(contract.contractVersion == HOST_CONTRACT_VERSION)
+         {
+            try
+            {
+               contract.bridge["handleLifecycle"]("ready",this.createLifecycleContext(contract));
+               if(this.loaders[loader.name] !== loader || this.consumerSubscriptions == null)
+               {
+                  return;
+               }
+               this.consumerSubscriptions.markReady(loader.name);
+               if(this.loaders[loader.name] !== loader)
+               {
+                  return;
+               }
+            }
+            catch(lifecycleError:Error)
+            {
+               this.appendDiagnostic("INVALID " + loader.name + " | READY CALLBACK | " + this.sanitizeText(lifecycleError,80));
+               this.unloadConsumer(loader.name);
+               return;
+            }
+         }
          if(loader.parent !== this)
          {
             addChild(loader);
@@ -869,14 +1152,31 @@ package
       {
          param1 = this.normalizeUuid(param1);
          var loader:Loader = this.loaders[param1] as Loader;
+         var contract:Object = this.consumerContracts[param1];
+         if(this.consumerSubscriptions != null)
+         {
+            this.consumerSubscriptions.removeConsumer(param1);
+         }
          if(loader == null)
          {
             delete this.loaders[param1];
             delete this.paths[param1];
             delete this.versions[param1];
+            delete this.loaderGenerations[param1];
+            delete this.consumerContracts[param1];
             return;
          }
          this.removeLoaderListeners(loader);
+         if(contract != null && contract.contractVersion == HOST_CONTRACT_VERSION)
+         {
+            try
+            {
+               contract.bridge["handleLifecycle"]("unload",this.createLifecycleContext(contract));
+            }
+            catch(lifecycleError:Error)
+            {
+            }
+         }
          if(loader.content != null && "dispose" in loader.content)
          {
             try
@@ -908,6 +1208,8 @@ package
          delete this.loaders[param1];
          delete this.paths[param1];
          delete this.versions[param1];
+         delete this.loaderGenerations[param1];
+         delete this.consumerContracts[param1];
       }
 
       private function removeLoaderListeners(param1:Loader) : void

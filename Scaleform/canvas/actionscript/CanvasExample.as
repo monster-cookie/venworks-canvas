@@ -7,6 +7,7 @@ package
    public final class CanvasExample extends MovieClip
    {
       private var marker:TextField;
+      private var pingReceived:Boolean;
 
       public function CanvasExample()
       {
@@ -16,12 +17,41 @@ package
       public function getCanvasRegistration() : Object
       {
          return {
-            "protocol":"VWCANVAS_CONSUMER/1",
+            "protocol":"VWCANVAS_CONSUMER/2",
             "consumerId":"a8098c1a-f86e-4b1e-9d7c-5a102bf38460",
             "assetNamespace":"venworks.canvas.example",
             "version":1,
+            "minimumContractVersion":2,
+            "maximumContractVersion":2,
+            "uiChannels":["PlayerData"],
+            "eventTopics":["venworks.canvas.example.ping"],
             "marker":"EXAMPLE"
          };
+      }
+
+      public function handleUIData(param1:String, param2:Object) : void
+      {
+         if(this.marker != null && !this.pingReceived && param1 == "PlayerData")
+         {
+            this.marker.text = "VWCANVAS EXAMPLE | DATA " + param1;
+         }
+      }
+
+      public function handleCanvasEvent(param1:String, param2:String) : void
+      {
+         if(this.marker != null && param1 == "venworks.canvas.example.ping")
+         {
+            this.pingReceived = true;
+            this.marker.text = "pong";
+         }
+      }
+
+      public function handleLifecycle(param1:String, param2:Object) : void
+      {
+         if(this.marker != null && !this.pingReceived && param1 == "ready")
+         {
+            this.marker.text = "VWCANVAS EXAMPLE | READY V" + param2.contractVersion;
+         }
       }
 
       public function dispose() : void

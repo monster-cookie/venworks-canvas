@@ -12,6 +12,8 @@ Set-StrictMode -Version Latest
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $sourcePath = Join-Path $root 'Scaleform\canvas\actionscript\CanvasHost.as'
 $source = Get-Content -LiteralPath $sourcePath -Raw
+$subscriptionsPath = Join-Path $root 'Scaleform\canvas\actionscript\CanvasSubscriptions.as'
+$subscriptionsSource = Get-Content -LiteralPath $subscriptionsPath -Raw
 $nodePath = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $functions = @{}
 foreach ($name in @('subscribe', 'onCustomAlertsData', 'receiveNote', 'appendCallbackDiagnostic', 'appendAlertDiagnostic')) {
@@ -33,12 +35,32 @@ foreach ($token in @(
 )) {
   if (!$source.Contains($token)) { throw "Missing bounded receiver diagnostic contract: $token" }
 }
+$makeChannelCallback = [regex]::Match($subscriptionsSource, '(?ms)      private function makeChannelCallback\([^\r\n]*\) : Function\s*\{(?<body>.*?)^      \}')
+$onChannelData = [regex]::Match($subscriptionsSource, '(?ms)      private function onChannelData\([^\r\n]*\) : void\s*\{(?<body>.*?)^      \}')
+$unsubscribeChannel = [regex]::Match($subscriptionsSource, '(?ms)      private function unsubscribeChannel\([^\r\n]*\) : void\s*\{(?<body>.*?)^      \}')
+$subscribeChannel = [regex]::Match($subscriptionsSource, '(?ms)      private function subscribeChannel\([^\r\n]*\) : void\s*\{(?<body>.*?)^      \}')
+if (!$makeChannelCallback.Success -or !$onChannelData.Success -or !$unsubscribeChannel.Success -or !$subscribeChannel.Success) {
+  throw 'Missing consumer subscription ownership method.'
+}
+$ownershipPredicate = 'this\.disposed \|\| this\.channelSubscribed\[param1\] !== true \|\| this\.channelCallbacks\[param1\] !== param2'
+if ($makeChannelCallback.Groups['body'].Value -notmatch '(?s)var callback:Function = null.*?callback = function\(param2:Object\):void.*?subscriptions\.onChannelData\(param1,callback,param2\).*?return callback' -or
+    [regex]::Matches($onChannelData.Groups['body'].Value, $ownershipPredicate).Count -ne 2 -or
+    $onChannelData.Groups['body'].Value.LastIndexOf('this.channelCallbacks[param1] !== param2') -gt $onChannelData.Groups['body'].Value.IndexOf('this.channelSnapshots[param1] = snapshot')) {
+  throw 'Each provider callback must carry its exact ownership identity and revalidate it before snapshot mutation.'
+}
+$unsubscribeBody = $unsubscribeChannel.Groups['body'].Value
+$subscribeBody = $subscribeChannel.Groups['body'].Value
+if ($unsubscribeBody.IndexOf('delete this.channelCallbacks[param1];') -lt 0 -or $unsubscribeBody.IndexOf('delete this.channelCallbacks[param1];') -gt $unsubscribeBody.IndexOf('this.dataManager.Unsubscribe(param1,callback);') -or
+    $subscribeBody.LastIndexOf('delete this.channelCallbacks[param1];') -lt 0 -or $subscribeBody.LastIndexOf('delete this.channelCallbacks[param1];') -gt $subscribeBody.IndexOf('this.dataManager.Unsubscribe(param1,callback);')) {
+  throw 'Callback ownership must be invalidated before native unsubscribe on normal and failed-subscribe cleanup paths.'
+}
 $fixtureJson = $functions | ConvertTo-Json -Compress
 $test = @'
 const assert = require('node:assert/strict');
 const PROVIDER = 'CustomAlertsData';
 const ENVELOPE_PREFIX = 'VWC_EVT/1|';
 const UI_LOAD_PREFIX = ENVELOPE_PREFIX + 'canvas.ui.load|';
+const CANVAS_EVENT_PREFIX = ENVELOPE_PREFIX + 'canvas.event|';
 const first = UI_LOAD_PREFIX + 'fixture-a';
 const second = UI_LOAD_PREFIX + 'fixture-b';
 const folded = 'vwc_evt/1|CANVAS.UI.LOAD|fixture-folded';
@@ -53,8 +75,8 @@ function makeHost(disabled = true, ready = true, subscriptionsRestored = true) {
   host.appendCallbackDiagnostic = message => appendCallbackDiagnostic.call(host, message, 8);
   host.appendAlertDiagnostic = (classification, characterCount = -1) => appendAlertDiagnostic.call(host, classification, characterCount, 16);
   host.matchAsciiPrefix = new Function('value', 'prefix', functions.matchAsciiPrefix);
-  host.onCustomAlertsData = new Function('param1', 'UI_LOAD_PREFIX', 'ENVELOPE_PREFIX', functions.onCustomAlertsData);
-  host.callback = value => host.onCustomAlertsData(value, UI_LOAD_PREFIX, ENVELOPE_PREFIX);
+  host.onCustomAlertsData = new Function('param1', 'UI_LOAD_PREFIX', 'CANVAS_EVENT_PREFIX', 'ENVELOPE_PREFIX', functions.onCustomAlertsData);
+  host.callback = value => host.onCustomAlertsData(value, UI_LOAD_PREFIX, CANVAS_EVENT_PREFIX, ENVELOPE_PREFIX);
   const manager = { gets: 0, subscribes: 0, unsubscribes: 0, listener: null,
     provider: { dataReady: ready, data: { aAlerts: [{sAlertText: first}] } },
     GetDataFromClient(name, create) { assert.equal(name, PROVIDER); assert.equal(create, true); this.gets++; return this.provider; },
@@ -69,7 +91,7 @@ function makeHost(disabled = true, ready = true, subscriptionsRestored = true) {
     getCanvasWatchSubscriptionsRestored: () => subscriptionsRestored,
     getCanvasWatchDataManager: () => manager
   } };
-  host.subscribe = () => new Function('PROVIDER', functions.subscribe).call(host, PROVIDER);
+  host.subscribe = () => new Function('PROVIDER', 'CanvasSubscriptions', functions.subscribe).call(host, PROVIDER, function(){this.dispose=()=>{};});
   return {host, manager};
 }
 let checks = 0;
@@ -97,6 +119,7 @@ check(() => { const {host}=makeHost(); host.callback({get data(){throw Error('ge
 check(() => { const {host}=makeHost(); host.callback({aAlerts:[null,42,{}, {sAlertText:5}, {sAlertText:first}]}); assert.deepEqual(host.received,[first]); assert.equal(host.logs.filter(x=>x.includes('INVALID ENTRY')).length,4); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:[{sAlertText:'vanilla-private-text'},{sAlertText:'VWC_EVT/1|canvas.registry.snapshot|old'},{sAlertText:first}]}); assert.deepEqual(host.received,[first]); assert(!host.logs.join('').includes('vanilla-private-text')); assert(host.logs.some(x=>x.includes('OTHER | LENGTH 20'))); assert(host.logs.some(x=>x.includes('CANVAS OTHER'))); assert(host.logs.some(x=>x.includes('UI LOAD'))); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:[{sAlertText:folded}]}); assert.deepEqual(host.received,[folded]); assert(host.logs.some(x=>x.includes('UI LOAD | PREFIX ASCII CASE-FOLDED | LENGTH ' + folded.length))); });
+check(() => { const {host}=makeHost(); const event=CANVAS_EVENT_PREFIX+'1:117:venworks.example4:Body'; host.callback({aAlerts:[{sAlertText:event}]}); assert.deepEqual(host.received,[event]); assert(host.logs.some(x=>x.includes('CANVAS EVENT | PREFIX EXACT | LENGTH ' + event.length))); });
 check(() => { const {host}=makeHost(); assert.equal(host.matchAsciiPrefix(first,UI_LOAD_PREFIX),1); assert.equal(host.matchAsciiPrefix(folded,UI_LOAD_PREFIX),2); assert.equal(host.matchAsciiPrefix('VWC_ÉVT/1|canvas.ui.load|fixture',UI_LOAD_PREFIX),0); assert.equal(host.matchAsciiPrefix('VWC_EVT/1|canvas.ui.other|fixture',UI_LOAD_PREFIX),0); });
 check(() => { const {host}=makeHost(); for(let i=0;i<1000;i++) host.callback({aAlerts:[]}); assert.equal(host.logs.filter(x=>x.includes('PROVIDER CALLBACK #')).length,8); assert.equal(host.logs.filter(x=>x.includes('CALLBACK DIAGNOSTICS SUPPRESSED')).length,1); });
 check(() => { const {host}=makeHost(); host.callback({aAlerts:Array.from({length:100},()=>({sAlertText:'vanilla-private-text'}))}); assert.equal(host.logs.filter(x=>x.includes('PROVIDER ALERT #')).length,16); assert.equal(host.logs.filter(x=>x.includes('ALERT DIAGNOSTICS SUPPRESSED')).length,1); assert(!host.logs.join('').includes('vanilla-private-text')); });
@@ -122,3 +145,4 @@ if ($subscriptionInsertion.Count -ne 1 -or !$subscriptionInsertion[0].content.In
   throw 'Watch presentation teardown must run only after the final vanilla subscription.'
 }
 Write-Host 'Watch subscription-restoration and presentation-isolation patch contracts passed; in-game Watch absence and consumer rendering remain manual acceptance.'
+Write-Output 'Consumer channel callback identity and pre-unsubscribe invalidation source contracts passed; delayed native callbacks remain Scaleform/runtime acceptance.'
