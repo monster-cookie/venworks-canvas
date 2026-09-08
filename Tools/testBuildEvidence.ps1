@@ -6,7 +6,12 @@ Uses local fixture movies and ActionScript text. Java, JPEXS, Apache Flex, and t
 #>
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+$sharedConfiguration = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $sharedConfiguration -or ![bool]$sharedConfiguration.Value) {
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+}
 . (Join-Path $PSScriptRoot 'sharedScaleform.ps1')
 
 function Assert-TestRejected {
@@ -153,6 +158,98 @@ try {
     Set-Item -LiteralPath Function:Invoke-BuildJavaJar -Value $originalNormalizerJavaJar
   }
 
+  $auxiliarySourceRoot = Join-Path $fixtureRoot 'auxiliary-source'
+  $auxiliaryBuildRoot = Join-Path $auxiliarySourceRoot 'build'
+  $auxiliaryAppRoot = Join-Path $auxiliarySourceRoot 'app'
+  $auxiliaryCommonRoot = Join-Path $auxiliarySourceRoot 'common'
+  $auxiliaryOutputRoot = Join-Path $fixtureRoot 'auxiliary-output'
+  $auxiliaryWorkRoot = Join-Path $fixtureRoot 'auxiliary-work'
+  $auxiliaryFlexRoot = Join-Path $fixtureRoot 'auxiliary-flex'
+  $auxiliaryFrameworksRoot = Join-Path $auxiliaryFlexRoot 'frameworks'
+  $auxiliaryJava = Join-Path $fixtureRoot 'auxiliary-java.exe'
+  $auxiliaryJpexs = Join-Path $fixtureRoot 'auxiliary-ffdec.jar'
+  $auxiliaryManifest = Join-Path $auxiliaryBuildRoot 'auxiliary.build.xml'
+  New-Item -ItemType Directory -Path $auxiliaryBuildRoot, $auxiliaryAppRoot, $auxiliaryCommonRoot, (Join-Path $auxiliaryFlexRoot 'lib'), $auxiliaryFrameworksRoot | Out-Null
+  Write-BuildUtf8WithoutBom -Path (Join-Path $auxiliaryAppRoot 'Main.as') -Text "package app`n{`n  import app.LocalHelper;`n  import common.Helper;`n  public class Main { }`n}"
+  Write-BuildUtf8WithoutBom -Path (Join-Path $auxiliaryAppRoot 'LocalHelper.as') -Text "package app`n{`n  public class LocalHelper { }`n}"
+  Write-BuildUtf8WithoutBom -Path (Join-Path $auxiliaryCommonRoot 'Helper.as') -Text "package common`n{`n  public class Helper { }`n}"
+  Write-BuildUtf8WithoutBom -Path $auxiliaryManifest -Text @'
+<movieBuild name="auxiliary" role="consumer" outputFile="Auxiliary.swf" documentClass="../app/Main.as" className="app.Main" stageWidth="640" stageHeight="480" frameRate="30">
+  <requiredTokens><token>AUXILIARY_TOKEN</token></requiredTokens>
+  <forbiddenTokens><token>FORBIDDEN_TOKEN</token></forbiddenTokens>
+</movieBuild>
+'@
+  foreach ($filePath in @(
+    $auxiliaryJava,
+    $auxiliaryJpexs,
+    (Join-Path $auxiliaryFlexRoot 'lib\mxmlc.jar'),
+    (Join-Path $auxiliaryFrameworksRoot 'flex-config.xml'),
+    (Join-Path $auxiliaryFrameworksRoot 'playerglobal.swc')
+  )) {
+    [System.IO.File]::WriteAllBytes($filePath, [byte[]](0))
+  }
+  $script:includeAuxiliaryDocumentClass = $true
+  $originalAuxiliaryJavaJar = ${function:Invoke-BuildJavaJar}
+  function Invoke-BuildJavaJar {
+    param([string]$JavaPath, [string]$JarPath, [string[]]$Arguments, [string]$Description)
+    if ([System.IO.Path]::GetFullPath($JavaPath) -cne [System.IO.Path]::GetFullPath($auxiliaryJava)) {
+      throw "Auxiliary fixture received unexpected native tool paths for $Description."
+    }
+    $mxmlcJarPath = Join-Path $auxiliaryFlexRoot 'lib\mxmlc.jar'
+    if ([System.IO.Path]::GetFullPath($JarPath) -ceq [System.IO.Path]::GetFullPath($mxmlcJarPath)) {
+      $sourcePathIndex = [Array]::IndexOf($Arguments, '-compiler.source-path')
+      $outputIndex = [Array]::IndexOf($Arguments, '-output')
+      $isolatedSourceRoot = if ($sourcePathIndex -ge 0) { [string]$Arguments[$sourcePathIndex + 1] } else { '' }
+      if ($Description -cne 'Apache Flex Scaleform compilation' -or
+          $sourcePathIndex -lt 0 -or $outputIndex -lt 0 -or
+          [System.IO.Path]::GetFullPath([string]$Arguments[$sourcePathIndex + 2]) -cne [System.IO.Path]::GetFullPath($auxiliaryAppRoot) -or
+          [System.IO.Path]::GetFullPath([string]$Arguments[$sourcePathIndex + 3]) -cne [System.IO.Path]::GetFullPath($auxiliarySourceRoot) -or
+          [string]$Arguments[$sourcePathIndex + 4] -cne '-compiler.debug=false' -or
+          !(Test-Path -LiteralPath (Join-Path $isolatedSourceRoot 'Main.as') -PathType Leaf) -or
+          !(Test-Path -LiteralPath (Join-Path ([string]$Arguments[$sourcePathIndex + 2]) 'LocalHelper.as') -PathType Leaf) -or
+          !(Test-Path -LiteralPath (Join-Path ([string]$Arguments[$sourcePathIndex + 3]) 'common\Helper.as') -PathType Leaf) -or
+          [System.IO.Path]::GetFullPath([string]$Arguments[-1]) -cne [System.IO.Path]::GetFullPath((Join-Path $isolatedSourceRoot 'Main.as'))) {
+        throw 'Scaleform compiler arguments did not preserve the configured auxiliary source-root contract.'
+      }
+      Write-TestScaleformMovie -Path ([string]$Arguments[$outputIndex + 1]) -Marker 'compiled-auxiliary'
+      return
+    }
+    if ([System.IO.Path]::GetFullPath($JarPath) -cne [System.IO.Path]::GetFullPath($auxiliaryJpexs)) {
+      throw "Auxiliary fixture received unexpected native tool paths for $Description."
+    }
+    if ($Arguments[0] -ceq '-swf2xml') {
+      Write-BuildUtf8WithoutBom -Path $Arguments[2] -Text '<swf><tags><item type="FileAttributesTag" hasMetadata="false"/></tags></swf>'
+      return
+    }
+    if ($Arguments[0] -ceq '-xml2swf') {
+      Write-TestScaleformMovie -Path $Arguments[2] -Marker 'normalized-auxiliary'
+      return
+    }
+    if ($Arguments[0] -ceq '-format' -and $Arguments[2] -ceq '-export') {
+      New-Item -ItemType Directory -Force -Path $Arguments[4] | Out-Null
+      if ($script:includeAuxiliaryDocumentClass) {
+        Write-BuildUtf8WithoutBom -Path (Join-Path $Arguments[4] 'Main.as') -Text "package app`n{`n  public class Main { public static var marker:String = 'AUXILIARY_TOKEN'; }`n}"
+      }
+      Write-BuildUtf8WithoutBom -Path (Join-Path $Arguments[4] 'Helper.as') -Text "package common`n{`n  public class Helper { }`n}"
+      return
+    }
+    throw "Unexpected auxiliary JPEXS invocation for $Description."
+  }
+  try {
+    $auxiliaryResult = Invoke-BuildScaleformMovieBuild -ManifestPath $auxiliaryManifest -OutputDirectory $auxiliaryOutputRoot -WorkDirectory $auxiliaryWorkRoot -JavaPath $auxiliaryJava -JpexsJarPath $auxiliaryJpexs -FlexSdkPath $auxiliaryFlexRoot -ScaleformSourceRoot $auxiliarySourceRoot
+    if ($auxiliaryResult.OutputFile -cne 'Auxiliary.swf' -or !(Test-Path -LiteralPath (Join-Path $auxiliaryOutputRoot 'Auxiliary.swf') -PathType Leaf)) {
+      throw 'Scaleform movie build did not publish the auxiliary-source fixture output.'
+    }
+    $script:includeAuxiliaryDocumentClass = $false
+    Assert-TestRejected -Description 'Missing declared Scaleform document class' -ExpectedMessage "does not export declared class 'app.Main'" -Action {
+      [void](Assert-BuildScaleformMovie -JavaPath $auxiliaryJava -JpexsJarPath $auxiliaryJpexs -MoviePath (Join-Path $auxiliaryOutputRoot 'Auxiliary.swf') -WorkPath (Join-Path $auxiliaryWorkRoot 'missing-document-class') -Definition (Get-BuildScaleformMovieDefinition -ManifestPath $auxiliaryManifest))
+    }
+  }
+  finally {
+    $script:includeAuxiliaryDocumentClass = $true
+    Set-Item -LiteralPath Function:Invoke-BuildJavaJar -Value $originalAuxiliaryJavaJar
+  }
+
   $nativeInputPath = Join-Path $fixtureRoot 'native-input.swf'
   $nativeOutputPath = Join-Path $fixtureRoot 'native-output.swf'
   $fakeJavaPath = Join-Path $fixtureRoot 'java.exe'
@@ -195,8 +292,42 @@ try {
     throw 'Scaleform job conversion did not preserve arbitrary variant configuration.'
   }
 
+  $safeNestedFlexJobs = @(ConvertTo-BuildScaleformJobs -RepositoryRoot $repositoryRoot -Variants @(
+    [pscustomobject]@{ VariantKey = 'FLEX-PARENT'; ScaleformBuilds = @(@{ Name = 'flex-parent'; Kind = 'Flex'; OutputSet = 'nested-flex'; ManifestPath = $auxiliaryManifest; Outputs = @(@{ OutputFile = 'Auxiliary.swf' }) }) }
+    [pscustomobject]@{ VariantKey = 'FLEX-CHILD'; ScaleformBuilds = @(@{ Name = 'flex-child'; Kind = 'Flex'; OutputSet = 'nested-flex/child'; ManifestPath = $auxiliaryManifest; Outputs = @(@{ OutputFile = 'Auxiliary.swf' }) }) }
+  ))
+  if ($safeNestedFlexJobs.Count -ne 2) {
+    throw 'Scaleform ownership validation rejected safe nested Flex output sets.'
+  }
+
+  $safeMixedJobs = @(ConvertTo-BuildScaleformJobs -RepositoryRoot $repositoryRoot -Variants @(
+    [pscustomobject]@{ VariantKey = 'MIXED-FLEX'; ScaleformBuilds = @(@{ Name = 'mixed-flex'; Kind = 'Flex'; OutputSet = 'mixed'; ManifestPath = $auxiliaryManifest; Outputs = @(@{ OutputFile = 'Auxiliary.swf' }) }) }
+    [pscustomobject]@{ VariantKey = 'MIXED-PATCH'; ScaleformBuilds = @(@{ Name = 'mixed-patch'; Kind = 'Patch'; OutputSet = 'mixed/child'; PatchPath = $patchPath; Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'patched.swf' }) }) }
+  ))
+  if ($safeMixedJobs.Count -ne 2) {
+    throw 'Scaleform ownership validation rejected a safe Flex ancestor with a nested Patch output set.'
+  }
+
+  $safeSiblingJobs = @(ConvertTo-BuildScaleformJobs -RepositoryRoot $repositoryRoot -Variants @(
+    [pscustomobject]@{ VariantKey = 'PLAYER'; ScaleformBuilds = @(@{ Name = 'sibling-player'; Kind = 'Patch'; OutputSet = 'hud/player'; PatchPath = $patchPath; Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'player.swf' }) }) }
+    [pscustomobject]@{ VariantKey = 'SHIP'; ScaleformBuilds = @(@{ Name = 'sibling-ship'; Kind = 'Patch'; OutputSet = 'HUD\ship'; PatchPath = $patchPath; Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'ship.swf' }) }) }
+  ))
+  if ($safeSiblingJobs.Count -ne 2) {
+    throw 'Scaleform ownership validation rejected sibling Patch output sets.'
+  }
+
+  Assert-TestRejected -Description 'Flex file and nested output-set directory collision' -ExpectedMessage 'conflicts with output-set directory' -Action {
+    [void](ConvertTo-BuildScaleformJobs -RepositoryRoot $repositoryRoot -Variants @(
+      [pscustomobject]@{ VariantKey = 'FILE'; ScaleformBuilds = @(@{ Name = 'collision-file'; Kind = 'Flex'; OutputSet = 'collision'; ManifestPath = $auxiliaryManifest; Outputs = @(@{ OutputFile = 'Auxiliary.swf' }) }) }
+      [pscustomobject]@{ VariantKey = 'DIRECTORY'; ScaleformBuilds = @(@{ Name = 'collision-directory'; Kind = 'Patch'; OutputSet = 'collision/Auxiliary.swf'; PatchPath = $patchPath; Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'patched.swf' }) }) }
+    ))
+  }
+
   $configuredJobs = @(ConvertTo-BuildScaleformJobs -Variants @(Get-ModuleVariants) -RepositoryRoot $repositoryRoot)
   Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'ship-loader', 'canvas-example', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
+  if (@($configuredJobs | Where-Object { $_.OutputSet -ceq 'movies' }).Count -ne 3) {
+    throw 'Configured Scaleform ownership validation did not preserve the shared Flex movie output set.'
+  }
   $playerJob = @($configuredJobs | Where-Object { $_.Name -ceq 'player-watch' })[0]
   $playerNames = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')
   Assert-BuildExactNames -Actual @($playerJob.Outputs.InputFile) -Expected $playerNames -Description 'Player HUD input configuration'
@@ -310,6 +441,53 @@ try {
     throw 'Publishing a selected movie changed an unselected movie output.'
   }
 
+  $hazardRoot = Join-Path $fixtureRoot 'flex-hazard'
+  $hazardOutput = Join-Path $hazardRoot 'output'
+  $hazardWork = Join-Path $hazardRoot 'work'
+  $hazardDestination = Join-Path $hazardOutput 'movies'
+  $hazardFirstOutput = Join-Path $hazardDestination 'first.swf'
+  $hazardSecondOutput = Join-Path $hazardDestination 'second.swf'
+  New-Item -ItemType Directory -Path $hazardDestination, $hazardSecondOutput | Out-Null
+  Write-TestScaleformMovie -Path $hazardFirstOutput -Marker 'original-first'
+  $hazardFirstHash = Get-BuildFileSha256 -Path $hazardFirstOutput
+  $hazardJobs = @(
+    [pscustomobject]@{ Name = 'hazard-first'; Kind = 'Flex'; OutputSet = 'movies'; ManifestPath = 'first'; PatchPath = $null; Outputs = @([pscustomobject]@{ InputFile = $null; OutputFile = 'first.swf' }); VariantKey = 'FIRST' }
+    [pscustomobject]@{ Name = 'hazard-second'; Kind = 'Flex'; OutputSet = 'movies'; ManifestPath = 'second'; PatchPath = $null; Outputs = @([pscustomobject]@{ InputFile = $null; OutputFile = 'second.swf' }); VariantKey = 'SECOND' }
+  )
+  $originalHazardMovieBuild = ${function:Invoke-BuildScaleformMovieBuild}
+  $hazardWorkPrefix = [System.IO.Path]::GetFullPath($hazardWork).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  function Invoke-BuildScaleformMovieBuild {
+    param(
+      [string]$ManifestPath, [string]$OutputDirectory, [string]$WorkDirectory, [string]$JavaPath,
+      [string]$JpexsJarPath, [string]$FlexSdkPath, [string]$ScaleformSourceRoot, [switch]$KeepWork
+    )
+    if ($ManifestPath -cnotin @('first', 'second') -or
+        ![System.IO.Path]::GetFullPath($OutputDirectory).StartsWith($hazardWorkPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+        ![System.IO.Path]::GetFullPath($WorkDirectory).StartsWith($hazardWorkPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+        [System.IO.Path]::GetFullPath($JavaPath) -cne [System.IO.Path]::GetFullPath($auxiliaryJava) -or
+        [System.IO.Path]::GetFullPath($JpexsJarPath) -cne [System.IO.Path]::GetFullPath($auxiliaryJpexs) -or
+        [System.IO.Path]::GetFullPath($FlexSdkPath) -cne [System.IO.Path]::GetFullPath($auxiliaryFlexRoot) -or
+        [System.IO.Path]::GetFullPath($ScaleformSourceRoot) -cne [System.IO.Path]::GetFullPath($auxiliarySourceRoot) -or
+        $KeepWork.IsPresent) {
+      throw 'Flex hazard fixture received unexpected job arguments.'
+    }
+    $outputFile = "$ManifestPath.swf"
+    $path = Join-Path $OutputDirectory $outputFile
+    Write-TestScaleformMovie -Path $path -Marker "candidate-$ManifestPath"
+    return [pscustomobject]@{ Name = $ManifestPath; Role = 'fixture'; OutputFile = $outputFile; Path = $path }
+  }
+  try {
+    Assert-TestRejected -Description 'Flex destination directory hazard' -ExpectedMessage 'output destination is a directory' -Action {
+      [void](Invoke-BuildScaleformJobs -Jobs $hazardJobs -JavaPath $auxiliaryJava -JpexsJarPath $auxiliaryJpexs -FlexSdkPath $auxiliaryFlexRoot -ScaleformSourceRoot $auxiliarySourceRoot -OutputDirectory $hazardOutput -WorkDirectory $hazardWork -AllowedRoot $hazardRoot)
+    }
+  }
+  finally {
+    Set-Item -LiteralPath Function:Invoke-BuildScaleformMovieBuild -Value $originalHazardMovieBuild
+  }
+  if ((Get-BuildFileSha256 -Path $hazardFirstOutput) -cne $hazardFirstHash -or !(Test-Path -LiteralPath $hazardSecondOutput -PathType Container)) {
+    throw 'Flex destination preflight changed an existing output before rejecting a later directory hazard.'
+  }
+
   $orchestrationRoot = Join-Path $fixtureRoot 'orchestration'
   $orchestrationInput = Join-Path $orchestrationRoot 'input'
   $orchestrationOutput = Join-Path $orchestrationRoot 'output'
@@ -396,9 +574,128 @@ try {
   $builderAst = [System.Management.Automation.Language.Parser]::ParseFile($builderPath, [ref]$tokens, [ref]$parseErrors)
   if ($parseErrors.Count -ne 0) { throw "buildScaleform.ps1 does not parse: $($parseErrors[0].Message)" }
   $parameterNames = @($builderAst.ParamBlock.Parameters.Name.VariablePath.UserPath)
-  Assert-BuildExactNames -Actual $parameterNames -Expected @('VariantKeys', 'JavaPath', 'JpexsJarPath', 'FlexSdkPath', 'VanillaInterfacePath', 'OutputDirectory', 'WorkDirectory', 'KeepWork') -Description 'Scaleform build parameters'
+  Assert-BuildExactNames -Actual $parameterNames -Expected @('EnvironmentPath', 'VariantKeys', 'JavaPath', 'JpexsJarPath', 'FlexSdkPath', 'VanillaInterfacePath', 'OutputDirectory', 'WorkDirectory', 'KeepWork') -Description 'Scaleform build parameters'
+  $builderHelp = Get-Help -Name $builderPath -Full
+  foreach ($parameterName in $parameterNames) {
+    $helpParameters = @($builderHelp.parameters.parameter | Where-Object { $_.name -ceq $parameterName })
+    $descriptionText = if ($helpParameters.Count -eq 1) { [string]::Join(' ', @($helpParameters[0].description.Text)) } else { '' }
+    if ([string]::IsNullOrWhiteSpace($descriptionText)) {
+      throw "Scaleform build parameter '$parameterName' does not have comment-based help."
+    }
+  }
+
+  $savedBuildSettings = $Global:BuildSettings
+  $savedModuleVariants = $Global:ModuleVariants
+  $savedSharedConfigurationLoaded = $Global:SharedConfigurationLoaded
+  $missingToolRoot = Join-Path $fixtureRoot 'missing-tools'
+  $emptyVariant = [pscustomobject]@{
+    VariantKey = 'EMPTY'
+    PapyrusNamespace = 'Fixture:Empty'
+    ScaleformBuilds = @()
+  }
+  $unselectedVariant = [pscustomobject]@{
+    VariantKey = 'UNSELECTED'
+    PapyrusNamespace = 'Fixture:Unselected'
+    ScaleformBuilds = @(@{
+      Name = 'unselected-flex'
+      Kind = 'Flex'
+      OutputSet = 'unselected'
+      ManifestPath = $auxiliaryManifest
+      Outputs = @(@{ OutputFile = 'Auxiliary.swf' })
+    })
+  }
+  try {
+    $Global:SharedConfigurationLoaded = $true
+    $Global:BuildSettings = @{
+      WorkRoot = $fixtureRoot
+      ScaleformSourceRoot = $auxiliarySourceRoot
+      ScaleformDirectory = Join-Path $fixtureRoot 'wrapper-output'
+    }
+    $Global:ModuleVariants = @($emptyVariant, $unselectedVariant)
+    & $builderPath `
+      -EnvironmentPath (Join-Path $fixtureRoot 'unused.env') `
+      -VariantKeys 'EMPTY' `
+      -JavaPath (Join-Path $missingToolRoot 'java.exe') `
+      -JpexsJarPath (Join-Path $missingToolRoot 'ffdec.jar') `
+      -FlexSdkPath (Join-Path $missingToolRoot 'flex')
+
+    $duplicateJob = @{
+      Name = 'duplicate-flex'
+      Kind = 'Flex'
+      OutputSet = 'shared'
+      ManifestPath = $auxiliaryManifest
+      Outputs = @(@{ OutputFile = 'Auxiliary.swf' })
+    }
+    $Global:ModuleVariants = @(
+      [pscustomobject]@{ VariantKey = 'FIRST'; PapyrusNamespace = 'Fixture:First'; ScaleformBuilds = @($duplicateJob) }
+      [pscustomobject]@{
+        VariantKey = 'SECOND'
+        PapyrusNamespace = 'Fixture:Second'
+        ScaleformBuilds = @(@{
+          Name = 'second-duplicate-flex'
+          Kind = 'Flex'
+          OutputSet = 'shared'
+          ManifestPath = $auxiliaryManifest
+          Outputs = @(@{ OutputFile = 'Auxiliary.swf' })
+        })
+      }
+    )
+    Assert-TestRejected -Description 'Unselected duplicate Scaleform output ownership' -ExpectedMessage 'declared more than once' -Action {
+      & $builderPath `
+        -EnvironmentPath (Join-Path $fixtureRoot 'unused.env') `
+        -VariantKeys 'FIRST' `
+        -JavaPath (Join-Path $missingToolRoot 'java.exe') `
+        -JpexsJarPath (Join-Path $missingToolRoot 'ffdec.jar') `
+        -FlexSdkPath (Join-Path $missingToolRoot 'flex')
+    }
+
+    $Global:ModuleVariants = @(
+      [pscustomobject]@{
+        VariantKey = 'PARENT'
+        PapyrusNamespace = 'Fixture:Parent'
+        ScaleformBuilds = @(@{
+          Name = 'parent-patch'
+          Kind = 'Patch'
+          OutputSet = 'hud'
+          PatchPath = $patchPath
+          Outputs = @(@{ InputFile = 'parent-input.swf'; OutputFile = 'parent.swf' })
+        })
+      }
+      [pscustomobject]@{
+        VariantKey = 'CHILD'
+        PapyrusNamespace = 'Fixture:Child'
+        ScaleformBuilds = @(@{
+          Name = 'child-patch'
+          Kind = 'Patch'
+          OutputSet = 'HUD\child'
+          PatchPath = $patchPath
+          Outputs = @(@{ InputFile = 'child-input.swf'; OutputFile = 'child.swf' })
+        })
+      }
+    )
+    $unselectedChildOutput = Join-Path ([string]$Global:BuildSettings.ScaleformDirectory) 'hud\child\child.swf'
+    Write-TestScaleformMovie -Path $unselectedChildOutput -Marker 'unselected-child'
+    $unselectedChildHash = Get-BuildFileSha256 -Path $unselectedChildOutput
+    Assert-TestRejected -Description 'Selected parent Patch directory ownership' -ExpectedMessage 'owns a directory containing' -Action {
+      & $builderPath `
+        -EnvironmentPath (Join-Path $fixtureRoot 'unused.env') `
+        -VariantKeys 'PARENT' `
+        -JavaPath (Join-Path $missingToolRoot 'java.exe') `
+        -JpexsJarPath (Join-Path $missingToolRoot 'ffdec.jar') `
+        -FlexSdkPath (Join-Path $missingToolRoot 'flex')
+    }
+    if ((Get-BuildFileSha256 -Path $unselectedChildOutput) -cne $unselectedChildHash) {
+      throw 'Scaleform ownership preflight changed an unselected child output.'
+    }
+  }
+  finally {
+    $Global:BuildSettings = $savedBuildSettings
+    $Global:ModuleVariants = $savedModuleVariants
+    $Global:SharedConfigurationLoaded = $savedSharedConfigurationLoaded
+  }
+
   $builderSource = [System.IO.File]::ReadAllText($builderPath)
-  if ($builderSource -match '(?i)VwHud|EnvironmentPath|EstablishExpectedHashes|build-evidence|Archive2|TOOL_PATH_ARCHIVER|STEAM_DATA_FOLDER') {
+  if ($builderSource -match '(?i)VwHud|EstablishExpectedHashes|build-evidence|Archive2|TOOL_PATH_ARCHIVER|STEAM_DATA_FOLDER') {
     throw 'Scaleform build still contains a retired repository, environment, extraction, or evidence dependency.'
   }
   $sharedSource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Tools\sharedScaleform.ps1'))

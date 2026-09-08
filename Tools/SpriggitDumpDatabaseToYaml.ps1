@@ -6,7 +6,7 @@ Serializes selected staged ESMs to their tracked per-ESM Spriggit YAML directori
 One or more configured module variant keys. Omit this parameter to process all variants.
 
 .PARAMETER EnvironmentPath
-Path to the environment file that configures Spriggit and the Starfield data folder.
+Environment file used only by the first successful shared configuration initialization in the current PowerShell session. Later calls in that session reuse the loaded configuration; start a fresh process to select a different file.
 #>
 [CmdletBinding()]
 param(
@@ -19,9 +19,15 @@ param(
 $PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
 
-Import-BuildEnvironment -Path $EnvironmentPath
+$sharedConfigurationVariable = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $sharedConfigurationVariable -or ![bool]$sharedConfigurationVariable.Value) {
+  Write-Host -ForegroundColor Green 'Importing Shared Configuration'
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
+
 foreach ($requiredName in @('TOOL_PATH_SPRIGGIT', 'SPRIGGIT_VERSION', 'STEAM_DATA_FOLDER')) {
   $value = [Environment]::GetEnvironmentVariable($requiredName, 'Process')
   if ([string]::IsNullOrWhiteSpace($value)) {
@@ -75,3 +81,8 @@ foreach ($variant in $variants) {
 }
 
 Write-Host -ForegroundColor Green "Spriggit serialization completed: $updatedCount updated, $skippedCount skipped."
+Write-Host -ForegroundColor Cyan "`n`n"
+Write-Host -ForegroundColor Cyan '**************************************************'
+Write-Host -ForegroundColor Cyan '**   Spriggit Datafile Dump Workflow Complete   **'
+Write-Host -ForegroundColor Cyan '**************************************************'
+Write-Host -ForegroundColor Cyan "`n`n"

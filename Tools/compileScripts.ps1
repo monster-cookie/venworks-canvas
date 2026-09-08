@@ -4,6 +4,15 @@ Compiles the Papyrus scripts owned by one or more configured module variants.
 .DESCRIPTION
 Variant membership comes from each variant's exact Papyrus namespace. Sources compile into
 a unique work candidate before selected outputs are promoted, preserving unselected outputs.
+
+.PARAMETER VariantKeys
+One or more configured module variant keys. Omit this parameter to compile every configured variant. VariantKey is accepted as an alias.
+
+.PARAMETER EnvironmentPath
+Environment file used only by the first successful shared configuration initialization in the current PowerShell session. Later calls in that session reuse the loaded configuration; start a fresh process to select a different file.
+
+.PARAMETER OutputDirectory
+Directory that receives compiled PEX files. The configured BuildSettings.ScriptsDirectory is used by default. The resolved directory must be contained by BuildSettings.WorkRoot.
 #>
 [CmdletBinding()]
 param(
@@ -18,7 +27,14 @@ param(
 $PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+
+$sharedConfigurationVariable = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $sharedConfigurationVariable -or ![bool]$sharedConfigurationVariable.Value) {
+  Write-Host -ForegroundColor Green 'Importing Shared Configuration'
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
 
 foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot', 'ScriptsDirectory')) {
   if ($null -eq $Global:BuildSettings -or [string]::IsNullOrWhiteSpace([string]$Global:BuildSettings[$settingName])) {
@@ -26,7 +42,6 @@ foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot', 'ScriptsDirectory'))
   }
 }
 
-Import-BuildEnvironment -Path $EnvironmentPath
 foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAGS', 'PAPYRUS_SCRIPTS_SOURCE_PATH')) {
   $value = [Environment]::GetEnvironmentVariable($requiredName, 'Process')
   if ([string]::IsNullOrWhiteSpace($value)) {

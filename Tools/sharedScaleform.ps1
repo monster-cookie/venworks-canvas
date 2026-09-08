@@ -162,6 +162,45 @@ function ConvertTo-BuildScaleformJobs {
       })
     }
   }
+
+  $ownershipRoot = Join-Path $resolvedRepositoryRoot '.scaleform-output-ownership'
+  for ($leftIndex = 0; $leftIndex -lt $jobs.Count; $leftIndex++) {
+    $leftJob = $jobs[$leftIndex]
+    $leftSetPath = Get-BuildNormalizedFullPath -Path (Join-Path $ownershipRoot ([string]$leftJob.OutputSet))
+    for ($rightIndex = $leftIndex + 1; $rightIndex -lt $jobs.Count; $rightIndex++) {
+      $rightJob = $jobs[$rightIndex]
+      $rightSetPath = Get-BuildNormalizedFullPath -Path (Join-Path $ownershipRoot ([string]$rightJob.OutputSet))
+      if (Test-BuildSamePath -Left $leftSetPath -Right $rightSetPath) {
+        continue
+      }
+
+      $leftPrefix = $leftSetPath + [System.IO.Path]::DirectorySeparatorChar
+      $rightPrefix = $rightSetPath + [System.IO.Path]::DirectorySeparatorChar
+      $rightIsNested = $rightSetPath.StartsWith($leftPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+      $leftIsNested = $leftSetPath.StartsWith($rightPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+      if ($rightIsNested -and [string]$leftJob.Kind -ceq 'Patch') {
+        throw "Patched Scaleform output set '$($leftJob.OutputSet)' owns a directory containing output set '$($rightJob.OutputSet)'."
+      }
+      if ($leftIsNested -and [string]$rightJob.Kind -ceq 'Patch') {
+        throw "Patched Scaleform output set '$($rightJob.OutputSet)' owns a directory containing output set '$($leftJob.OutputSet)'."
+      }
+
+      if ([string]$leftJob.Kind -ceq 'Flex') {
+        $leftOutputPath = Get-BuildNormalizedFullPath -Path (Join-Path $leftSetPath ([string]$leftJob.Outputs[0].OutputFile))
+        if ((Test-BuildSamePath -Left $leftOutputPath -Right $rightSetPath) -or
+            $rightSetPath.StartsWith(($leftOutputPath + [System.IO.Path]::DirectorySeparatorChar), [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw "Scaleform output '$($leftJob.OutputSet)/$($leftJob.Outputs[0].OutputFile)' conflicts with output-set directory '$($rightJob.OutputSet)'."
+        }
+      }
+      if ([string]$rightJob.Kind -ceq 'Flex') {
+        $rightOutputPath = Get-BuildNormalizedFullPath -Path (Join-Path $rightSetPath ([string]$rightJob.Outputs[0].OutputFile))
+        if ((Test-BuildSamePath -Left $rightOutputPath -Right $leftSetPath) -or
+            $leftSetPath.StartsWith(($rightOutputPath + [System.IO.Path]::DirectorySeparatorChar), [System.StringComparison]::OrdinalIgnoreCase)) {
+          throw "Scaleform output '$($rightJob.OutputSet)/$($rightJob.Outputs[0].OutputFile)' conflicts with output-set directory '$($leftJob.OutputSet)'."
+        }
+      }
+    }
+  }
   return @($jobs)
 }
 
@@ -372,7 +411,7 @@ function Invoke-BuildScaleformCompilation {
     [Parameter(Mandatory = $true)][string]$PlayerGlobalPath,
     [Parameter(Mandatory = $true)][string]$FlexFrameworksPath,
     [Parameter(Mandatory = $true)][string]$EntrypointPath,
-    [Parameter(Mandatory = $true)][string]$SourceRoot,
+    [Parameter(Mandatory = $true)][string[]]$SourceRoots,
     [Parameter(Mandatory = $true)][string]$OutputPath,
     [Parameter(Mandatory = $true)][int]$StageWidth,
     [Parameter(Mandatory = $true)][int]$StageHeight,
@@ -382,9 +421,14 @@ function Invoke-BuildScaleformCompilation {
   if (Test-Path -LiteralPath $OutputPath) {
     throw "Scaleform compiler output path is not fresh: $OutputPath"
   }
+  if ($SourceRoots.Count -eq 0 -or @($SourceRoots | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0) {
+    throw 'Apache Flex compilation requires at least one source root.'
+  }
   $compilerArguments = @(
     "-load-config=$FlexConfigPath", '-compiler.library-path=', "-compiler.external-library-path=$PlayerGlobalPath",
-    '-compiler.source-path', $SourceRoot, '-compiler.debug=false', '-compiler.optimize=true', '-compiler.compress=true',
+    '-compiler.source-path'
+  ) + @($SourceRoots) + @(
+    '-compiler.debug=false', '-compiler.optimize=true', '-compiler.compress=true',
     '-compiler.omit-trace-statements=true', '-use-network=false', '-target-player=11.1.0', '-swf-version=12',
     '-default-size', $StageWidth, $StageHeight, "-default-frame-rate=$FrameRate", '-output', $OutputPath, $EntrypointPath
   )
@@ -409,8 +453,8 @@ function Assert-BuildScaleformMovie {
   $exportDirectory = Join-Path $WorkPath 'inspection-scripts'
   Invoke-BuildJavaJar -JavaPath $JavaPath -JarPath $JpexsJarPath -Arguments @('-format', 'script:as', '-export', 'script', $exportDirectory, $MoviePath) -Description "JPEXS $($Definition.Name) ActionScript export"
   $inventory = @(Get-BuildScaleformClassInventory -ScriptsDirectory $exportDirectory)
-  if ($inventory.Count -ne 1 -or $inventory[0] -cne $Definition.ClassName) {
-    throw "Scaleform movie '$($Definition.Name)' exports unexpected classes: $([string]::Join(', ', $inventory))"
+  if (!($inventory -ccontains [string]$Definition.ClassName)) {
+    throw "Scaleform movie '$($Definition.Name)' does not export declared class '$($Definition.ClassName)'. Exported classes: $([string]::Join(', ', $inventory))"
   }
   $validationSource = @(Get-ChildItem -LiteralPath $exportDirectory -Recurse -File -Filter '*.as' | ForEach-Object { [System.IO.File]::ReadAllText($_.FullName) }) -join "`n"
   foreach ($requiredToken in @($Definition.RequiredTokens)) {
@@ -460,6 +504,7 @@ function Invoke-BuildScaleformMovieBuild {
     [Parameter(Mandatory = $true)][string]$JavaPath,
     [Parameter(Mandatory = $true)][string]$JpexsJarPath,
     [Parameter(Mandatory = $true)][string]$FlexSdkPath,
+    [Parameter(Mandatory = $true)][string]$ScaleformSourceRoot,
     [switch]$KeepWork
   )
 
@@ -467,6 +512,11 @@ function Invoke-BuildScaleformMovieBuild {
   $resolvedJavaPath = Resolve-BuildRequiredFile -Path $JavaPath -Description 'Java executable'
   $resolvedJpexsJarPath = Resolve-BuildRequiredFile -Path $JpexsJarPath -Description 'JPEXS JAR'
   $resolvedFlexSdkPath = Resolve-BuildRequiredDirectory -Path $FlexSdkPath -Description 'Apache Flex SDK'
+  $resolvedScaleformSourceRoot = Resolve-BuildRequiredDirectory -Path $ScaleformSourceRoot -Description 'Scaleform source root'
+  $sourceRootPrefix = (Get-BuildNormalizedFullPath -Path $resolvedScaleformSourceRoot) + [System.IO.Path]::DirectorySeparatorChar
+  if (!(Get-BuildNormalizedFullPath -Path $definition.SourcePath).StartsWith($sourceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Scaleform movie '$($definition.Name)' entrypoint is outside the configured Scaleform source root: $($definition.SourcePath)"
+  }
   $mxmlcJarPath = Resolve-BuildRequiredFile -Path (Join-Path $resolvedFlexSdkPath 'lib\mxmlc.jar') -Description 'Apache Flex mxmlc compiler'
   $flexFrameworksPath = Resolve-BuildRequiredDirectory -Path (Join-Path $resolvedFlexSdkPath 'frameworks') -Description 'Apache Flex frameworks directory'
   $flexConfigPath = Resolve-BuildRequiredFile -Path (Join-Path $flexFrameworksPath 'flex-config.xml') -Description 'Apache Flex compiler configuration'
@@ -485,11 +535,16 @@ function Invoke-BuildScaleformMovieBuild {
   New-Item -ItemType Directory -Path $sourceRoot, $compileRoot | Out-Null
   $entrypointPath = Join-Path $sourceRoot ([System.IO.Path]::GetFileName($definition.SourcePath))
   Copy-Item -LiteralPath $definition.SourcePath -Destination $entrypointPath
+  $entrypointSourceRoot = Split-Path -Parent $definition.SourcePath
+  $compilerSourceRoots = @($sourceRoot, $entrypointSourceRoot)
+  if (!(Test-BuildSamePath -Left $entrypointSourceRoot -Right $resolvedScaleformSourceRoot)) {
+    $compilerSourceRoots += $resolvedScaleformSourceRoot
+  }
 
   try {
     $compiledPath = Join-Path $compileRoot 'compiled.swf'
     $normalizedPath = Join-Path $compileRoot $definition.OutputFile
-    Invoke-BuildScaleformCompilation -JavaPath $resolvedJavaPath -MxmlcJarPath $mxmlcJarPath -FlexConfigPath $flexConfigPath -PlayerGlobalPath $playerGlobalMatches[0].FullName -FlexFrameworksPath $flexFrameworksPath -EntrypointPath $entrypointPath -SourceRoot $sourceRoot -OutputPath $compiledPath -StageWidth $definition.StageWidth -StageHeight $definition.StageHeight -FrameRate $definition.FrameRate
+    Invoke-BuildScaleformCompilation -JavaPath $resolvedJavaPath -MxmlcJarPath $mxmlcJarPath -FlexConfigPath $flexConfigPath -PlayerGlobalPath $playerGlobalMatches[0].FullName -FlexFrameworksPath $flexFrameworksPath -EntrypointPath $entrypointPath -SourceRoots $compilerSourceRoots -OutputPath $compiledPath -StageWidth $definition.StageWidth -StageHeight $definition.StageHeight -FrameRate $definition.FrameRate
     ConvertTo-BuildNormalizedScaleformMovie -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsJarPath -InputPath $compiledPath -OutputPath $normalizedPath -WorkPath $compileRoot
     [void](Assert-BuildScaleformMovie -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsJarPath -MoviePath $normalizedPath -WorkPath $compileRoot -Definition $definition)
     $destinationPath = Join-Path $resolvedOutputDirectory $definition.OutputFile
@@ -669,6 +724,7 @@ function Invoke-BuildScaleformJobs {
     [Parameter(Mandatory = $true)][string]$JavaPath,
     [Parameter(Mandatory = $true)][string]$JpexsJarPath,
     [Parameter(Mandatory = $true)][string]$FlexSdkPath,
+    [string]$ScaleformSourceRoot,
     [string]$InputDirectory,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
     [Parameter(Mandatory = $true)][string]$WorkDirectory,
@@ -686,7 +742,15 @@ function Invoke-BuildScaleformJobs {
     throw 'Scaleform output and work directories cannot overlap.'
   }
 
+  $flexJobs = @($Jobs | Where-Object { $_.Kind -ceq 'Flex' })
   $patchJobs = @($Jobs | Where-Object { $_.Kind -ceq 'Patch' })
+  $resolvedScaleformSourceRoot = $null
+  if ($flexJobs.Count -gt 0) {
+    if ([string]::IsNullOrWhiteSpace($ScaleformSourceRoot)) {
+      throw 'BuildSettings.ScaleformSourceRoot is required when a selected Scaleform job compiles a movie.'
+    }
+    $resolvedScaleformSourceRoot = Resolve-BuildRequiredDirectory -Path $ScaleformSourceRoot -Description 'Scaleform source root'
+  }
   $resolvedInputDirectory = $null
   if ($patchJobs.Count -gt 0) {
     if ([string]::IsNullOrWhiteSpace($InputDirectory)) {
@@ -706,14 +770,14 @@ function Invoke-BuildScaleformJobs {
   $results = [System.Collections.Generic.List[object]]::new()
   try {
     $groupIndex = 0
-    foreach ($group in @($Jobs | Where-Object { $_.Kind -ceq 'Flex' } | Group-Object -Property OutputSet)) {
+    foreach ($group in @($flexJobs | Group-Object -Property OutputSet)) {
       $groupIndex++
       $candidateDirectory = Join-Path $runDirectory "flex-$groupIndex-candidate"
       $buildWorkDirectory = Join-Path $runDirectory "flex-$groupIndex-work"
       New-Item -ItemType Directory -Path $candidateDirectory, $buildWorkDirectory | Out-Null
       foreach ($job in @($group.Group)) {
         Write-Host -ForegroundColor Green "Building $($job.Name) Scaleform movie"
-        $result = Invoke-BuildScaleformMovieBuild -ManifestPath $job.ManifestPath -OutputDirectory $candidateDirectory -WorkDirectory $buildWorkDirectory -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsPath -FlexSdkPath $resolvedFlexSdkPath -KeepWork:$KeepWork
+        $result = Invoke-BuildScaleformMovieBuild -ManifestPath $job.ManifestPath -OutputDirectory $candidateDirectory -WorkDirectory $buildWorkDirectory -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsPath -FlexSdkPath $resolvedFlexSdkPath -ScaleformSourceRoot $resolvedScaleformSourceRoot -KeepWork:$KeepWork
         $expectedOutput = [string]$job.Outputs[0].OutputFile
         if ([string]$result.OutputFile -cne $expectedOutput) {
           throw "Scaleform job '$($job.Name)' emitted '$($result.OutputFile)' instead of '$expectedOutput'."
@@ -723,7 +787,16 @@ function Invoke-BuildScaleformJobs {
       $expectedFiles = @($group.Group | ForEach-Object { [string]$_.Outputs[0].OutputFile })
       Assert-BuildScaleformOutputSet -Directory $candidateDirectory -ExpectedFiles $expectedFiles -Description "Selected '$($group.Name)' Scaleform movies"
       $destinationDirectory = Join-Path $resolvedOutputDirectory $group.Name
+      if (Test-Path -LiteralPath $destinationDirectory -PathType Leaf) {
+        throw "Scaleform output set destination is a file: $destinationDirectory"
+      }
       New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
+      foreach ($fileName in $expectedFiles) {
+        $destinationPath = Join-Path $destinationDirectory $fileName
+        if (Test-Path -LiteralPath $destinationPath -PathType Container) {
+          throw "Scaleform output destination is a directory: $destinationPath"
+        }
+      }
       foreach ($fileName in $expectedFiles) {
         Publish-BuildScaleformFile -CandidatePath (Join-Path $candidateDirectory $fileName) -DestinationPath (Join-Path $destinationDirectory $fileName) -AllowedRoot $resolvedAllowedRoot
       }

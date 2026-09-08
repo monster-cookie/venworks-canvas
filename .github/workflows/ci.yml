@@ -22,9 +22,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Canvas sources, focused pipeline checks, and isolated Windows fixtures
+      - name: Check Canvas sources and isolated Windows staging behavior
         shell: pwsh
-        run: ./Tools/verifyCanvas.ps1 -SourceOnly
+        run: |
+          New-Item -ItemType Directory -Path .work -Force | Out-Null
+          Set-Content -LiteralPath .work/ci.env -Value '# Source checks do not use native tool or installation settings.'
+          ./Tools/verifyCanvas.ps1 -SourceOnly -EnvironmentPath .work/ci.env
 
   lint-powershell:
     name: Lint PowerShell
@@ -40,9 +43,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Canvas sources and focused pipeline checks
+      - name: Check Canvas sources and focused contracts
         shell: pwsh
-        run: ./Tools/verifyCanvas.ps1 -SourceOnly
+        run: |
+          New-Item -ItemType Directory -Path .work -Force | Out-Null
+          Set-Content -LiteralPath .work/ci.env -Value '# Source checks do not use native tool or installation settings.'
+          ./Tools/verifyCanvas.ps1 -SourceOnly -EnvironmentPath .work/ci.env
 
       - name: Install PSScriptAnalyzer
         shell: pwsh

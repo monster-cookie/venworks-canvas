@@ -3,6 +3,16 @@
 Builds and installs selected configured packages from current repository-owned outputs.
 .DESCRIPTION
 The maintainer must prepare each staging path as an exact Junction to its configured physical module folder. Packaging holds one process-owned lock across candidate creation, installation, and successful transaction cleanup. Failed transactions remain beneath the configured work root for recovery inspection.
+.PARAMETER VariantKeys
+Builds only the listed module variant keys. When omitted, every configured variant is packaged.
+.PARAMETER EnvironmentPath
+Specifies the environment file for the first successful shared-configuration initialization in the current PowerShell session. Later guarded script calls reuse that initialized configuration and ignore another EnvironmentPath until a new session starts.
+.PARAMETER ScriptsDirectory
+Overrides the configured directory containing compiled Papyrus PEX files for this packaging run.
+.PARAMETER ScaleformDirectory
+Overrides the configured directory containing built Scaleform output sets for this packaging run.
+.PARAMETER ArchiveRootsDirectory
+Overrides the transaction workspace beneath the configured build work root. Failed transactions remain there for recovery inspection.
 #>
 [CmdletBinding()]
 param(
@@ -16,15 +26,18 @@ param(
 $PSNativeCommandUseErrorActionPreference = $true
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+if (!(Test-Path -LiteralPath 'Variable:Global:SharedConfigurationLoaded') -or !$Global:SharedConfigurationLoaded) {
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-Import-BuildEnvironment -Path $EnvironmentPath
 if ([string]::IsNullOrWhiteSpace($ScriptsDirectory)) { $ScriptsDirectory = [string]$Global:BuildSettings.ScriptsDirectory }
 if ([string]::IsNullOrWhiteSpace($ScaleformDirectory)) { $ScaleformDirectory = [string]$Global:BuildSettings.ScaleformDirectory }
 if ([string]::IsNullOrWhiteSpace($ArchiveRootsDirectory)) { $ArchiveRootsDirectory = Join-Path ([string]$Global:BuildSettings.WorkRoot) 'package-transactions' }
-if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) { throw "TOOL_PATH_ARCHIVER must be configured in $EnvironmentPath." }
+if ([string]::IsNullOrWhiteSpace($env:TOOL_PATH_ARCHIVER)) { throw 'TOOL_PATH_ARCHIVER must be configured by the initialized build environment.' }
 $archive2Path = Resolve-BuildExecutable -Path $env:TOOL_PATH_ARCHIVER -FileName 'Archive2.exe' -Description 'Archive2 executable'
 $allVariants = @(Get-ModuleVariants)
 $selectedVariants = @(Get-ModuleVariants -VariantKeys $VariantKeys)

@@ -6,7 +6,12 @@ Checks the load-only wire reference parser, source invariants and lifecycle sequ
 param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+$configurationLoaded = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $configurationLoaded -or !$configurationLoaded.Value) {
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+}
 . (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 
 function New-TestUiPacket {

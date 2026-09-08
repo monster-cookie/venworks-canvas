@@ -6,7 +6,7 @@ Creates local staging junctions for selected module variants whose repository st
 One or more keys from `$Global:ModuleVariants. Omit this parameter to process all module variants. `VariantKey` remains a compatibility alias.
 
 .PARAMETER EnvironmentPath
-Path to the environment file that configures the physical module folders.
+Path to the environment file used when shared configuration has not yet initialized successfully in the current PowerShell session. The first successful initialization wins for the session; later guarded calls reuse it.
 #>
 [CmdletBinding()]
 param(
@@ -21,8 +21,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
-Import-BuildEnvironment -Path $EnvironmentPath
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+$sharedConfigurationLoaded = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $sharedConfigurationLoaded -or $sharedConfigurationLoaded.Value -ne $true) {
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
 
 function Get-BuildPathItemIfPresent {
   param(
@@ -203,6 +207,6 @@ foreach ($operation in $operations) {
 
 Write-Host -ForegroundColor Cyan "`n`n"
 Write-Host -ForegroundColor Cyan '**************************************************'
-Write-Host -ForegroundColor Cyan '**        Variant Junctions Are Configured       **'
+Write-Host -ForegroundColor Cyan 'Junctions for selected module variants are valid.'
 Write-Host -ForegroundColor Cyan '**************************************************'
 Write-Host -ForegroundColor Cyan "`n`n"

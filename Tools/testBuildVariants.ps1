@@ -40,6 +40,7 @@ function Assert-TestText {
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $compileScriptPath = Join-Path $PSScriptRoot 'compileScripts.ps1'
+$sharedVariantsPath = Join-Path $PSScriptRoot 'sharedVariants.ps1'
 $powerShellPath = (Get-Process -Id $PID).Path
 $testBase = Join-Path $repositoryRoot '.work\canvas\pr4-simplification\papyrus'
 $fixtureRoot = Join-Path $testBase ('compile-' + [guid]::NewGuid().ToString('N'))
@@ -153,6 +154,27 @@ Set-Variable -Name LASTEXITCODE -Value 0 -Scope 1
 '@
   Write-TestText -Path $fakeCompilerPath -Text ($fakeCompiler + [Environment]::NewLine)
 
+  $overlapProbePath = Join-Path $fixtureRoot 'test-overlapping-namespaces.ps1'
+  $overlapProbe = @'
+[CmdletBinding()]
+param([Parameter(Mandatory = $true)][string]$SharedVariantsPath)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+. $SharedVariantsPath
+
+$Global:ModuleVariants = @(
+  [pscustomobject]@{ VariantKey = 'PARENT'; PapyrusNamespace = 'Venworks:Owned' }
+  [pscustomobject]@{ VariantKey = 'CHILD'; PapyrusNamespace = 'Venworks:Owned:Child' }
+)
+Get-ModuleVariants -VariantKeys 'CHILD' | Out-Null
+'@
+  Write-TestText -Path $overlapProbePath -Text ($overlapProbe + [Environment]::NewLine)
+  $overlapOutput = @(& $powerShellPath -NoProfile -File $overlapProbePath -SharedVariantsPath $sharedVariantsPath 2>&1)
+  if ($LASTEXITCODE -eq 0 -or [string]::Join(' | ', @($overlapOutput | ForEach-Object { [string]$_ })) -notmatch 'overlap') {
+    throw "Selecting a child key did not reject overlapping configured Papyrus namespaces: $([string]::Join(' | ', @($overlapOutput | ForEach-Object { [string]$_ })))"
+  }
+
   $selectedRelativeOutput = 'Venworks\CanvasExamples\ExampleRegistrar.pex'
   $unselectedRelativeOutput = 'Venworks\Canvas\Registry.pex'
 
@@ -262,4 +284,4 @@ finally {
   }
 }
 
-Write-Output 'Papyrus selected-build tests passed: namespace-derived selection, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'
+Write-Output 'Papyrus selected-build tests passed: namespace-derived selection, overlapping-namespace rejection before filtering, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'

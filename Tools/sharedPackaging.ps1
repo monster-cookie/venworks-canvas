@@ -88,9 +88,49 @@ function Resolve-BuildPackageAssetSource {
       !$sourcePath.StartsWith($resolvedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Package asset Source escapes its configured $rootName root: '$relativeSource'."
   }
-  $item = Get-Item -LiteralPath $sourcePath -Force -ErrorAction SilentlyContinue
+  $item = Get-Item -LiteralPath $resolvedRoot -Force -ErrorAction SilentlyContinue
   if ($null -eq $item) { throw "$($Variant.VariantKey) package asset does not exist: $sourcePath" }
+  if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $rootName -cne 'Staging') {
+    throw "Package asset root is a reparse point outside the configured Staging root: $($item.FullName)"
+  }
+  if ($relativeSource -cne '.') {
+    $currentPath = $resolvedRoot
+    foreach ($segment in $segments) {
+      $currentPath = Join-Path $currentPath $segment
+      $item = Get-Item -LiteralPath $currentPath -Force -ErrorAction SilentlyContinue
+      if ($null -eq $item) { throw "$($Variant.VariantKey) package asset does not exist: $sourcePath" }
+      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Package asset Source contains a nested reparse point, which is not supported: $($item.FullName)"
+      }
+    }
+  }
   return [pscustomobject]@{ Root = $rootName; Item = $item }
+}
+
+function Get-BuildPackageDirectoryFiles {
+  param(
+    [Parameter(Mandatory = $true)][IO.DirectoryInfo]$Directory,
+    [switch]$AllowRootReparsePoint
+  )
+
+  if (($Directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and !$AllowRootReparsePoint) {
+    throw "Package asset directory is a reparse point outside the configured Staging root: $($Directory.FullName)"
+  }
+  $pending = [Collections.Generic.Stack[string]]::new()
+  $files = [Collections.Generic.List[string]]::new()
+  $pending.Push($Directory.FullName)
+  while ($pending.Count -ne 0) {
+    $current = $pending.Pop()
+    foreach ($entryPath in [IO.Directory]::EnumerateFileSystemEntries($current, '*', [IO.SearchOption]::TopDirectoryOnly)) {
+      $entry = Get-Item -LiteralPath $entryPath -Force
+      if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Package asset directory contains a nested reparse point, which is not supported: $($entry.FullName)"
+      }
+      if ($entry.PSIsContainer) { $pending.Push($entry.FullName) }
+      else { $files.Add($entry.FullName) }
+    }
+  }
+  return @($files | Sort-Object)
 }
 
 function New-BuildPackagePayload {
@@ -168,7 +208,9 @@ function Get-BuildPackageArchivePlans {
         $target = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target' -DefaultValue '')
         if ($resolved.Item.PSIsContainer) {
           [void](Resolve-BuildArchiveTarget -Root $resolved.Item.FullName -Target $target -AllowRoot)
-          foreach ($file in [IO.Directory]::EnumerateFiles($resolved.Item.FullName, '*', [IO.SearchOption]::AllDirectories)) {
+          $relativeSource = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')
+          $allowRootReparsePoint = $resolved.Root -ceq 'Staging' -and $relativeSource -ceq '.'
+          foreach ($file in @(Get-BuildPackageDirectoryFiles -Directory $resolved.Item -AllowRootReparsePoint:$allowRootReparsePoint)) {
             $relative = [IO.Path]::GetRelativePath($resolved.Item.FullName, $file)
             $archiveTarget = if ([string]::IsNullOrWhiteSpace($target)) { $relative } else { Join-Path $target $relative }
             $normalizedTarget = $archiveTarget.Replace('\', '/')
@@ -181,6 +223,9 @@ function Get-BuildPackageArchivePlans {
           }
         }
         else {
+          if (($resolved.Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Package asset file is a reparse point outside its declared root: $($resolved.Item.FullName)"
+          }
           [void](Resolve-BuildArchiveTarget -Root $RepositoryRoot -Target $target)
           if (!(Test-BuildArchivePayloadIncluded -Archive $archive -Target $target)) { continue }
           $payloads.Add((New-BuildPackagePayload -Source $resolved.Item.FullName -Target $target -Description "$($variant.VariantKey) archive payload '$target'"))

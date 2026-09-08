@@ -194,11 +194,19 @@ Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $prefixDiagnosticFi
 Assert-TestCondition (!(Test-ChildDiagnosticExitCode -Result $missingDiagnosticFixture -ExpectedExitCode 23)) 'Child diagnostic matching accepted a missing native exit code.'
 
 New-Item -ItemType Directory -Force -Path $fixtureTools, $stubRoot, (Join-Path $fixtureRoot 'starfield-data') | Out-Null
-foreach ($fileName in @('sharedBuild.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
+foreach ($fileName in @('sharedVariants.ps1', 'sharedBuild.ps1', 'SpriggitDumpDatabaseToYaml.ps1', 'SpriggitAssembleDatabaseFromYaml.ps1')) {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fileName) -Destination (Join-Path $fixtureTools $fileName)
 }
 $fixtureConfig = @'
+[CmdletBinding()]
+param(
+  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env')
+)
+
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
 . (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+Import-BuildEnvironment -Path $EnvironmentPath
+
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
   WorkRoot = Join-Path $repositoryRoot '.work/build'
@@ -212,6 +220,7 @@ $Global:ModuleVariants = @(
   [ModuleVariant]::new('EXAMPLE', 'Example', 'Canvas-Example-Authoring.esm', 'Example-Archive', 'Venworks:CanvasExamples', (Join-Path $repositoryRoot 'Staging-Example'), 'TEST_EXAMPLE_PATH', @(), @())
   [ModuleVariant]::new('COMPONENTGALLERY', 'Component Gallery', 'Canvas-Gallery-Authoring.esm', 'Gallery-Archive', 'Venworks:CanvasComponentGallery', (Join-Path $repositoryRoot 'Staging-ComponentGallery'), 'TEST_GALLERY_PATH', @(), @())
 )
+$Global:SharedConfigurationLoaded = $true
 '@
 Write-TestText -Path (Join-Path $fixtureTools 'sharedConfig.ps1') -Text ($fixtureConfig + "`n")
 
@@ -359,6 +368,41 @@ try {
   Assert-TestCondition (@(Get-TestCalls).Count -eq $callCountBeforeSkip) 'Missing YAML input invoked the Spriggit CLI.'
   Assert-TestCondition (((Get-FileHash -LiteralPath $componentEsm -Algorithm SHA256).Hash) -ceq $componentEsmHash) 'Missing YAML input changed the staged ESM.'
 
+  Set-TestEnvironment
+  $sequentialScript = Join-Path $fixtureRoot 'invoke-sequential.ps1'
+  $missingSecondEnvironmentPath = Join-Path $fixtureRoot 'missing-second.env'
+  $sequentialSource = @'
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory = $true)][string]$DumpScript,
+  [Parameter(Mandatory = $true)][string]$AssembleScript,
+  [Parameter(Mandatory = $true)][string]$FirstEnvironmentPath,
+  [Parameter(Mandatory = $true)][string]$SecondEnvironmentPath
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+& $DumpScript -VariantKeys 'CANVAS' -EnvironmentPath $FirstEnvironmentPath
+& $AssembleScript -VariantKeys 'CANVAS' -EnvironmentPath $SecondEnvironmentPath
+'@
+  Write-TestText -Path $sequentialScript -Text ($sequentialSource + "`n")
+  $callCountBeforeSequential = @(Get-TestCalls).Count
+  $result = Invoke-ChildScript -ScriptPath $sequentialScript -ArgumentList @(
+    '-DumpScript', $dumpScript,
+    '-AssembleScript', $assembleScript,
+    '-FirstEnvironmentPath', $environmentPath,
+    '-SecondEnvironmentPath', $missingSecondEnvironmentPath
+  )
+  Assert-ChildSuccess -Result $result -Description 'Sequential same-session Spriggit calls'
+  Assert-TestCondition (@($result.Output | Where-Object { $_ -match '^Importing Shared Configuration$' }).Count -eq 1) 'Sequential wrappers did not initialize shared configuration exactly once.'
+  $sequentialCalls = @(Get-TestCalls | Select-Object -Skip $callCountBeforeSequential)
+  Assert-TestCondition ($sequentialCalls.Count -eq 2) 'Sequential wrappers did not invoke exactly one serialize and one deserialize operation.'
+  Assert-TestCondition ([string]$sequentialCalls[0].Operation -ceq 'serialize') 'The first sequential wrapper call was not serialization.'
+  Assert-TestCondition ([string]$sequentialCalls[1].Operation -ceq 'deserialize') 'The second sequential wrapper call was not assembly.'
+  foreach ($call in $sequentialCalls) {
+    Assert-TestCondition ((Get-ArgumentValue -Call $call -Name '--DataFolder') -ceq (Join-Path $fixtureRoot 'starfield-data')) 'A sequential wrapper call did not reuse the first loaded environment.'
+  }
+
   Set-TestEnvironment -FailOperation 'deserialize'
   $result = Invoke-ChildScript -ScriptPath $assembleScript -ArgumentList @('-VariantKeys', 'CANVAS', '-EnvironmentPath', $environmentPath)
   Assert-TestCondition ($result.ExitCode -ne 0) 'Assembler nonzero exit was accepted.'
@@ -373,7 +417,7 @@ try {
   Assert-TestCondition (!(Test-Path -LiteralPath (Join-Path $fixtureRepository 'Spriggit\Production'))) 'Serialization recreated the retired Production profile.'
   Assert-TestCondition (!(Test-Path -LiteralPath (Join-Path $fixtureRepository 'Spriggit\Faults'))) 'Serialization created a normal Faults profile.'
 
-  Write-Output 'Spriggit authoring tests passed: three-ESM and single-ESM routing, template flags, skipped inputs, CLI failures, repeated runs, retained recovery material, retired parameters, and isolated assembly.'
+  Write-Output 'Spriggit authoring tests passed: three-ESM and single-ESM routing, template flags, skipped inputs, CLI failures, repeated runs, retained recovery material, same-session configuration reuse, retired parameters, and isolated assembly.'
 }
 finally {
   if (Test-Path -LiteralPath $fixtureRoot) {

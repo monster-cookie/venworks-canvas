@@ -1,40 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-class ModuleVariant {
-  [string]$VariantKey
-  [string]$VariantName
-  [string]$EsmFileName
-  [string]$PackageBaseName
-  [string]$PapyrusNamespace
-  [string]$StagingFolderPath
-  [string]$EnvironmentVariableName
-  [object[]]$ScaleformBuilds
-  [object[]]$Archives
-
-  ModuleVariant(
-    [string]$variantKey,
-    [string]$variantName,
-    [string]$esmFileName,
-    [string]$packageBaseName,
-    [string]$papyrusNamespace,
-    [string]$stagingFolderPath,
-    [string]$environmentVariableName,
-    [object[]]$scaleformBuilds,
-    [object[]]$archives
-  ) {
-    $this.VariantKey = $variantKey
-    $this.VariantName = $variantName
-    $this.EsmFileName = $esmFileName
-    $this.PackageBaseName = $packageBaseName
-    $this.PapyrusNamespace = $papyrusNamespace
-    $this.StagingFolderPath = $stagingFolderPath
-    $this.EnvironmentVariableName = $environmentVariableName
-    $this.ScaleformBuilds = $scaleformBuilds
-    $this.Archives = $archives
-  }
-}
-
 function Assert-BuildExactNames {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Actual,
@@ -284,53 +250,6 @@ function Resolve-BuildExecutable {
     $candidate = Join-Path $Path $FileName
   }
   return Resolve-BuildRequiredFile -Path $candidate -Description $Description
-}
-
-function Global:Get-ModuleVariants {
-  [CmdletBinding()]
-  param(
-    [Alias('VariantKey')]
-    [string[]]$VariantKeys
-  )
-
-  $configuredVariants = @($Global:ModuleVariants)
-  $configuredKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-  foreach ($variant in $configuredVariants) {
-    $key = [string]$variant.VariantKey
-    if ([string]::IsNullOrWhiteSpace($key)) {
-      throw 'Configured module variant keys cannot be empty.'
-    }
-    if (!$configuredKeys.Add($key.Trim())) {
-      throw "Configured module variant key '$key' is repeated."
-    }
-  }
-
-  if ($null -eq $VariantKeys -or $VariantKeys.Count -eq 0) {
-    return @($configuredVariants)
-  }
-
-  $requestedKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-  $normalizedKeys = @($VariantKeys | ForEach-Object {
-    if ([string]::IsNullOrWhiteSpace($_)) {
-      throw 'Variant keys cannot be empty.'
-    }
-    $normalizedKey = $_.Trim()
-    if (!$requestedKeys.Add($normalizedKey)) {
-      throw 'Variant keys cannot be repeated.'
-    }
-    $normalizedKey
-  })
-
-  $selectedVariants = foreach ($normalizedKey in $normalizedKeys) {
-    $matchingVariants = @($configuredVariants | Where-Object {
-      [string]::Equals(([string]$_.VariantKey).Trim(), $normalizedKey, [StringComparison]::OrdinalIgnoreCase)
-    })
-    if ($matchingVariants.Count -ne 1) {
-      throw "Unknown module variant key '$normalizedKey'."
-    }
-    $matchingVariants[0]
-  }
-  return @($selectedVariants)
 }
 
 function Get-BuildStagingSelection {

@@ -1,6 +1,24 @@
 <#
 .SYNOPSIS
 Verifies Canvas source contracts, selected build outputs, and installed package files.
+
+.PARAMETER SourceOnly
+Run the focused source checks without requiring native build outputs or installed packages.
+
+.PARAMETER ArtifactsOnly
+Also inspect the selected build inputs, then stop before checking installed packages.
+
+.PARAMETER VariantKeys
+Select configured module variants. Omit to select all variants.
+
+.PARAMETER EnvironmentPath
+Required environment file for the first successful configuration load in this PowerShell session. Later calls reuse that configuration; start a new process to select another file.
+
+.PARAMETER ScaleformDirectory
+Directory containing the Scaleform outputs to inspect when SourceOnly is not selected.
+
+.PARAMETER ScriptsDirectory
+Directory containing compiled Papyrus scripts to inspect when SourceOnly is not selected.
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +33,13 @@ param(
 $PSNativeCommandUseErrorActionPreference = $true
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+$configurationLoaded = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $configurationLoaded -or !$configurationLoaded.Value) {
+  Write-Host -ForegroundColor Green 'Importing Shared Configuration'
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
 . (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
 . (Join-Path $PSScriptRoot 'sharedScaleform.ps1')
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
@@ -29,7 +53,6 @@ foreach ($variant in $allVariants) {
 [void](ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
 
 foreach ($sourceContractTest in @(
-  'testBuildPipeline.ps1',
   'testConsole.ps1',
   'testGuards.ps1',
   'testPackaging.ps1',
@@ -55,7 +78,6 @@ if ($ArtifactsOnly) {
   return
 }
 
-Import-BuildEnvironment -Path $EnvironmentPath
 $operations = @(Get-BuildPackageInstallOperations -SelectedVariants $variants -AllVariants $allVariants)
 foreach ($operation in $operations) {
   Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath

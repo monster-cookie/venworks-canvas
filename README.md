@@ -4,7 +4,7 @@ Venworks Canvas is a Starfield Player HUD host and Papyrus registration layer fo
 
 ## Packages
 
-`Tools/sharedConfig.ps1` is the repository-owned data source for package variants, staging paths, Papyrus namespaces, Scaleform jobs, and archive outputs. The shared executors in `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1` provide the reusable behavior; this repository keeps the Canvas values and product-owned source and patch data.
+`Tools/sharedVariants.ps1` provides the reusable `ModuleVariant` model and selection helpers. `Tools/sharedConfig.ps1` is the Canvas-owned configuration entrypoint that loads the environment under the guarded session contract and publishes Canvas build values, variant definitions, staging paths, Papyrus namespaces, Scaleform jobs, and archive outputs. The shared executors in `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1` provide the reusable behavior; this repository keeps the Canvas values and product-owned source and patch data.
 
 | Variant | ESM | Papyrus namespace | Purpose | Staging root |
 | --- | --- | --- | --- | --- |
@@ -23,6 +23,8 @@ Each staging root must remain a Vortex junction. Packaging may replace the exact
 Fresh-checkout staging preparation is a maintainer operation. A checkout contains ordinary tracked staging directories; these are suitable for inspecting committed artifacts, but are not an installation target. Configure the environment-variable names used by the selected `ModuleVariant` entries, including `MODULE_VARIANT_CANVAS_PATH`, `MODULE_VARIANT_EXAMPLE_PATH`, and `MODULE_VARIANT_COMPONENT_GALLERY_PATH`, in `.env` to point to the three distinct physical Vortex module folders.
 
 Remove or relocate ordinary checkout staging directories and preserve any package files before running setup. `Tools/setupRepo.ps1` creates junctions only where the selected staging paths are absent, and accepts an existing junction only when its target matches the configuration. It checks the complete selection before creating any junction. It does not empty or migrate ordinary directories, restore files through Git, or repair incorrect links. The former `-MigrateExisting` option is removed.
+
+Production entry points initialize `Tools/sharedConfig.ps1` through one guarded call per PowerShell session. The first successful initialization selects the requested `-EnvironmentPath`, and values from that file override inherited environment values. Later guarded calls reuse the initialized configuration; start a new `pwsh` process to select a different environment file. There is no skip flag or pure-configuration mode.
 
 After preparing the paths and package contents, run these commands yourself from the repository root:
 
@@ -89,7 +91,7 @@ The bridge is one-way and lossy. Submission is not delivery or render acknowledg
 
 ## Build pipeline
 
-The production build pipeline has three entry points backed by the reusable helpers in `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1`:
+The production build pipeline has three entry points backed by the reusable helpers in `Tools/sharedVariants.ps1`, `Tools/sharedBuild.ps1`, `Tools/sharedScaleform.ps1`, and `Tools/sharedPackaging.ps1`:
 
 1. `Tools/compileScripts.ps1` selects variants and compiles every `.psc` file beneath each selected `PapyrusNamespace` directory.
 2. `Tools/buildScaleform.ps1` executes the selected declarative `ScaleformBuilds` jobs. Canvas-owned ActionScript, manifest, Watch, Ship, and UI protocol data remain in this repository.
@@ -134,13 +136,14 @@ Source-only validation, including all source-contract tests:
 .\Tools\verifyCanvas.ps1 -SourceOnly
 ```
 
+Hosted CI runs this source-only verification and PowerShell lint only; it does not claim native Papyrus, Scaleform, Archive2, Spriggit, game, or platform acceptance.
+
 Individual contract tests:
 
 ```powershell
 .\Tools\testConsole.ps1
 .\Tools\testGuards.ps1
 .\Tools\testPackaging.ps1
-.\Tools\testBuildPipeline.ps1
 .\Tools\testBuildEvidence.ps1
 .\Tools\testBuildVariants.ps1
 .\Tools\testSpriggit.ps1
@@ -156,7 +159,7 @@ Artifact validation:
 .\Tools\verifyCanvas.ps1 -ArtifactsOnly -VariantKeys CANVAS,EXAMPLE,COMPONENTGALLERY
 ```
 
-Use `-ArtifactsOnly` with selected variants to run the source-contract checks and validate the current Papyrus and Scaleform build inputs needed to plan the configured archives. This mode does not invoke Archive2, install packages, inspect the staging junctions, or establish installed-package or Starfield runtime behavior. Source-only validation runs isolated fixtures beneath `.work`, including actual Windows junction and process cases where supported; non-Windows runs report skipped junction cases explicitly. The tests use stubs where the game toolchain is unavailable, so they do not establish real Spriggit, Archive2, Papyrus compiler, Scaleform compiler, or Starfield behavior by themselves.
+Use `-ArtifactsOnly` with selected variants to run the source-contract checks and validate the current Papyrus and Scaleform build inputs needed to plan the configured archives. This mode does not invoke Archive2, install packages, inspect the staging junctions, or establish installed-package or Starfield runtime behavior. Source-only validation runs isolated fixtures beneath `.work`, including actual Windows junction and process cases where supported; non-Windows runs report skipped junction cases explicitly. Focused source-contract checks may use isolated fixtures where the game toolchain is unavailable, so they do not establish real Spriggit, Archive2, Papyrus compiler, Scaleform compiler, or Starfield behavior by themselves.
 
 Prior user-supplied PC gameplay established registration, owner checking, bounded bridge behavior, and visible loading of both permanent-name consumer panels in normal Player HUD mode without renewed Watch lag. That acceptance predates the activation and stale-queue changes described here. Repeat the affected disposable-save and HUD-transition cases for the current build before claiming new runtime acceptance.
 

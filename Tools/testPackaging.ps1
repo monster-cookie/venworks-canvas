@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
+if (!(Test-Path -LiteralPath 'Variable:Global:SharedConfigurationLoaded') -or !$Global:SharedConfigurationLoaded) {
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1')
+}
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 function Assert-TestRejected {
@@ -213,6 +217,32 @@ try {
     throw 'Sibling, stale, or foreign PEX entered a package plan.'
   }
 
+  if ($IsWindows) {
+    $linkedAssetTarget = Join-Path $fixtureRoot 'linked-asset-target'
+    $linkedAssetSubdirectory = Join-Path $linkedAssetTarget 'sub'
+    $repositoryAncestorLink = Join-Path $repositoryAssets 'linked'
+    New-Item -ItemType Directory -Path $linkedAssetSubdirectory | Out-Null
+    [IO.File]::WriteAllText((Join-Path $linkedAssetSubdirectory 'external.txt'), 'outside declared asset root')
+    New-Item -ItemType Junction -Path $repositoryAncestorLink -Target $linkedAssetTarget | Out-Null
+    try {
+      foreach ($linkedSource in @('linked/sub', 'linked/sub/external.txt')) {
+        $linkedArchive = @{
+          FileName = 'Linked.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $false
+          Assets = @(@{ Root = 'Repository'; Source = $linkedSource; Target = 'Payload' })
+        }
+        $linkedVariant = $variant.PSObject.Copy()
+        $linkedVariant.Archives = @($linkedArchive)
+        Assert-TestRejected -Description "Package asset Source '$linkedSource' with a Junction ancestor" -MessagePattern 'Source contains a nested reparse point' -Action {
+          [void](Get-BuildPackageArchivePlans -Variants @($linkedVariant) -RepositoryRoot $repositoryAssets -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+        }
+      }
+    }
+    finally { Remove-Item -LiteralPath $repositoryAncestorLink -Force }
+  }
+  else {
+    Write-Output 'SKIP: package asset Source Junction-ancestor rejection requires Windows.'
+  }
+
   Write-TestPsc -Path (Join-Path $papyrusRoot 'Venworks/Canvas/NewOwned.psc') -ScriptName 'Venworks:Canvas:NewOwned'
   Write-TestPex -Path (Join-Path $scriptsDirectory 'Venworks/Canvas/NewOwned.pex')
   $addedPlan = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory | Where-Object FileName -CEQ 'DifferentArchiveBase - Main.ba2')[0]
@@ -270,6 +300,29 @@ try {
   }
   if ($IsWindows) {
     New-Item -ItemType Junction -Path $stagingPath -Target $stagingTarget | Out-Null
+    $junctionPlans = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+    if ($junctionPlans.Count -ne 2) { throw 'The configured top-level Staging Junction did not remain a valid package asset root.' }
+    $stagingChildArchive = @{
+      FileName = 'StagingChildren.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $false
+      Assets = @(
+        @{ Root = 'Staging'; Source = 'Textures'; Target = 'Textures' }
+        @{ Root = 'Staging'; Source = 'loose.txt'; Target = 'loose.txt' }
+      )
+    }
+    $stagingChildVariant = $variant.PSObject.Copy()
+    $stagingChildVariant.Archives = @($stagingChildArchive)
+    $stagingChildPlans = @(Get-BuildPackageArchivePlans -Variants @($stagingChildVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+    Assert-TestNames -Actual @($stagingChildPlans[0].Payloads.Target) -Expected @('Textures/surface.dds', 'loose.txt') -Description 'Ordinary child mappings beneath the configured Staging Junction'
+
+    $nestedAssetLink = Join-Path $stagingTarget 'nested-asset-link'
+    New-Item -ItemType Junction -Path $nestedAssetLink -Target $linkedAssetTarget | Out-Null
+    try {
+      Assert-TestRejected -Description 'Nested package asset Junction beneath the configured Staging Junction' -MessagePattern 'nested reparse point' -Action {
+        [void](Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
+      }
+    }
+    finally { Remove-Item -LiteralPath $nestedAssetLink -Force }
+
     $operations = @(Get-BuildPackageInstallOperations -SelectedVariants @($variant) -AllVariants @($variant, $otherVariant))
     if ($operations.Count -ne 1 -or $operations[0].PluginName -cne 'ExplicitAnchor.esm') { throw 'Explicit ESM install operation was not preserved.' }
     Assert-TestNames -Actual @($operations[0].ArchiveNames) -Expected @('DifferentArchiveBase - Main.ba2', 'DifferentArchiveBase - Textures.ba2') -Description 'Configured archive install names'
@@ -352,4 +405,4 @@ finally {
   }
 }
 
-Write-Output 'Packaging contracts passed: declarative archive mappings, exact namespace-derived PEX ownership, added/deleted source refresh, filter-before-validation behavior, explicit ESM/archive identities, dynamic Junction routing, multiarchive absence restoration, retained-transaction blocking, and package-lock exclusion.'
+Write-Output 'Packaging contracts passed: declarative archive mappings, exact namespace-derived PEX ownership, added/deleted source refresh, filter-before-validation behavior, nested-link rejection with configured Staging Junction support, explicit ESM/archive identities, dynamic Junction routing, multiarchive absence restoration, retained-transaction blocking, and package-lock exclusion.'
