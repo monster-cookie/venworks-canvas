@@ -4,27 +4,27 @@ These rules apply throughout the repository.
 
 ## Repository-specific context
 
-- Before asking task-specific clarifying questions, defining a goal, planning, using external project-management systems, or editing files, check for `AGENT-REPO-CONTEXT.md` in the repository root.
-- When present, read `AGENT-REPO-CONTEXT.md` completely and treat it as required repository-specific instructions, subordinate to this file and all higher-priority instructions.
+- When establishing the task, read `AGENT-REPO-CONTEXT.md` in the repository root when present. It contains the repository identity, applicable boundaries, and an index of supporting procedures, subordinate to this file and all higher-priority instructions.
+- Load a linked procedure when its workflow enters scope and before performing the operations it governs. Refresh relevant context when it may have changed; do not reload unrelated procedures before every edit.
 - Repository mappings, project identifiers, local paths, repository URLs, and external-system identities belong in `AGENT-REPO-CONTEXT.md`, not this shared instruction file.
 - Do not assume repository-specific rules, project identifiers, external systems, paths, or conventions from another repository.
-- If the repository-specific context declares an external source of truth, retrieve the relevant current information before planning or implementation.
-- If required repository context or its declared external source of truth cannot be read or verified, stop and ask the user how to proceed.
+- If the task depends on a declared external source of truth, retrieve the relevant current information before making decisions or implementation changes that depend on it. Independent local inspection and provisional planning do not require unrelated external information; identify unresolved inputs explicitly.
+- If required context or external information cannot be verified, stop the affected operations and report the blocker. Continue authorized independent work that does not depend on the missing information; do not invent requirements or substitute another source of truth.
 
 ## Questions, goals, and approval
 
-- Before planning or editing files, ask the user clarifying questions to confirm the goal, scope, constraints, and definition of done.
-- State a concrete goal for the task. Use the available goal-tracking mechanism when one is available; otherwise include a clearly labeled goal in the response.
-- Always produce a plan and wait for explicit user approval before editing files.
-- Use `AGENT-PLAN-TEMPLATE.md` when present.
-- After approval, make only the approved edits.
-- Stop and ask before editing additional paths, changing the goal, or expanding the approved scope.
-- Stop and ask the user how to proceed when uncertain or before trying an approach that is new to the codebase. Explain the uncertainty or proposed approach and wait for explicit approval before continuing.
+- State the task's concrete goal and plan before edits, with detail proportional to the task. Use a goal-tracking tool only when the user requests it and the host permits it.
+- Ask clarifying questions only when missing information materially affects correctness, scope, constraints, or acceptance. Use information already provided instead of asking the user to repeat it.
+- Proceed with edits authorized by the user's current request or earlier conversation. A plan does not require another approval when the work is already authorized; a request for analysis or a plan alone does not authorize implementation.
+- For substantial work, use `AGENT-PLAN-TEMPLATE.md` when present, including only applicable sections. For small changes, use a brief scope, intended change, and relevant validation.
+- Keep edits within the authorized goal and scope. Expected file paths guide implementation; discovering another necessary supporting file does not by itself require another approval.
+- Ask before materially expanding scope, changing the goal, or taking a consequential action outside existing authorization. Apply the specific instruction-file, dependency, Git, and external-system approval boundaries below and in repository context.
+- Investigate uncertainty and use established patterns for routine implementation choices. Ask when an unresolved decision materially changes requirements, compatibility, ownership, risk, or acceptance; an unfamiliar approach alone is not a stop condition.
 
 ## Repo-wide safety rules
 
 - Git and GitHub mutations are governed exclusively by the Git and GitHub boundaries section below.
-- Never edit `AGENTS.md`, `AGENTS.override.md`, `AGENT-PLAN-TEMPLATE.md`, or other agent-instruction files directly. Propose the changes and wait for explicit approval.
+- Changes to `AGENTS.md`, `AGENTS.override.md`, `AGENT-PLAN-TEMPLATE.md`, or other agent-instruction files require explicit user approval of the proposed changes. Do not modify them incidentally during other work.
 - Keep changes surgical and consistent with existing patterns and naming.
 - Avoid unrelated formatting churn, project-wide cleanup, or broad rewrites.
 - Do not introduce new third-party dependencies, frameworks, build tools, package managers, or CI actions without explicit approval in the plan.
@@ -74,19 +74,19 @@ These rules apply throughout the repository.
 
 ### Allowed working-branch delivery
 
-- On a non-protected working branch that was either already selected or created and selected under an approved task-specific plan, the agent may perform the following operations only when they are listed in that plan:
+- On a non-protected working branch that was either already selected or created and selected under an approved task-specific plan, the agent may perform the following operations only when explicitly authorized by the user's request or approved plan:
   - stage files within the approved task scope;
   - create new commits containing only the approved changes;
   - push the current branch to a same-named branch on `origin`;
   - set the upstream for that same-named remote branch when necessary;
-  - create a draft pull request from the current working branch into the protected default branch;
+  - create a ready-for-review pull request from the current working branch into the protected default branch;
   - update the title or description of the pull request created for the current task.
-- Once the user approves a plan containing these delivery steps, no additional case-by-case confirmation is required for those listed operations.
+- Once the user authorizes these delivery steps, no additional case-by-case confirmation is required for those operations within the same scope. Authorization to edit local files alone does not authorize staging, committing, pushing, or pull-request operations.
 - Stage explicit approved paths. Do not use `git add .`, `git add -A`, or equivalent broad staging unless inspection confirms that every included change belongs to the approved task.
 - Before committing, inspect `git status --short` and the staged diff.
 - Before pushing, verify again that the destination is the same-named working branch and is not protected.
 - Before opening a pull request, verify that its head is the current working branch and its base is the protected default branch.
-- Create pull requests as drafts unless the user explicitly requests a ready-for-review pull request.
+- Create only ready-for-review pull requests. Do not create draft pull requests.
 
 ### Always prohibited
 
@@ -102,41 +102,9 @@ These rules apply throughout the repository.
 - Preserve unrelated staged, unstaged, and untracked user changes.
 - If any required branch or destination check fails, stop before mutation and report the exact blocker.
 
-## Temporary and Working Files
-
-Use the repository-local `.work` directory for all temporary, generated, intermediate, scratch, downloaded, extracted, and diagnostic files.
-
-Do not write temporary project artifacts to the system TEMP directory unless a tool requires it and provides no configurable alternative.
-
-Before creating temporary files, ensure that `.work/` exists at the repository root.  
-
-Examples:
-
-- build intermediates -> `.work/build/`
-- downloaded files -> `.work/downloads/`
-- extracted archives -> `.work/extracted/`
-- generated reports -> `.work/reports/`
-- scratch scripts -> `.work/scratch/`
-- temporary logs -> `.work/logs/`
-- temporary files -> `.work/tmp/`
-
-Do not commit `.work`.
-
-Never use `$env:TEMP`, `$env:TMP`, `%TEMP%`, `/tmp`, or another system-wide temporary directory for project work when the repository-local `.work` directory can be used instead.
-
-## Report Output Rules
-
-When writing multi-line reports:
-
-- Do not build the report with one large shell command containing repeated `echo`, `printf`, or redirection.
-- Prefer the file write/edit tool for report content.
-- If shell output is unavoidable, split the work into small commands.
-- Keep any individual permission-requiring shell command short enough to review comfortably in the OpenCode permission dialog.
-- Write temporary review artifacts under the repository-local `.work` directory, not the system TEMP directory.
-
 ## Delivery and commit-message handoff
 
-- If the approved plan authorizes working-branch delivery, stage only approved paths, create the commit, push the same-named working branch, and create or update its draft pull request.
+- If the user's request or approved plan authorizes working-branch delivery, perform only the authorized delivery steps: stage approved paths, create the commit, push the same-named working branch, and create or update its ready-for-review pull request as applicable.
 - Report the resulting commit hash, pushed remote branch, and pull-request URL.
 - Do not claim that a commit, push, or pull request succeeded unless the corresponding command actually completed successfully.
 - If delivery is not authorized, provide a suggested Git commit title and body instead of staging or committing.
@@ -146,14 +114,8 @@ When writing multi-line reports:
 
 ## Planning requirements
 
-Before edits, produce a plan containing:
+Before edits, identify the scope, intended change, expected files, and relevant validation. A small change needs only a brief plan.
 
-- Scope and intent.
-- Exact file paths expected to change.
-- A code-level checklist.
-- UI impacts, if any. Exclude this when it does not apply.
-- Data model, persistence, or schema impacts, if any. Exclude this when it does not apply.
-- Configuration, environment variable, path, logging, dependency injection, or workflow impacts, if any. Exclude this when it does not apply.
-- Documentation impacts, or the exact statement: `Documentation impacts: None.`
-- Risks and rollback notes.
-- A validation plan with specific commands or manual checks.
+For substantial changes, also describe applicable implementation steps; UI, data, persistence, configuration, dependency, workflow, and documentation impacts; material risks and rollback; and specific validation commands or manual checks. Omit inapplicable sections instead of adding boilerplate.
+
+Identify operations that require separate authorization and any external prerequisites before dependent implementation. Keep required checks and validation proportional to the change; report actual results and unverified limitations.

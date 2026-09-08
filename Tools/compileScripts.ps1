@@ -1,39 +1,46 @@
 <#
 .SYNOPSIS
-Compiles the Papyrus scripts owned by one or more Canvas package variants.
+Compiles the Papyrus scripts owned by one or more configured module variants.
 .DESCRIPTION
-Variant membership comes exclusively from sharedConfig.ps1. Output is written only beneath
-.work and is accompanied by source-bound compile evidence.
+Variant membership comes from each variant's exact Papyrus namespace. Sources compile into
+a unique work candidate before selected outputs are promoted, preserving unselected outputs.
+
+.PARAMETER VariantKeys
+One or more configured module variant keys. Omit this parameter to compile every configured variant. VariantKey is accepted as an alias.
+
+.PARAMETER EnvironmentPath
+Environment file used only by the first successful shared configuration initialization in the current PowerShell session. Later calls in that session reuse the loaded configuration; start a fresh process to select a different file.
+
+.PARAMETER OutputDirectory
+Directory that receives compiled PEX files. The configured BuildSettings.ScriptsDirectory is used by default. The resolved directory must be contained by BuildSettings.WorkRoot.
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)]
-  [string]$VenworksCoreRepositoryPath,
-
+  [Alias('VariantKey')]
   [string[]]$VariantKeys,
 
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
 
-  [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\.work\canvas\scripts')
+  [string]$OutputDirectory
 )
 
-$PSNativeCommandUseErrorActionPreference = $true
+$PSNativeCommandUseErrorActionPreference = $false
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-. (Join-Path $PSScriptRoot 'sharedConfig.ps1') -SkipEnvironment
-. (Join-Path $PSScriptRoot 'sharedCanvas.ps1')
+. (Join-Path $PSScriptRoot 'sharedVariants.ps1')
+. (Join-Path $PSScriptRoot 'sharedBuild.ps1')
 
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$workRoot = Join-Path $repositoryRoot '.work\canvas'
-$sourceRoot = Join-Path $repositoryRoot 'Papyrus'
-$resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-$matrix = Get-CanvasMatrix -RepositoryRoot $repositoryRoot
-$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
-$resolvedVenworksCoreRoot = Assert-PinnedVenworksCoreFixture `
-  -VenworksCoreRepositoryPath $VenworksCoreRepositoryPath `
-  -Matrix $matrix
-$venworksCoreSourceRoot = Join-Path $resolvedVenworksCoreRoot 'Papyrus'
-Import-CanvasEnvironment -Path $EnvironmentPath
+$sharedConfigurationVariable = Get-Variable -Name SharedConfigurationLoaded -Scope Global -ErrorAction SilentlyContinue
+if ($null -eq $sharedConfigurationVariable -or ![bool]$sharedConfigurationVariable.Value) {
+  Write-Host -ForegroundColor Green 'Importing Shared Configuration'
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+}
+
+foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot', 'ScriptsDirectory')) {
+  if ($null -eq $Global:BuildSettings -or [string]::IsNullOrWhiteSpace([string]$Global:BuildSettings[$settingName])) {
+    throw "BuildSettings.$settingName must be configured."
+  }
+}
 
 foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAGS', 'PAPYRUS_SCRIPTS_SOURCE_PATH')) {
   $value = [Environment]::GetEnvironmentVariable($requiredName, 'Process')
@@ -42,7 +49,17 @@ foreach ($requiredName in @('TOOL_PATH_PAPYRUS_COMPILER', 'PAPYRUS_COMPILER_FLAG
   }
 }
 
-$compilerPath = Resolve-CanvasExecutable `
+$workRoot = Get-BuildNormalizedFullPath -Path ([string]$Global:BuildSettings.WorkRoot)
+$sourceRoot = Resolve-BuildRequiredDirectory `
+  -Path ([string]$Global:BuildSettings.PapyrusSourceRoot) `
+  -Description 'Project Papyrus source root'
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  $OutputDirectory = [string]$Global:BuildSettings.ScriptsDirectory
+}
+$resolvedOutputDirectory = Get-BuildNormalizedFullPath -Path $OutputDirectory
+$variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+
+$compilerPath = Resolve-BuildExecutable `
   -Path $env:TOOL_PATH_PAPYRUS_COMPILER `
   -FileName 'PapyrusCompiler.exe' `
   -Description 'Starfield Papyrus compiler'
@@ -50,88 +67,89 @@ $flagsPath = $env:PAPYRUS_COMPILER_FLAGS
 if (Test-Path -LiteralPath $flagsPath -PathType Container) {
   $flagsPath = Join-Path $flagsPath 'Starfield_Papyrus_Flags.flg'
 }
-$resolvedFlagsPath = Resolve-CanvasRequiredFile -Path $flagsPath -Description 'Starfield Papyrus flags file'
-$resolvedGameSourcePath = Resolve-CanvasRequiredDirectory `
+$resolvedFlagsPath = Resolve-BuildRequiredFile -Path $flagsPath -Description 'Starfield Papyrus flags file'
+$resolvedInstalledSourcePath = Resolve-BuildRequiredDirectory `
   -Path $env:PAPYRUS_SCRIPTS_SOURCE_PATH `
-  -Description 'Starfield Papyrus source directory'
+  -Description 'Installed Papyrus source directory'
 
-if (Test-Path -LiteralPath $resolvedOutputDirectory -PathType Container) {
-  Assert-CanvasRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
-  Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
-}
-New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
+Assert-BuildRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
+[IO.Directory]::CreateDirectory($resolvedOutputDirectory) | Out-Null
 
-$sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-$sources = [System.Collections.Generic.List[string]]::new()
+$relativeOutputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$sources = [Collections.Generic.List[object]]::new()
 foreach ($variant in $variants) {
-  foreach ($relativeSource in @($variant.PapyrusScripts)) {
-    if ($sourceSet.Add([string]$relativeSource)) {
-      $sources.Add([string]$relativeSource)
+  foreach ($source in @(Get-BuildPapyrusSources -Variant $variant -SourceRoot $sourceRoot)) {
+    if ($relativeOutputs.Add([string]$source.RelativeOutput)) {
+      $sources.Add($source)
+    }
+    elseif (@($sources | Where-Object {
+          [string]::Equals([string]$_.RelativeSource, [string]$source.RelativeSource, [StringComparison]::OrdinalIgnoreCase)
+        }).Count -eq 0) {
+      throw "Selected Papyrus namespaces produce the same output '$($source.RelativeOutput)'."
     }
   }
 }
 if ($sources.Count -eq 0) {
-  throw 'The selected variants do not declare any Papyrus scripts.'
+  throw 'The selected variants do not own any Papyrus sources.'
 }
 
-$sourcePaths = @{}
-$sourceHashes = @{}
-foreach ($relativeSource in $sources) {
-  $sourcePath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $sourceRoot $relativeSource) `
-    -Description "Canvas Papyrus source '$relativeSource'"
-  $sourcePaths[$relativeSource] = $sourcePath
-  $sourceHashes[$relativeSource] = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant()
-}
+$transactionRoot = Join-Path $workRoot ('script-build-' + [guid]::NewGuid().ToString('N'))
+Assert-BuildRemovalPath -Path $transactionRoot -AllowedRoot $workRoot
+[IO.Directory]::CreateDirectory($transactionRoot) | Out-Null
+$compiledOutputs = [Collections.Generic.List[object]]::new()
+try {
+  foreach ($source in $sources) {
+    $compilerArguments = @(
+      [string]$source.Source
+      '-f'
+      '-optimize'
+      "-flags=$resolvedFlagsPath"
+      "-output=$transactionRoot"
+      "-import=$sourceRoot;$resolvedInstalledSourcePath"
+      '-ignorecwd'
+    )
 
-$compiled = [System.Collections.Generic.List[object]]::new()
-foreach ($relativeSource in $sources) {
-  $sourcePath = [string]$sourcePaths[$relativeSource]
-  $sourceSha256Before = [string]$sourceHashes[$relativeSource]
-  & $compilerPath $sourcePath -f -optimize "-flags=$resolvedFlagsPath" "-output=$resolvedOutputDirectory" "-import=$sourceRoot;$venworksCoreSourceRoot;$resolvedGameSourcePath" -ignorecwd
-  if ($LASTEXITCODE -ne 0) {
-    throw "Papyrus compilation failed for '$relativeSource' with exit code $LASTEXITCODE."
-  }
-  $outputName = [System.IO.Path]::ChangeExtension($relativeSource, '.pex')
-  $outputPath = Resolve-CanvasRequiredFile `
-    -Path (Join-Path $resolvedOutputDirectory $outputName) `
-    -Description "Compiled Papyrus script '$outputName'"
-  if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToUpperInvariant() -cne $sourceSha256Before) {
-    throw "Canvas Papyrus source changed during compilation: $relativeSource"
-  }
-  $compiled.Add([ordered]@{
-    Source = $relativeSource.Replace('\', '/')
-    SourceSha256 = $sourceSha256Before
-    Output = $outputName.Replace('\', '/')
-    Sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToUpperInvariant()
-  })
-}
-
-[void](Assert-PinnedVenworksCoreFixture `
-  -VenworksCoreRepositoryPath $resolvedVenworksCoreRoot `
-  -Matrix $matrix)
-foreach ($relativeSource in $sources) {
-  $currentHash = (Get-FileHash -LiteralPath ([string]$sourcePaths[$relativeSource]) -Algorithm SHA256).Hash.ToUpperInvariant()
-  if ($currentHash -cne [string]$sourceHashes[$relativeSource]) {
-    throw "Canvas Papyrus source changed during the complete compile: $relativeSource"
-  }
-}
-
-$evidence = [ordered]@{
-  Schema = 'VWCANVAS_SCRIPTS/1'
-  CompilerVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($compilerPath).FileVersion
-  Variants = @($variants.VariantKey)
-  VenworksCoreRevision = [string]$matrix.VenworksCoreFixture.Revision
-  VenworksCoreSources = @($matrix.VenworksCoreFixture.SourceFiles | ForEach-Object {
-    [ordered]@{
-      Path = [string]$_.Path
-      Sha256 = [string]$_.Sha256
+    try {
+      & $compilerPath @compilerArguments | Out-Host
+      $compilerExitCode = $LASTEXITCODE
     }
-  })
-  Scripts = @($compiled)
-}
-Write-CanvasUtf8WithoutBom `
-  -Path (Join-Path $resolvedOutputDirectory 'compile-evidence.json') `
-  -Text (($evidence | ConvertTo-Json -Depth 5) + "`n")
+    catch {
+      throw "Papyrus compilation failed for '$($source.RelativeSource)' with exit code $LASTEXITCODE. $($_.Exception.Message)"
+    }
+    if ($compilerExitCode -ne 0) {
+      throw "Papyrus compilation failed for '$($source.RelativeSource)' with exit code $compilerExitCode."
+    }
 
-Write-Host -ForegroundColor Green "Compiled and inventoried $($compiled.Count) Canvas Papyrus scripts at $resolvedOutputDirectory"
+    $candidatePath = Join-Path $transactionRoot ([string]$source.RelativeOutput)
+    if (!(Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+      throw "Papyrus compiler did not produce a fresh output for '$($source.RelativeSource)': $candidatePath"
+    }
+    $compiledOutputs.Add([pscustomobject]@{
+      CandidatePath = $candidatePath
+      DestinationPath = Join-Path $resolvedOutputDirectory ([string]$source.RelativeOutput)
+    })
+  }
+
+  foreach ($compiledOutput in $compiledOutputs) {
+    $destinationPath = [string]$compiledOutput.DestinationPath
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
+    $temporaryPath = "$destinationPath.$PID-$([guid]::NewGuid().ToString('N')).new"
+    try {
+      Copy-Item -LiteralPath ([string]$compiledOutput.CandidatePath) -Destination $temporaryPath
+      [IO.File]::Move($temporaryPath, $destinationPath, $true)
+    }
+    finally {
+      if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+        Remove-Item -LiteralPath $temporaryPath -Force
+      }
+    }
+  }
+}
+finally {
+  if (Test-Path -LiteralPath $transactionRoot -PathType Container) {
+    Assert-BuildRemovalPath -Path $transactionRoot -AllowedRoot $workRoot
+    Remove-Item -LiteralPath $transactionRoot -Recurse -Force
+  }
+}
+
+Write-Host -ForegroundColor Green "Compiled $($compiledOutputs.Count) selected Papyrus scripts to $resolvedOutputDirectory"

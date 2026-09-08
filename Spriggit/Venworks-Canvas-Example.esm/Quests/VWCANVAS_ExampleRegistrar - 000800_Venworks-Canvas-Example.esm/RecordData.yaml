@@ -1,31 +1,30 @@
-FormKey: 000802:Venworks-Canvas-ComponentGallery.esm
-EditorID: VWCANVAS_ComponentGalleryMissingFixture
+FormKey: 000800:Venworks-Canvas-Example.esm
+EditorID: VWCANVAS_ExampleRegistrar
 FormVersion: 582
 VirtualMachineAdapter:
   Scripts:
-  - Name: Venworks:Canvas:ComponentGalleryRegistrar
+  - Name: Venworks:CanvasExamples:ExampleRegistrar
     Properties:
     - MutagenObjectType: ScriptStringProperty
       Name: ConsumerId
-      Data: cad7cd56-217a-4e62-a98d-42c3adad07b5
+      Data: a8098c1a-f86e-4b1e-9d7c-5a102bf38460
     - MutagenObjectType: ScriptIntProperty
       Name: DescriptorVersion
       Data: 1
     - MutagenObjectType: ScriptStringProperty
       Name: DisplayName
-      Data: VWCANVAS Missing Consumer
+      Data: VWCANVAS Example
     - MutagenObjectType: ScriptBoolProperty
       Name: ExpectedRegistration
       Data: True
     - MutagenObjectType: ScriptFloatProperty
       Name: InitialDelaySeconds
-      Data: 1
     - MutagenObjectType: ScriptStringProperty
       Name: LargeMoviePath
-      Data: VenworksCanvas/Consumers/venworks.canvas.fixture.missing/large.swf
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/large.swf
     - MutagenObjectType: ScriptStringProperty
       Name: NormalMoviePath
-      Data: VenworksCanvas/Consumers/venworks.canvas.fixture.missing/normal.swf
+      Data: VenworksCanvas/Consumers/venworks.canvas.example/normal.swf
     - MutagenObjectType: ScriptObjectProperty
       Name: Registry
       Object: 000800:Venworks-Canvas.esm
@@ -36,7 +35,7 @@ VirtualMachineAdapter:
     Name: ''
 Name:
   TargetLanguage: English
-  Value: VWCANVAS Missing Consumer Fixture
+  Value: VWCANVAS Example Registrar
 Data:
   Flags:
   - StartGameEnabled

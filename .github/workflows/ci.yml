@@ -13,6 +13,22 @@ permissions:
   contents: read
 
 jobs:
+  validate-windows:
+    name: Validate Windows build pipeline and staging contracts
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Canvas sources and isolated Windows staging behavior
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .work -Force | Out-Null
+          Set-Content -LiteralPath .work/ci.env -Value '# Source checks do not use native tool or installation settings.'
+          ./Tools/verifyCanvas.ps1 -SourceOnly -EnvironmentPath .work/ci.env
+
   lint-powershell:
     name: Lint PowerShell
     runs-on: ubuntu-latest
@@ -27,9 +43,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate Canvas sources
+      - name: Check Canvas sources and focused contracts
         shell: pwsh
-        run: ./Tools/verifyCanvas.ps1 -SourceOnly
+        run: |
+          New-Item -ItemType Directory -Path .work -Force | Out-Null
+          Set-Content -LiteralPath .work/ci.env -Value '# Source checks do not use native tool or installation settings.'
+          ./Tools/verifyCanvas.ps1 -SourceOnly -EnvironmentPath .work/ci.env
 
       - name: Install PSScriptAnalyzer
         shell: pwsh

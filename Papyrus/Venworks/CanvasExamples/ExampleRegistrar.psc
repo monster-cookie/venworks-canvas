@@ -1,4 +1,4 @@
-ScriptName Venworks:Canvas:ExampleRegistrar Extends Venworks:Canvas:Base:BaseQuest
+ScriptName Venworks:CanvasExamples:ExampleRegistrar Extends Venworks:Canvas:Base:BaseQuest
 Import Venworks:Canvas:Registry
 
 Venworks:Canvas:Registry Property Registry Auto Const Mandatory
@@ -10,7 +10,7 @@ Int Property DescriptorVersion Auto Const Mandatory
 Bool Property ExpectedRegistration Auto Const Mandatory
 Float Property InitialDelaySeconds Auto Const Mandatory
 
-String ModuleName = "Canvas:ExampleRegistrar"
+String ModuleName = "CanvasExamples:ExampleRegistrar"
 ; Retained for saved-script compatibility only; this flag is never consulted as a lock or scheduling gate.
 Bool RegistrationAttemptActive = False
 Guard AttemptGuard ProtectsFunctionLogic

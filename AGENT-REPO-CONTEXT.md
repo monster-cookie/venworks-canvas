@@ -10,17 +10,21 @@ These instructions apply only to the Venworks Canvas repository.
 
 The stable Plane project UUID is the canonical external identity. Project names, identifiers, member display names, labels, and workflow names may change and must not replace the UUID as the primary identity.
 
-At the beginning of Plane-backed work:
+## Task applicability and procedures
 
-1. Verify that the Plane MCP is available and authenticated.
-2. List the available Plane projects.
-3. Find project UUID `b9432d80-7966-48dd-86ea-f8eb5668bbd3`.
-4. Verify that its current identifier is `VWCANVAS` and record its current name.
-5. Use the full project UUID in every MCP operation that accepts `project_id`.
-6. Retrieve the governing work item and verify that its returned `project` field matches the canonical project UUID.
-7. Retain both its human-readable identifier, such as `VWCANVAS-30`, and its full work-item UUID before planning or mutation.
+Use the identity and boundaries in this file when establishing repository work. Load a supporting procedure only when its workflow is relevant; within a procedure, use the sections that govern the current operation.
 
-Do not rely only on a remembered project name, work-item title, short identifier, label name, list position, or search result.
+Plane-backed work depends on a governing Plane work item or current Plane requirements. A configured Plane mapping alone does not make every local task Plane-backed. A fully specified local correction may proceed under existing authorization when it does not depend on that external information; do not use this distinction to bypass governing Plane requirements.
+
+| Task | Required context |
+| --- | --- |
+| Independent local inspection, instruction audits, provisional planning, or a fully specified local correction | Relevant repository files and these boundaries. Plane availability is not a prerequisite when the work does not depend on current Plane requirements. Identify unresolved external inputs explicitly. |
+| Decisions or implementation governed by Plane requirements; work-item operations | Retrieve the relevant current Plane information and read the applicable sections of [Plane lifecycle](Documentation/Agents/PlaneLifecycle.md) before dependent work. |
+| Public roadmap content derived from Plane | Read [Plane roadmap](Documentation/Agents/PlaneRoadmap.md) and the identity-verification section of [Plane lifecycle](Documentation/Agents/PlaneLifecycle.md) before using Plane content. |
+
+For Plane-backed implementation, verified Task scope, ready dependencies, the intended automation ownership, and In Progress state are prerequisites. Identify them while preparing the plan and satisfy them through explicitly authorized operations or verified existing/manual state before dependent implementation. Do not assume permission to mutate Plane from permission to edit local files.
+
+Preparing a review handoff does not require permission to change Plane. A recorded Plane handoff requires verified In Review state; report a pending transition when it has not been authorized or manually completed. Only the user may approve final acceptance or completion.
 
 ## Sources of truth
 
@@ -39,21 +43,10 @@ Codecks is retired and deactivated for this repository. Do not query, update, or
 
 ## Plane project scoping
 
-Every Plane operation that accepts `project_id` must receive:
-
-`b9432d80-7966-48dd-86ea-f8eb5668bbd3`
-
-Do not make an unscoped list, count, planning, creation, update, relationship, comment, attachment, or deletion request when project scoping is available.
-
-When an operation such as `retrieve_by_identifier` does not accept `project_id`:
-
-1. Retrieve the work item using its complete identifier.
-2. Verify that its returned `project` field equals the canonical project UUID.
-3. Verify its identifier, title, type, state, assignment, labels, parent, relationships, and dependencies as applicable.
-4. Retain its full work-item UUID.
-5. Only then read related data or perform an approved mutation.
-
-Use full UUIDs for state, member, label, type, relation, and work-item mutations. Resolve names through current project-scoped lists instead of relying only on the UUIDs recorded below.
+- Use the canonical project UUID from the mapping above in every Plane operation that accepts `project_id`. Do not make unscoped requests when project scoping is available.
+- Verify that a returned work item belongs to the canonical project before reading related data or performing an authorized mutation. Retain its full UUID and current human-readable identifier.
+- A verified project rename or identifier change does not change the canonical UUID. Record the current name and identifier; stop for a wrong UUID or ambiguous project identity. Do not silently edit this instruction file to record a rename.
+- Do not rely only on remembered names, titles, identifiers, labels, list positions, or search results. Resolve mutation targets through current project-scoped data and use full UUIDs for state, member, label, type, relation, and work-item operations.
 
 ## Current Plane workflow
 
@@ -92,149 +85,32 @@ The intended automation account is currently:
 
 The MCP may authenticate as a different workspace member. The result of `member me` does not automatically identify the intended work-item assignee.
 
-Before assigning agent work:
-
-1. List the current project members.
-2. Verify that member UUID `fe284e57-9057-4570-9f91-db9917732350` still represents the `Codex` automation account.
-3. Inspect the work item's current assignees.
-4. Stop if another person or agent has conflicting ownership.
-5. Assign or unassign members only when that mutation is included in the approved task-specific plan.
+Verify the configured automation member against current project membership and inspect existing assignees before assignment or dependent implementation. Stop affected work when another person or agent has conflicting ownership. Mutate assignment only when explicitly authorized.
 
 Plane does not currently provide the Codecks-style claim workflow previously used by this repository. Do not invent claims, lock labels, host labels, or comments that pretend to provide exclusive locking.
 
-## Starting work
+The project currently has no dedicated Blocked workflow state. Preserve work and report blockers; do not invent workflow substitutes. Use the blocking section of [Plane lifecycle](Documentation/Agents/PlaneLifecycle.md) when a work item becomes blocked.
 
-For new implementation:
+## External actions and final acceptance
 
-1. Retrieve and verify the governing work item through the canonical project.
-2. Confirm that it is a Task in Backlog or Todo, or that the user explicitly approved work in another state.
-3. Inspect its parent, dependencies, relations, description, labels, comments, assignment, and definition of done.
-4. Confirm that dependencies are ready and no conflicting owner is assigned.
-5. Assign it to the verified `Codex` member only when authorized by the approved plan.
-6. Move it to In Progress only when authorized by the approved plan.
-7. Re-read the work item and verify its project, assignee, and In Progress state before editing repository files.
+Plane mutations and comments require explicit authorization in the user's request or approved plan. Local implementation approval alone does not authorize them. Perform only the authorized operations; do not perform unrelated Plane maintenance merely because a work item was opened.
 
-For continuation of existing work:
+Only the user may approve final completion. Require explicit action-time confirmation immediately before recording final acceptance, moving a work item from In Review to Done, or removing its active assignee as part of completion. Plan approval does not replace that confirmation. Read the completion procedure in [Plane lifecycle](Documentation/Agents/PlaneLifecycle.md) before completion actions.
 
-1. Re-read the work item.
-2. Verify that it remains In Progress.
-3. Verify that its current assignment and requirements still match the active task.
-4. Refresh comments, relationships, and dependencies before continuing.
-
-If assignment or state mutation partially succeeds, stop, report the exact result, and do not continue until the work item is in a verified state.
-
-## Blocking work
-
-The project currently has no dedicated Blocked workflow state.
-
-When work becomes blocked:
-
-1. Preserve the repository and branch state.
-2. Report the concrete blocker and supporting evidence to the user.
-3. Do not create a state, label, relationship, or other workflow substitute.
-4. Add a Plane comment only when the approved task plan authorizes comments.
-5. Ask the user how the work item should be represented before changing its state or assignment.
-
-A blocker comment should identify:
-
-- the blocking condition;
-- the evidence showing why meaningful progress cannot continue;
-- the person, system, or external event needed to unblock the work; and
-- the preserved repository, branch, commit, and validation state.
-
-## Review handoff
-
-After implementation and available validation are complete:
-
-1. Inspect existing comments to avoid duplicate handoff messages.
-2. Ensure the exact branch, commit, diff, and pull-request target are known.
-3. Add an implementation handoff comment only when comments are authorized in the approved plan.
-4. Include:
-   - implemented behavior and scope;
-   - files and generated artifacts changed;
-   - material technical or design decisions;
-   - validation commands and their actual results;
-   - completed manual runtime testing;
-   - remaining manual verification;
-   - known limitations or blockers;
-   - exact branch and baseline;
-   - commit hash and pull-request URL when available.
-5. Move the work item to In Review only when that state mutation is authorized.
-6. Re-read the work item and verify the In Review state.
-7. Keep it In Review while independent review or human acceptance remains.
-
-Repository or pull-request review is the authoritative source for code-review findings. Plane records the work-item state and delivery handoff; it does not replace review of the exact Git diff.
-
-## Completion
-
-Only the user may approve final completion.
-
-Require explicit action-time confirmation immediately before:
-
-- recording final acceptance;
-- moving a work item from In Review to Done; or
-- removing its active assignee as part of completion.
-
-After confirmation:
-
-1. Re-read the work item and its comments.
-2. Record the user's acceptance and relevant validation evidence when comments are authorized.
-3. Move the work item to Done.
-4. Re-read it and verify the completed state.
-5. Update assignment only when explicitly authorized.
-6. Report the actual mutation results.
-
-Do not claim that a Plane comment, assignment, relationship, or state change succeeded unless the corresponding MCP operation completed and the resulting work item was re-read and verified.
-
-## Planning Plane mutations
-
-For Plane-backed work, the task-specific plan must explicitly state whether it authorizes:
-
-- assigning or unassigning members;
-- adding or updating comments;
-- changing workflow state;
-- changing priority, labels, type, parent, estimates, or dates;
-- creating or changing dependencies or other relationships;
-- creating, archiving, or deleting work items;
-- attaching files or external links; and
-- marking a work item Done after separate action-time human confirmation.
-
-Plan approval does not replace the separate action-time confirmation required before final acceptance or completion.
-
-Do not perform unrelated Plane maintenance merely because a work item was opened.
-
-## Public roadmap content
-
-For public roadmap content derived from Plane:
-
-1. Query only the canonical project.
-2. Refresh the complete current work-item inventory.
-3. Treat work items whose returned state group is `backlog` or `unstarted` as pending.
-4. Exclude In Progress, In Review, Done, and Cancelled items unless the user explicitly requests those sections.
-5. Resolve and apply the relevant product label, such as `minimalist`, instead of selecting work items only by title.
-6. Retrieve each selected item fully before using it.
-7. Preserve Epic and Task hierarchy and inspect dependencies and relationships.
-8. Avoid listing the same outcome separately as both an Epic and an ungrouped Task.
-9. Convert internal implementation wording into clear player-facing language without changing the promised outcome.
-10. Do not invent dates, release versions, ordering, commitments, compatibility, or acceptance criteria that are not present in Plane or explicitly provided by the user.
-11. Refresh the roadmap from Plane immediately before publication.
-
-Roadmap content is a current snapshot, not a promise that every pending item will ship.
+Do not claim that a Plane mutation succeeded unless the corresponding operation completed and the resulting work item was re-read and verified. Preserve the actual outcome of partial mutations and resolve uncertainty before retrying or continuing dependent work.
 
 ## Failure behavior
 
-Stop before planning, editing, or external mutation and ask the user how to proceed if:
+Stop the operations that depend on missing or inconsistent Plane information and report the concrete blocker when:
 
-- the Plane MCP is unavailable;
-- Plane authentication fails;
-- the canonical project UUID cannot be found;
-- the returned project identifier or membership is inconsistent;
-- the governing work item cannot be retrieved and verified;
-- the work item belongs to a different project;
-- a stored state, type, label, member, or work-item UUID resolves inconsistently;
+- the Plane MCP is unavailable or authentication fails;
+- the canonical project UUID cannot be found or project identity is ambiguous;
+- the governing work item cannot be retrieved, verified, or matched to the canonical project;
+- a state, type, label, member, or work-item UUID resolves inconsistently;
 - a conflicting assignee cannot be resolved;
-- required relationships or dependencies cannot be retrieved;
-- an approved mutation reports success but the resulting state cannot be verified;
-- the relevant source-of-truth work items cannot be refreshed.
+- required relationships, dependencies, or current source-of-truth requirements cannot be retrieved; or
+- an authorized mutation reports success but its resulting state cannot be verified.
+
+Continue authorized independent local analysis or provisional planning that does not rely on the missing information. Identify unresolved inputs and do not proceed with dependent implementation or external mutations until their prerequisites are verified.
 
 Do not fall back to Codecks, historical memory, guessed requirements, local roadmap drafts, generic comments, or another task system to simulate missing Plane state.
