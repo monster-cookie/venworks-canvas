@@ -177,7 +177,7 @@ For a handled installation failure, recovery checks the original backup inventor
 
 ## Validation
 
-Source and local tooling checks:
+Source layout and local PowerShell tooling checks:
 
 ```powershell
 .\Tools\verifyCanvas.ps1 -SourceOnly
@@ -185,19 +185,13 @@ Source and local tooling checks:
 
 Hosted CI runs this source-only verification and PowerShell lint only; it does not claim native Papyrus, Scaleform, Archive2, Spriggit, game, or platform acceptance.
 
-Individual repository checks:
+The five individual tooling checks exercise the actual PowerShell setup, build-routing, patch/publication, and packaging helpers with isolated fixtures. They do not execute or model Papyrus or ActionScript lifecycle behavior:
 
 ```powershell
-.\Tools\testConsole.ps1
-.\Tools\testGuards.ps1
 .\Tools\testPackaging.ps1
-.\Tools\testBuildEvidence.ps1
 .\Tools\testBuildVariants.ps1
-.\Tools\testSpriggit.ps1
+.\Tools\testBuildEvidence.ps1
 .\Tools\testSetup.ps1
-.\Tools\testUiLoad.ps1
-.\Tools\testUiReceive.ps1
-.\Tools\testUuid.ps1
 .\Tools\testScaleformSetup.ps1
 ```
 
@@ -216,6 +210,8 @@ The build commands above run the actual Papyrus and Flex compilers. Successful c
 Prior user-supplied PC gameplay established registration, owner checking, bounded bridge behavior, and visible loading of both permanent-name consumer panels in normal Player HUD mode without renewed Watch lag. That acceptance predates the activation and stale-queue changes, version 2 subscriptions, named events, and Canvas-owned HUDMenu bootstrap patch described here. Repeat the affected disposable-save, HUD-transition, data, and event cases for the current build before claiming new runtime acceptance.
 
 ## PC runtime acceptance
+
+Use the [VWCANVAS-10 testing guide](docs/vwcanvas-10-testing.md) for the current lifecycle change, exact installation prerequisites, copyable Example commands, expected results, cleanup, and the remaining diagnostic-consumer coverage. The cases below are an acceptance checklist, not recorded passes.
 
 Deploy through Vortex, confirm all three permanent packages are enabled, and start with a new disposable save. Run these cases in order:
 

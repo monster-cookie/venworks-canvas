@@ -107,6 +107,8 @@ package
 
       private var loaderGenerations:Object = {};
 
+      private var loaderStates:Object = {};
+
       private var consumerContracts:Object = {};
 
       private var nextLoaderGeneration:int = 0;
@@ -173,7 +175,7 @@ package
             {
                this.dataManager.Unsubscribe(PROVIDER,this.callback);
             }
-            catch(unsubscribeError:Error)
+            catch(unsubscribeError:*)
             {
             }
          }
@@ -192,6 +194,7 @@ package
          this.paths = {};
          this.versions = {};
          this.loaderGenerations = {};
+         this.loaderStates = {};
          this.consumerContracts = {};
          this.resetPendingGeneration();
          if(this.diagnostics != null && this.diagnostics.parent === this)
@@ -245,12 +248,12 @@ package
             this.dataManager.Subscribe(PROVIDER,this.callback);
             this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
          }
-         catch(subscriptionError:Error)
+         catch(subscriptionError:*)
          {
             if(this.subscribed && this.dataManager != null)
             {
                try { this.dataManager.Unsubscribe(PROVIDER,this.callback); }
-               catch(cleanupError:Error) { this.appendDiagnostic("BRIDGE CLEANUP ERROR"); }
+               catch(cleanupError:*) { this.appendDiagnostic("BRIDGE CLEANUP ERROR"); }
             }
             this.subscribed = false;
             if(this.consumerSubscriptions != null)
@@ -338,7 +341,7 @@ package
                }
             }
          }
-         catch(payloadError:Error)
+         catch(payloadError:*)
          {
             this.receiveNote("error","PROVIDER PAYLOAD REJECTED | " + this.sanitizeText(payloadError,100));
          }
@@ -427,7 +430,7 @@ package
                this.appendDiagnostic("RX LOAD " + descriptor.consumerId + " | V" + descriptor.version);
                this.reconcile(desired,false);
             }
-            catch(loadCommandError:Error)
+            catch(loadCommandError:*)
             {
                this.appendDiagnostic("UI LOAD REJECTED | " + this.sanitizeText(loadCommandError,100));
             }
@@ -443,7 +446,7 @@ package
                   this.consumerSubscriptions.publishEvent(String(canvasEvent.topic),String(canvasEvent.body));
                }
             }
-            catch(eventCommandError:Error)
+            catch(eventCommandError:*)
             {
                this.appendDiagnostic("CANVAS EVENT REJECTED | " + this.sanitizeText(eventCommandError,100));
             }
@@ -542,7 +545,7 @@ package
             }
             this.appendDiagnostic("REGISTRY " + this.parseUnsignedInt(String(messageFrame.value),2147483647) + " | " + this.sanitizeText(diagnosticFrame.value,180));
          }
-         catch(diagnosticError:Error)
+         catch(diagnosticError:*)
          {
             this.appendDiagnostic("DIAGNOSTIC REJECTED | " + this.sanitizeText(diagnosticError,100));
          }
@@ -608,7 +611,7 @@ package
                   descriptor = this.parseDescriptor(String(recordFrame.value));
                   pageDescriptors.push(descriptor);
                }
-               catch(descriptorError:Error)
+               catch(descriptorError:*)
                {
                   pageHasRejectedDescriptor = true;
                   this.appendDiagnostic("DESCRIPTOR REJECTED | " + this.sanitizeText(descriptorError,100));
@@ -650,7 +653,7 @@ package
             this.pendingReceivedPageCount++;
             this.pendingReceivedRecordCount += pageRecordCount;
          }
-         catch(snapshotError:Error)
+         catch(snapshotError:*)
          {
             this.appendDiagnostic("SNAPSHOT REJECTED | " + this.sanitizeText(snapshotError,100));
             if(generationId == this.pendingGenerationId)
@@ -1009,6 +1012,10 @@ package
             if(this.loaders[consumerId] != null)
             {
                this.unloadConsumer(consumerId);
+               if(this.disposed || this.loaders[consumerId] != null)
+               {
+                  continue;
+               }
             }
             this.loadConsumer(consumerId,path,descriptor.version);
          }
@@ -1029,6 +1036,7 @@ package
       {
          param1 = this.normalizeUuid(param1);
          var loader:Loader = new Loader();
+         var generation:int = 0;
          this.nextLoaderGeneration++;
          if(this.nextLoaderGeneration < 1)
          {
@@ -1039,6 +1047,8 @@ package
          this.paths[param1] = param2;
          this.versions[param1] = param3;
          this.loaderGenerations[param1] = this.nextLoaderGeneration;
+         generation = this.nextLoaderGeneration;
+         this.loaderStates[param1] = "loading";
          loader.contentLoaderInfo.addEventListener(Event.INIT,this.onConsumerInit,false,0,true);
          loader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onConsumerComplete,false,0,true);
          loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onConsumerError,false,0,true);
@@ -1048,10 +1058,13 @@ package
          {
             loader.load(new URLRequest(param2));
          }
-         catch(loadError:Error)
+         catch(loadError:*)
          {
             this.appendDiagnostic("LOAD ERROR " + param1 + " | " + this.sanitizeText(loadError,100));
-            this.unloadConsumer(param1);
+            if(this.isConsumerCurrent(param1,loader,generation))
+            {
+               this.unloadConsumer(param1);
+            }
          }
       }
 
@@ -1061,10 +1074,19 @@ package
          var bridge:Object = null;
          var record:Object = null;
          var contract:Object = null;
+         var consumerId:String = null;
+         var generation:int = 0;
          if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }
+         consumerId = loader.name;
+         generation = int(this.loaderGenerations[consumerId]);
+         if(this.loaderStates[consumerId] != "loading")
+         {
+            return;
+         }
+         this.loaderStates[consumerId] = "initializing";
          try
          {
             bridge = loader.content;
@@ -1073,21 +1095,40 @@ package
                throw new Error("missing getCanvasRegistration()");
             }
             record = bridge["getCanvasRegistration"]();
+            if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
+            {
+               return;
+            }
             contract = this.validateConsumerRegistration(record,loader,bridge);
-            this.consumerContracts[loader.name] = contract;
+            if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
+            {
+               return;
+            }
             if(contract.contractVersion == HOST_CONTRACT_VERSION)
             {
                if(this.consumerSubscriptions == null)
                {
                   throw new Error("consumer subscriptions unavailable");
                }
-               this.consumerSubscriptions.addConsumer(loader.name,bridge,loader,int(this.loaderGenerations[loader.name]),contract.uiChannels,contract.eventTopics);
+               this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics);
+               if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
+               {
+                  return;
+               }
             }
+            this.consumerContracts[consumerId] = contract;
+            this.loaderStates[consumerId] = "initialized";
          }
-         catch(validationError:Error)
+         catch(validationError:*)
          {
-            this.appendDiagnostic("INVALID " + loader.name + " | " + this.sanitizeText(validationError,100));
-            this.unloadConsumer(loader.name);
+            if(this.isConsumerCurrent(consumerId,loader,generation))
+            {
+               this.appendDiagnostic("INVALID " + consumerId + " | " + this.sanitizeText(validationError,100));
+               if(this.isConsumerCurrent(consumerId,loader,generation))
+               {
+                  this.unloadConsumer(consumerId);
+               }
+            }
          }
       }
 
@@ -1095,45 +1136,68 @@ package
       {
          var loader:Loader = param1.currentTarget.loader as Loader;
          var contract:Object = null;
+         var consumerId:String = null;
+         var generation:int = 0;
          if(loader == null || this.loaders[loader.name] !== loader)
          {
             return;
          }
-         this.removeLoaderListeners(loader);
-         contract = this.consumerContracts[loader.name];
-         if(contract == null)
+         consumerId = loader.name;
+         generation = int(this.loaderGenerations[consumerId]);
+         if(this.loaderStates[consumerId] == "completing" || this.loaderStates[consumerId] == "ready")
          {
-            this.appendDiagnostic("INVALID " + loader.name + " | missing initialized contract");
-            this.unloadConsumer(loader.name);
             return;
          }
+         this.removeLoaderListeners(loader);
+         contract = this.consumerContracts[consumerId];
+         if(this.loaderStates[consumerId] != "initialized" || contract == null)
+         {
+            this.appendDiagnostic("INVALID " + consumerId + " | missing initialized contract");
+            if(this.isConsumerCurrent(consumerId,loader,generation))
+            {
+               this.unloadConsumer(consumerId);
+            }
+            return;
+         }
+         this.loaderStates[consumerId] = "completing";
          if(contract.contractVersion == HOST_CONTRACT_VERSION)
          {
             try
             {
                contract.bridge["handleLifecycle"]("ready",this.createLifecycleContext(contract));
-               if(this.loaders[loader.name] !== loader || this.consumerSubscriptions == null)
+               if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "completing" || this.consumerContracts[consumerId] !== contract || this.consumerSubscriptions == null)
                {
                   return;
                }
-               this.consumerSubscriptions.markReady(loader.name);
-               if(this.loaders[loader.name] !== loader)
+               this.consumerSubscriptions.markReady(consumerId);
+               if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "completing" || this.consumerContracts[consumerId] !== contract)
                {
                   return;
                }
             }
-            catch(lifecycleError:Error)
+            catch(lifecycleError:*)
             {
-               this.appendDiagnostic("INVALID " + loader.name + " | READY CALLBACK | " + this.sanitizeText(lifecycleError,80));
-               this.unloadConsumer(loader.name);
+               if(this.isConsumerCurrent(consumerId,loader,generation))
+               {
+                  this.appendDiagnostic("INVALID " + consumerId + " | READY CALLBACK | " + this.sanitizeText(lifecycleError,80));
+                  if(this.isConsumerCurrent(consumerId,loader,generation))
+                  {
+                     this.unloadConsumer(consumerId);
+                  }
+               }
                return;
             }
          }
+         this.loaderStates[consumerId] = "ready";
          if(loader.parent !== this)
          {
             addChild(loader);
          }
-         this.appendDiagnostic("READY " + loader.name + " | V" + this.versions[loader.name]);
+         if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "ready")
+         {
+            return;
+         }
+         this.appendDiagnostic("READY " + consumerId + " | V" + this.versions[consumerId]);
          this.reapplyVanillaPlacements();
       }
 
@@ -1153,17 +1217,19 @@ package
          param1 = this.normalizeUuid(param1);
          var loader:Loader = this.loaders[param1] as Loader;
          var contract:Object = this.consumerContracts[param1];
+         var content:Object = loader == null ? null : loader.content;
+         delete this.loaders[param1];
+         delete this.paths[param1];
+         delete this.versions[param1];
+         delete this.loaderGenerations[param1];
+         delete this.loaderStates[param1];
+         delete this.consumerContracts[param1];
          if(this.consumerSubscriptions != null)
          {
             this.consumerSubscriptions.removeConsumer(param1);
          }
          if(loader == null)
          {
-            delete this.loaders[param1];
-            delete this.paths[param1];
-            delete this.versions[param1];
-            delete this.loaderGenerations[param1];
-            delete this.consumerContracts[param1];
             return;
          }
          this.removeLoaderListeners(loader);
@@ -1173,17 +1239,17 @@ package
             {
                contract.bridge["handleLifecycle"]("unload",this.createLifecycleContext(contract));
             }
-            catch(lifecycleError:Error)
+            catch(lifecycleError:*)
             {
             }
          }
-         if(loader.content != null && "dispose" in loader.content)
+         if(content != null && "dispose" in content)
          {
             try
             {
-               loader.content["dispose"]();
+               content["dispose"]();
             }
-            catch(disposeError:Error)
+            catch(disposeError:*)
             {
             }
          }
@@ -1195,21 +1261,16 @@ package
          {
             loader.close();
          }
-         catch(closeError:Error)
+         catch(closeError:*)
          {
          }
          try
          {
             loader.unload();
          }
-         catch(unloadError:Error)
+         catch(unloadError:*)
          {
          }
-         delete this.loaders[param1];
-         delete this.paths[param1];
-         delete this.versions[param1];
-         delete this.loaderGenerations[param1];
-         delete this.consumerContracts[param1];
       }
 
       private function removeLoaderListeners(param1:Loader) : void
@@ -1273,7 +1334,7 @@ package
          {
             return this.sanitizeText(param1.loaderInfo.url,180);
          }
-         catch(ownerUrlError:Error)
+         catch(ownerUrlError:*)
          {
          }
          return "owner-url-unavailable";
@@ -1284,9 +1345,20 @@ package
          return this.sanitizeText(param1,200).replace(/\\/g,"/");
       }
 
-      private function sanitizeText(param1:Object, param2:int) : String
+      private function sanitizeText(param1:*, param2:int) : String
       {
-         var value:String = param1 == null ? "" : String(param1);
+         var value:String = "";
+         if(param1 != null)
+         {
+            try
+            {
+               value = String(param1);
+            }
+            catch(textError:*)
+            {
+               value = "unprintable value";
+            }
+         }
          value = value.replace(/[\r\n\t]+/g," ");
          value = value.replace(/\s{2,}/g," ");
          value = value.replace(/^\s+|\s+$/g,"");

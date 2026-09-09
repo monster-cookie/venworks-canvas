@@ -71,6 +71,10 @@ package
                {
                   this.subscribeChannel(name);
                }
+               if(!this.isMembershipCurrent(membership))
+               {
+                  throw new Error("consumer subscription membership changed");
+               }
                index++;
             }
             index = 0;
@@ -87,9 +91,9 @@ package
                index++;
             }
          }
-         catch(subscriptionError:Error)
+         catch(subscriptionError:*)
          {
-            this.removeConsumer(param1);
+            this.removeConsumerMembership(membership);
             throw subscriptionError;
          }
       }
@@ -97,7 +101,7 @@ package
       public function markReady(param1:String) : void
       {
          var membership:Object = this.memberships[param1];
-         if(!this.isMembershipCurrent(membership))
+         if(!this.isMembershipCurrent(membership) || membership.ready === true)
          {
             return;
          }
@@ -144,20 +148,32 @@ package
             delete this.memberships[param1];
             return;
          }
+         this.removeConsumerMembership(membership);
+      }
+
+      private function removeConsumerMembership(param1:Object) : void
+      {
+         if(param1 == null)
+         {
+            return;
+         }
          // Invalidate dispatch snapshots before invoking any native unsubscribe or child callback.
-         delete this.memberships[param1];
-         this.membershipCount--;
+         if(this.memberships[param1.consumerId] === param1)
+         {
+            delete this.memberships[param1.consumerId];
+            this.membershipCount--;
+         }
          var index:int = 0;
          var name:String = null;
          var recipients:Array = null;
-         while(index < membership.channels.length)
+         while(index < param1.channels.length)
          {
-            name = String(membership.channels[index]);
-            recipients = this.removeMembership(this.channelMembers[name] as Array,membership);
+            name = String(param1.channels[index]);
+            recipients = this.removeMembership(this.channelMembers[name] as Array,param1);
             if(recipients.length == 0)
             {
-               this.unsubscribeChannel(name);
                delete this.channelMembers[name];
+               this.unsubscribeChannel(name);
             }
             else
             {
@@ -166,10 +182,10 @@ package
             index++;
          }
          index = 0;
-         while(index < membership.topics.length)
+         while(index < param1.topics.length)
          {
-            name = String(membership.topics[index]);
-            recipients = this.removeMembership(this.topicMembers[name] as Array,membership);
+            name = String(param1.topics[index]);
+            recipients = this.removeMembership(this.topicMembers[name] as Array,param1);
             if(recipients.length == 0)
             {
                delete this.topicMembers[name];
@@ -180,7 +196,7 @@ package
             }
             index++;
          }
-         membership.ready = false;
+         param1.ready = false;
       }
 
       public function dispose() : void
@@ -220,6 +236,10 @@ package
          var callback:Function = this.makeChannelCallback(param1);
          this.channelCallbacks[param1] = callback;
          var provider:Object = this.dataManager.GetDataFromClient(param1,true);
+         if(this.disposed || this.channelCallbacks[param1] !== callback)
+         {
+            throw new Error("UI data subscription ownership changed: " + param1);
+         }
          if(provider == null)
          {
             delete this.channelCallbacks[param1];
@@ -231,19 +251,26 @@ package
          {
             this.dataManager.Subscribe(param1,callback);
          }
-         catch(subscriptionError:Error)
+         catch(subscriptionError:*)
          {
-            delete this.channelSubscribed[param1];
-            delete this.channelCallbacks[param1];
+            if(this.channelCallbacks[param1] === callback)
+            {
+               delete this.channelSubscribed[param1];
+               delete this.channelCallbacks[param1];
+            }
             try
             {
                this.dataManager.Unsubscribe(param1,callback);
             }
-            catch(cleanupError:Error)
+            catch(cleanupError:*)
             {
                this.report("UI DATA CLEANUP ERROR | " + param1);
             }
             throw subscriptionError;
+         }
+         if(this.disposed || this.channelSubscribed[param1] !== true || this.channelCallbacks[param1] !== callback)
+         {
+            throw new Error("UI data subscription ownership changed: " + param1);
          }
       }
 
@@ -262,7 +289,7 @@ package
             {
                this.dataManager.Unsubscribe(param1,callback);
             }
-            catch(unsubscribeError:Error)
+            catch(unsubscribeError:*)
             {
                this.report("UI DATA UNSUBSCRIBE ERROR | " + param1);
             }
@@ -294,7 +321,7 @@ package
                snapshot = param3.data;
             }
          }
-         catch(snapshotError:Error)
+         catch(snapshotError:*)
          {
             this.report("UI DATA REJECTED | " + param1);
             return;
@@ -337,7 +364,7 @@ package
          {
             param1.bridge["handleUIData"](param2,param3);
          }
-         catch(callbackError:Error)
+         catch(callbackError:*)
          {
             this.report("UI DATA CALLBACK ERROR | " + param1.consumerId + " | " + param2);
          }
@@ -353,7 +380,7 @@ package
          {
             param1.bridge["handleCanvasEvent"](param2,param3);
          }
-         catch(callbackError:Error)
+         catch(callbackError:*)
          {
             this.report("EVENT CALLBACK ERROR | " + param1.consumerId + " | " + param2);
          }
@@ -369,7 +396,7 @@ package
          {
             return this.currentConsumer(param1.consumerId,param1.loader,param1.generation) === true;
          }
-         catch(currentError:Error)
+         catch(currentError:*)
          {
          }
          return false;
@@ -402,7 +429,7 @@ package
             {
                this.diagnostic(param1);
             }
-            catch(diagnosticError:Error)
+            catch(diagnosticError:*)
             {
             }
          }

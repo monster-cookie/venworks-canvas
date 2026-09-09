@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<movieBuild name="callback-probe"
+                           role="consumer"
+                           outputFile="CanvasCallbackProbe.swf"
+                           documentClass="../actionscript/CanvasCallbackProbe.as"
+                           className="CanvasCallbackProbe"
+                           stageWidth="1920"
+                           stageHeight="1080"
+                           frameRate="30">
+  <requiredTokens>
+    <token>VWCANVAS_CONSUMER/2</token>
+    <token>a8098c1a-f86e-4b1e-9d7c-5a102bf38460</token>
+    <token>venworks.canvas.example</token>
+    <token>"version":1</token>
+    <token>minimumContractVersion</token>
+    <token>maximumContractVersion</token>
+    <token>PlayerData</token>
+    <token>venworks.canvas.example.ping</token>
+    <token>getCanvasRegistration</token>
+    <token>handleUIData</token>
+    <token>handleCanvasEvent</token>
+    <token>handleLifecycle</token>
+    <token>CALLBACK PROBE DATA ERROR</token>
+    <token>CALLBACK PROBE DATA STRING</token>
+    <token>CALLBACK PROBE EVENT ERROR</token>
+    <token>CALLBACK PROBE EVENT STRING</token>
+    <token>CALLBACK PROBE UNLOAD ERROR</token>
+    <token>CALLBACK PROBE DISPOSE STRING</token>
+    <token>Event.INIT</token>
+    <token>Event.COMPLETE</token>
+    <token>TEST ONLY</token>
+    <token>public function dispose</token>
+  </requiredTokens>
+  <forbiddenTokens>
+    <token>Game.ShowCustomWatchAlert</token>
+    <token>CustomAlertsData</token>
+    <token>VWC_EVT/1</token>
+    <token>URLLoader</token>
+    <token>ExternalInterface</token>
+    <token>navigateToURL</token>
+    <token>FileReference</token>
+    <token>CanvasHost</token>
+    <token>onConsumerInit</token>
+    <token>onConsumerComplete</token>
+  </forbiddenTokens>
+</movieBuild>
