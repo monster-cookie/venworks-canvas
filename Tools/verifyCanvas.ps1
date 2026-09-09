@@ -61,6 +61,8 @@ foreach ($repositoryToolTest in @(
 )) {
   & (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot $repositoryToolTest) -Description "Repository tooling test '$repositoryToolTest'")
 }
+# The tooling checks intentionally exercise failing native processes; clear their status after every assertion passes.
+$global:LASTEXITCODE = 0
 if ($SourceOnly) {
   Write-Host -ForegroundColor Green 'Verified Canvas repository build, setup, and packaging tooling contracts.'
   return
