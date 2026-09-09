@@ -111,6 +111,50 @@ try {
     Apply-BuildActionScriptPatch -SourcePath $duplicateAnchorPath -Patch $patch
   }
 
+  $playerLoaderPatchPath = Join-Path $repositoryRoot 'Scaleform\canvas\patches\player-hud-auxiliary-loader.xml'
+  $playerLoaderPatch = Get-BuildActionScriptPatch -PatchPath $playerLoaderPatchPath
+  $playerLoaderSourcePath = Join-Path $fixtureRoot 'HUDMenu.as'
+  Write-BuildUtf8WithoutBom -Path $playerLoaderSourcePath -Text @'
+package
+{
+   import flash.display.Loader;
+   import flash.display.MovieClip;
+   import flash.events.Event;
+   import flash.net.URLRequest;
+
+   public class HUDMenu extends MovieClip
+   {
+      private var SkillPatchLoader:Loader = null;
+
+      override protected function onSetSafeRect() : void
+      {
+      }
+
+      override public function onAddedToStage() : void
+      {
+         super.onAddedToStage();
+         BSUIDataManager.Subscribe("HudModeData",function(param1:Object):* {});
+      }
+   }
+}
+'@
+  Apply-BuildActionScriptPatch -SourcePath $playerLoaderSourcePath -Patch $playerLoaderPatch
+  $playerLoaderSource = [System.IO.File]::ReadAllText($playerLoaderSourcePath)
+  $startIndex = $playerLoaderSource.IndexOf('this.startVenworksCanvasRegistry();', [System.StringComparison]::Ordinal)
+  $hudSubscriptionIndex = $playerLoaderSource.IndexOf('BSUIDataManager.Subscribe("HudModeData"', [System.StringComparison]::Ordinal)
+  $directAttachIndex = $playerLoaderSource.IndexOf('addChild(this.VenworksCanvasRegistryBridge);', [System.StringComparison]::Ordinal)
+  $deferredIndex = $playerLoaderSource.IndexOf('addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize', [System.StringComparison]::Ordinal)
+  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this);', [System.StringComparison]::Ordinal)
+  if ($startIndex -lt 0 -or $hudSubscriptionIndex -le $startIndex) {
+    throw 'Player HUD auxiliary loader does not start from HUDMenu onAddedToStage before the vanilla HUD subscriptions.'
+  }
+  if ($directAttachIndex -lt 0 -or $deferredIndex -le $directAttachIndex -or $initializeIndex -le $deferredIndex) {
+    throw 'Player HUD auxiliary loader does not attach CanvasHost directly and defer initialization by one frame.'
+  }
+  if ($playerLoaderSource -match '(?i)VwHud') {
+    throw 'Player HUD auxiliary loader unexpectedly depends on VWHUD.'
+  }
+
   $normalizationWork = Join-Path $fixtureRoot 'normalization-work'
   $normalizedMovie = Join-Path $normalizationWork 'normalized.swf'
   New-Item -ItemType Directory -Path $normalizationWork | Out-Null
@@ -325,7 +369,7 @@ try {
   }
 
   $configuredJobs = @(ConvertTo-BuildScaleformJobs -Variants @(Get-ModuleVariants) -RepositoryRoot $repositoryRoot)
-  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'ship-loader', 'canvas-example', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
+  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'player-loader', 'ship-loader', 'canvas-example', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
   if (@($configuredJobs | Where-Object { $_.OutputSet -ceq 'movies' }).Count -ne 3) {
     throw 'Configured Scaleform ownership validation did not preserve the shared Flex movie output set.'
   }
@@ -333,6 +377,14 @@ try {
   $playerNames = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')
   Assert-BuildExactNames -Actual @($playerJob.Outputs.InputFile) -Expected $playerNames -Description 'Player HUD input configuration'
   Assert-BuildExactNames -Actual @($playerJob.Outputs.OutputFile) -Expected $playerNames -Description 'Player HUD output configuration'
+  $playerLoaderJob = @($configuredJobs | Where-Object { $_.Name -ceq 'player-loader' })[0]
+  $playerLoaderNames = @('hudmenu.swf', 'hudmenu.gfx', 'hudmenu_lrg.swf', 'hudmenu_lrg.gfx')
+  Assert-BuildExactNames -Actual @($playerLoaderJob.Outputs.InputFile) -Expected $playerLoaderNames -Description 'Player HUD loader input configuration'
+  Assert-BuildExactNames -Actual @($playerLoaderJob.Outputs.OutputFile) -Expected $playerLoaderNames -Description 'Player HUD loader output configuration'
+  $canvasVariant = @(Get-ModuleVariants -VariantKeys CANVAS)[0]
+  $playerLoaderAssets = @($canvasVariant.Archives | ForEach-Object { @($_.Assets) } | Where-Object { [string]$_.Root -ceq 'Scaleform' -and [string]$_.Source -clike 'player-hud-loader/*' })
+  Assert-BuildExactNames -Actual @($playerLoaderAssets.Source) -Expected @($playerLoaderNames | ForEach-Object { "player-hud-loader/$_" }) -Description 'Player HUD loader archive sources'
+  Assert-BuildExactNames -Actual @($playerLoaderAssets.Target) -Expected @($playerLoaderNames | ForEach-Object { "Interface/$_" }) -Description 'Player HUD loader archive targets'
   $shipJob = @($configuredJobs | Where-Object { $_.Name -ceq 'ship-loader' })[0]
   $shipNames = @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')
   Assert-BuildExactNames -Actual @($shipJob.Outputs.InputFile) -Expected $shipNames -Description 'Ship HUD input configuration'

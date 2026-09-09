@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actionScriptPatch name="vwcanvas-player-hud-auxiliary-loader" version="1" script="HUDMenu">
+  <validation>
+    <requiredSourceTokens>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this)]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge)]]></token>
+      <token><![CDATA[removeChild(this.VenworksCanvasRegistryBridge)]]></token>
+      <token><![CDATA[Event.ENTER_FRAME]]></token>
+      <token><![CDATA[Event.REMOVED_FROM_STAGE]]></token>
+      <token><![CDATA[IOErrorEvent.IO_ERROR]]></token>
+      <token><![CDATA[SecurityErrorEvent.SECURITY_ERROR]]></token>
+    </requiredSourceTokens>
+    <requiredInspectionTokens>
+      <token><![CDATA[venworkscui.swf]]></token>
+      <token><![CDATA[VenworksCanvasRegistryLoader]]></token>
+      <token><![CDATA[Event.ENTER_FRAME]]></token>
+      <token><![CDATA[initialize]]></token>
+      <token><![CDATA[dispose]]></token>
+    </requiredInspectionTokens>
+  </validation>
+  <insertions>
+    <insertion position="after"><anchor><![CDATA[   import flash.events.Event;]]></anchor><content><![CDATA[
+   import flash.events.IOErrorEvent;
+   import flash.events.SecurityErrorEvent;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[      private var SkillPatchLoader:Loader = null;]]></anchor><content><![CDATA[
+
+      private var VenworksCanvasRegistryLoader:Loader = null;
+
+      private var VenworksCanvasRegistryBridge:MovieClip = null;
+
+      private var VenworksCanvasRegistryDisposed:Boolean = false;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
+         this.startVenworksCanvasRegistry();]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      private function startVenworksCanvasRegistry() : void
+      {
+         if(this.VenworksCanvasRegistryLoader != null || this.VenworksCanvasRegistryDisposed)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryLoader = new Loader();
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(Event.INIT,this.onVenworksCanvasRegistryInit,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onVenworksCanvasRegistryComplete,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasRegistryError,false,0,true);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasRegistryError,false,0,true);
+         addEventListener(Event.REMOVED_FROM_STAGE,this.onVenworksCanvasRegistryRemoved,false,0,true);
+         try
+         {
+            this.VenworksCanvasRegistryLoader.load(new URLRequest("venworkscui.swf"));
+         }
+         catch(venworksCanvasLoadError:Error)
+         {
+            trace("VWCANVAS-PLAYER-AUX-LOAD | " + venworksCanvasLoadError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryInit(param1:Event) : void
+      {
+         if(this.VenworksCanvasRegistryDisposed || this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         try
+         {
+            this.VenworksCanvasRegistryBridge = this.VenworksCanvasRegistryLoader.content as MovieClip;
+            if(this.VenworksCanvasRegistryBridge == null || !("initialize" in this.VenworksCanvasRegistryBridge))
+            {
+               throw new Error("Canvas registry auxiliary does not expose initialize()");
+            }
+         }
+         catch(venworksCanvasInitError:Error)
+         {
+            trace("VWCANVAS-PLAYER-AUX-INIT | " + venworksCanvasInitError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryComplete(param1:Event) : void
+      {
+         var loadedContent:MovieClip = null;
+         if(this.VenworksCanvasRegistryDisposed || this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         this.removeVenworksCanvasRegistryListeners();
+         try
+         {
+            loadedContent = this.VenworksCanvasRegistryLoader.content as MovieClip;
+            if(loadedContent == null || this.VenworksCanvasRegistryBridge !== loadedContent)
+            {
+               throw new Error("initialized content was not retained");
+            }
+            if(this.VenworksCanvasRegistryBridge.parent !== this)
+            {
+               addChild(this.VenworksCanvasRegistryBridge);
+            }
+            addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize,false,0,true);
+         }
+         catch(venworksCanvasCompleteError:Error)
+         {
+            trace("VWCANVAS-PLAYER-AUX-COMPLETE | " + venworksCanvasCompleteError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryDeferredInitialize(param1:Event) : void
+      {
+         removeEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize);
+         if(this.VenworksCanvasRegistryDisposed || this.VenworksCanvasRegistryBridge == null)
+         {
+            return;
+         }
+         try
+         {
+            this.VenworksCanvasRegistryBridge["initialize"](this);
+         }
+         catch(venworksCanvasInitError:Error)
+         {
+            trace("VWCANVAS-PLAYER-AUX-INIT | " + venworksCanvasInitError.toString());
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function onVenworksCanvasRegistryError(param1:Event) : void
+      {
+         trace("VWCANVAS-PLAYER-AUX-ERROR | " + param1.toString());
+         this.disposeVenworksCanvasRegistry();
+      }
+
+      private function onVenworksCanvasRegistryRemoved(param1:Event) : void
+      {
+         if(param1.target === this)
+         {
+            this.disposeVenworksCanvasRegistry();
+         }
+      }
+
+      private function removeVenworksCanvasRegistryListeners() : void
+      {
+         if(this.VenworksCanvasRegistryLoader == null)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(Event.INIT,this.onVenworksCanvasRegistryInit);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onVenworksCanvasRegistryComplete);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasRegistryError);
+         this.VenworksCanvasRegistryLoader.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasRegistryError);
+      }
+
+      private function disposeVenworksCanvasRegistry() : void
+      {
+         if(this.VenworksCanvasRegistryDisposed)
+         {
+            return;
+         }
+         this.VenworksCanvasRegistryDisposed = true;
+         removeEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize);
+         removeEventListener(Event.REMOVED_FROM_STAGE,this.onVenworksCanvasRegistryRemoved);
+         this.removeVenworksCanvasRegistryListeners();
+         if(this.VenworksCanvasRegistryBridge != null && "dispose" in this.VenworksCanvasRegistryBridge)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryBridge["dispose"]();
+            }
+            catch(venworksCanvasDisposeError:Error)
+            {
+            }
+         }
+         if(this.VenworksCanvasRegistryBridge != null && this.VenworksCanvasRegistryBridge.parent === this)
+         {
+            removeChild(this.VenworksCanvasRegistryBridge);
+         }
+         this.VenworksCanvasRegistryBridge = null;
+         if(this.VenworksCanvasRegistryLoader != null)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryLoader.unload();
+            }
+            catch(venworksCanvasUnloadError:Error)
+            {
+            }
+         }
+         this.VenworksCanvasRegistryLoader = null;
+      }
+
+]]></content></insertion>
+  </insertions>
+</actionScriptPatch>

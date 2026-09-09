@@ -113,7 +113,7 @@ $configuredGallery = @(Get-ModuleVariants -VariantKeys 'COMPONENTGALLERY')[0]
 if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string]$configuredCanvas.Archives[0].FileName -cne 'Venworks-Canvas - Main.ba2') {
   throw 'Canvas ESM/archive output identities changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 7 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
