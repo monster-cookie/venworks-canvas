@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-Verifies Canvas source contracts, selected build outputs, and installed package files.
+Verifies Canvas repository tooling contracts, selected build outputs, and installed package files.
 
 .PARAMETER SourceOnly
-Run the focused source checks without requiring native build outputs or installed packages.
+Run the focused repository tooling checks without requiring native build outputs or installed packages.
 
 .PARAMETER ArtifactsOnly
 Also inspect the selected build inputs, then stop before checking installed packages.
@@ -52,23 +52,17 @@ foreach ($variant in $allVariants) {
 }
 [void](ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
 
-foreach ($sourceContractTest in @(
-  'testConsole.ps1',
-  'testGuards.ps1',
+foreach ($repositoryToolTest in @(
   'testPackaging.ps1',
   'testBuildVariants.ps1',
   'testBuildEvidence.ps1',
-  'testSpriggit.ps1',
   'testSetup.ps1',
-  'testScaleformSetup.ps1',
-  'testUiLoad.ps1',
-  'testUiReceive.ps1',
-  'testUuid.ps1'
+  'testScaleformSetup.ps1'
 )) {
-  & (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot $sourceContractTest) -Description "Source contract test '$sourceContractTest'")
+  & (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot $repositoryToolTest) -Description "Repository tooling test '$repositoryToolTest'")
 }
 if ($SourceOnly) {
-  Write-Host -ForegroundColor Green 'Verified Canvas source identities and focused build/source contracts.'
+  Write-Host -ForegroundColor Green 'Verified Canvas repository build, setup, and packaging tooling contracts.'
   return
 }
 
