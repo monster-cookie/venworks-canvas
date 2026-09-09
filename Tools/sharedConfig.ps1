@@ -21,9 +21,7 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
   WorkRoot = Join-Path $repositoryRoot '.work/canvas'
   PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
-  ScriptsDirectory = Join-Path $repositoryRoot '.work/canvas/scripts'
   ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform/canvas'
-  ScaleformDirectory = Join-Path $repositoryRoot '.work/canvas/scaleform'
 }
 
 $Global:ModuleVariants = @(
@@ -58,6 +56,18 @@ $Global:ModuleVariants = @(
         )
       }
       @{
+        Name = 'player-loader'
+        Kind = 'Patch'
+        OutputSet = 'player-hud-loader'
+        PatchPath = 'Scaleform/canvas/patches/player-hud-auxiliary-loader.xml'
+        Outputs = @(
+          @{ InputFile = 'hudmenu.swf'; OutputFile = 'hudmenu.swf' }
+          @{ InputFile = 'hudmenu.gfx'; OutputFile = 'hudmenu.gfx' }
+          @{ InputFile = 'hudmenu_lrg.swf'; OutputFile = 'hudmenu_lrg.swf' }
+          @{ InputFile = 'hudmenu_lrg.gfx'; OutputFile = 'hudmenu_lrg.gfx' }
+        )
+      }
+      @{
         Name = 'ship-loader'
         Kind = 'Patch'
         OutputSet = 'ship-hud'
@@ -81,6 +91,10 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.gfx'; Target = 'Interface/playerhudcomponents_lrg.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.swf'; Target = 'Interface/hudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.gfx'; Target = 'Interface/hudmenu.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
         )

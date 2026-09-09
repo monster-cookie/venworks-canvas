@@ -8,6 +8,7 @@ EndStruct
 ; Public selectors for supported Canvas packet types. Wire strings remain Canvas-owned.
 Struct PacketType
   Int UiLoad = 1
+  Int CanvasEvent = 2
 EndStruct
 
 ; Resolves a validated event-header selector to its canonical wire text; unsupported values return empty.
@@ -24,6 +25,8 @@ String Function ResolvePacketType(Int packetType) Global
   PacketType packetTypes = new PacketType
   If (packetType == packetTypes.UiLoad)
     Return "canvas.ui.load"
+  ElseIf (packetType == packetTypes.CanvasEvent)
+    Return "canvas.event"
   EndIf
   Return ""
 EndFunction

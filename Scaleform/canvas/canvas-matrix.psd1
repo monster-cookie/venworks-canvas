@@ -6,6 +6,20 @@
   TestMode = 'ExplicitConsumerUiLoad'
   UiLoadResult = 'UI_LOAD_QUEUED'
   UiLoadTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 1; Wire = 'canvas.ui.load' }; Protocol = 'canvas.ui.load'; Version = 1; MaxCharacters = 512; MaxPending = 32; MinimumIntervalSeconds = 1; MaxBusyAttempts = 20; Target = 'PlayerHud' }
+  ConsumerContract = @{
+    LegacyProtocol = 'VWCANVAS_CONSUMER/1'
+    Protocol = 'VWCANVAS_CONSUMER/2'
+    HostContractVersion = 2
+    MaxConsumers = 32
+    MaxUiChannelsPerConsumer = 18
+    MaxEventTopicsPerConsumer = 16
+    UiChannels = @(
+      'LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'PlayerInventoryData', 'WeaponData',
+      'HudJetpackData', 'HUDStarbornPowersData', 'FavoritesData', 'ControlMapData', 'EnvironmentEffectsData', 'PersonalEffectsData',
+      'StarmapSystemBodyInfoProvider', 'HudCompassData', 'HudCrosshairData', 'HUDStealthData', 'HUDVehicleData', 'HUDOpacityData'
+    )
+  }
+  CanvasEventTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 2; Wire = 'canvas.event' }; Version = 1; MaxTopicCharacters = 96; MaxBodyCharacters = 400; MaxCharacters = 512; MinimumIntervalSeconds = 1; Target = 'PlayerHud' }
   ParserCases = @(
     @{ Id = 'delimiter-display-name'; Expected = 'accepted' }
     @{ Id = 'maximum-valid-descriptor'; Expected = 'accepted' }
@@ -25,7 +39,9 @@
   )
   RegistrationRuntimeCases = @(
     @{ Id = 'pc-console-echo'; Packages = @('Canvas'); Expected = 'Core Utilities:Console.ConsoleEcho visibly echoes the supplied label with the RM> prefix under the PC debug-logging configuration; ConsoleOutputTests.Run exercises ordered block, blank, None/empty, and rejected LF entries. CR/CRLF VM coverage remains pending. These diagnostics are not needed for UI loading.' }
-    @{ Id = 'pc-console-result-output'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Each Canvas ConsoleResolve/action CGF prints exactly one final VWCANVAS-labeled status matching its Papyrus return/log path, including resolution failure. Busy remains inconclusive. The console check itself never enables or uses transport.' }
+    @{ Id = 'pc-console-result-output'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Each Canvas ConsoleResolve/action CGF prints exactly one final VWCANVAS-labeled status matching its Papyrus return/log path, including resolution failure. Busy remains inconclusive. Resolution and check-only commands do not use transport; Example ConsolePing explicitly makes one named-event publication attempt.' }
+    @{ Id = 'pc-example-ping-pong'; Packages = @('Canvas', 'Example'); Expected = 'After Example is visibly ready and UI loads settle, ExampleRegistrar.ConsolePing publishes venworks.canvas.example.ping through Registry. Record the actual receipt and require visible lowercase pong after closing the console; EVENT_SUBMITTED alone is insufficient. Subsequent PlayerData updates do not erase pong. No constructor, readiness or provider update displays pong before the first received ping.' }
+    @{ Id = 'pc-example-ping-pong-reload'; Packages = @('Canvas', 'Example'); Expected = 'After a received ping displays pong, unload/reopen the HUD. The newly loaded Example has no pong until another ping is received. A new explicit ConsolePing invocation restores pong after delivery; there is no automatic event replay or retry.' }
     @{ Id = 'pc-console-resolution'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'ComponentGalleryRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
     @{ Id = 'pc-console-host-recovery'; Packages = @('Canvas'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
     @{ Id = 'pc-registration-host-only'; Packages = @('Canvas'); Expected = 'Host logs zero consumers and submits no load packets; all vanilla Watch subscriptions are restored before its presentation is detached and gameplay remains responsive.' }

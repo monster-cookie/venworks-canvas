@@ -28,7 +28,7 @@ $registry = Get-Content -LiteralPath (Join-Path $sourceRoot 'Venworks/Canvas/Reg
 $registrar = Get-Content -LiteralPath (Join-Path $sourceRoot 'Venworks/CanvasExamples/ExampleRegistrar.psc') -Raw
 if ($registry.Contains('GenerateV4(') -or $registrar.Contains('GenerateV4(')) { throw 'Registration must not generate IDs.' }
 $canvasHostSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../Scaleform/canvas/actionscript/CanvasHost.as') -Raw
-foreach ($token in @('this.normalizeUuid(String(consumerIdFrame.value))','this.normalizeUuid(String(record.consumerId))','value.length != 36','value.length == 32','value = value.toLowerCase();')) {
+foreach ($token in @('this.normalizeUuid(String(consumerIdFrame.value))','this.normalizeUuid(String(param1.consumerId))','this.normalizeUuid(param1.consumerId)','value.length != 36','value.length == 32','value = value.toLowerCase();')) {
   if (!$canvasHostSource.Contains($token)) { throw "ActionScript intake normalization missing: $token" }
 }
 $expectedIds = @{

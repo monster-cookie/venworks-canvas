@@ -253,7 +253,7 @@ try {
   New-Item -ItemType Junction -Path $linkedTarget.CanvasTarget -Value $physicalDestination | Out-Null
   $result = Invoke-SetupCase -Case $linkedTarget -ArgumentList @('-VariantKeys', 'CANVAS')
   Assert-TestCondition ($result.ExitCode -ne 0) 'Linked physical module target was accepted.'
-  Assert-TestCondition (@($result.Output | Where-Object { $_ -match 'ordinary directory, not a link' }).Count -gt 0) 'Linked physical target rejection was not actionable.'
+  Assert-TestCondition (($result.Output -join "`n") -match '(?s)ordinary directory, not.*a link') 'Linked physical target rejection was not actionable.'
   Assert-TestCondition (!(Test-Path -LiteralPath (Join-Path $linkedTarget.Repository 'Staging-Canvas'))) 'Linked physical target rejection created a staging path.'
 
   $fileTarget = New-SetupCase -Name 'file-target'

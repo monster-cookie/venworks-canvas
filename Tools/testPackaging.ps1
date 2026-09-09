@@ -113,7 +113,7 @@ $configuredGallery = @(Get-ModuleVariants -VariantKeys 'COMPONENTGALLERY')[0]
 if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string]$configuredCanvas.Archives[0].FileName -cne 'Venworks-Canvas - Main.ba2') {
   throw 'Canvas ESM/archive output identities changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 7 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
@@ -215,6 +215,41 @@ try {
   Assert-TestNames -Actual @($texturePlan.Payloads.Target) -Expected @('Textures/surface.dds') -Description 'Filtered texture payload inventory'
   if (@($plans.Payloads | ForEach-Object { $_ } | Where-Object { $_.Target -match 'CanvasExamples|CanvasExtra|Deleted|Foreign' }).Count -ne 0) {
     throw 'Sibling, stale, or foreign PEX entered a package plan.'
+  }
+
+  foreach ($ownedSource in @($sourceRows | Where-Object { $_.Name -like 'Venworks:Canvas:*' -or $_.Name -ceq 'Venworks:Canvas:GlobalConfig' })) {
+    Write-TestPex -Path (Join-Path (Join-Path $stagingTarget 'Scripts') ([IO.Path]::ChangeExtension($ownedSource.Relative, '.pex')))
+  }
+  Write-TestScaleform -Path (Join-Path $stagingTarget 'Interface/Consumers/normal.swf')
+  Write-TestScaleform -Path (Join-Path $stagingTarget 'Interface/Consumers/large.swf')
+  $stagedArchive = @{
+    FileName = 'Staged.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $true
+    Assets = @(
+      @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/normal.swf' }
+      @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/Consumers/large.swf' }
+    )
+  }
+  $stagedVariant = $variant.PSObject.Copy()
+  $stagedVariant.Archives = @($stagedArchive)
+  $stagedPlans = @(Get-BuildPackageArchivePlans -Variants @($stagedVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot)
+  if ($stagedPlans.Count -ne 1) { throw 'Default staged package inputs did not produce one archive plan.' }
+  Assert-TestNames -Actual @($stagedPlans[0].Payloads.Target) -Expected @(
+    'Interface/Consumers/normal.swf'
+    'Interface/Consumers/large.swf'
+    'Scripts/Venworks/Canvas/GlobalConfig.pex'
+    'Scripts/Venworks/Canvas/Base/BaseQuest.pex'
+  ) -Description 'Default staged package payload inventory'
+  $resolvedStagingPrefix = [IO.Path]::GetFullPath($stagingTarget).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+  if (@($stagedPlans[0].Payloads | Where-Object { ![IO.Path]::GetFullPath([string]$_.Source).StartsWith($resolvedStagingPrefix, [StringComparison]::OrdinalIgnoreCase) }).Count -ne 0) {
+    throw 'Default package planning used a Papyrus or Scaleform source outside the selected staging tree.'
+  }
+  foreach ($stagedFixturePath in @(
+      (Join-Path $stagingTarget 'Interface/Consumers/normal.swf')
+      (Join-Path $stagingTarget 'Interface/Consumers/large.swf')
+      (Join-Path $stagingTarget 'Scripts/Venworks/Canvas/GlobalConfig.pex')
+      (Join-Path $stagingTarget 'Scripts/Venworks/Canvas/Base/BaseQuest.pex')
+    )) {
+    Remove-Item -LiteralPath $stagedFixturePath -Force
   }
 
   if ($IsWindows) {

@@ -24,6 +24,64 @@ String PendingNormalMovieUrl
 String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
 
+; Reports this packaged script's runtime quest binding only; does not register or request UI work.
+String Function ConsoleResolve() Global
+  Venworks:CanvasExamples:ExampleRegistrar target = ResolveConsoleExample()
+  If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleResolve | " + "CONSOLE_RESOLVE_FAILED")
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleResolve | " + "CONSOLE_RESOLVED")
+  Return "CONSOLE_RESOLVED"
+EndFunction
+
+; Makes one Example-owned publication attempt. The actual transport status is logged, echoed and returned unchanged.
+String Function ConsolePing() Global
+  Venworks:CanvasExamples:ExampleRegistrar target = ResolveConsoleExample()
+  If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsolePing | " + "CONSOLE_RESOLVE_FAILED")
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  String result = target.PublishConsolePing()
+  LogConsoleExample("ConsolePing", "CONSOLE_RESULT | Status=" + result)
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsolePing | " + result)
+  Return result
+EndFunction
+
+; The command has no caller-selected topic or body and never registers, requests UI work or schedules a retry.
+String Function PublishConsolePing()
+  If (Registry == None)
+    LogUserWarning(ModuleName, "PublishConsolePing", "DEFERRED_REGISTRY_UNAVAILABLE")
+    Return "DEFERRED_REGISTRY_UNAVAILABLE"
+  EndIf
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.ping", "ping")
+  Registry.LogOperation(result)
+  Return result.Status
+EndFunction
+
+; Resolve the permanent file-local identity on every explicit call; no Editor ID, cached target or external prefix.
+Venworks:CanvasExamples:ExampleRegistrar Function ResolveConsoleExample() Global
+  LogConsoleExample("ResolveConsoleExample", "CONSOLE_BEGIN | Plugin=Venworks-Canvas-Example.esm | LocalId=0x000800")
+  Form targetForm = Game.GetFormFromFile(0x000800, "Venworks-Canvas-Example.esm")
+  If (targetForm == None)
+    LogConsoleExample("ResolveConsoleExample", "CONSOLE_TARGET_NOT_FOUND")
+    Return None
+  EndIf
+  Venworks:CanvasExamples:ExampleRegistrar target = targetForm as Venworks:CanvasExamples:ExampleRegistrar
+  If (target == None)
+    LogConsoleExample("ResolveConsoleExample", "CONSOLE_SCRIPT_NOT_BOUND | Form=" + targetForm)
+    Return None
+  EndIf
+  LogConsoleExample("ResolveConsoleExample", "CONSOLE_RESOLVED | Form=" + targetForm + " | RuntimeFormId=" + targetForm.GetFormID())
+  Return target
+EndFunction
+
+; Global diagnostics cannot use instance logging or saved ModuleName; emit the same bounded build marker to both logs.
+Function LogConsoleExample(String functionName, String logMessage) Global
+  Venworks:Core:Enumerations:LogSeverity severityTable = new Venworks:Core:Enumerations:LogSeverity
+  Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasExamples:ExampleRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
+EndFunction
+
 ; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.
 Event OnInit()
   RegisterForMenuOpenCloseEvent("HUDMenu")

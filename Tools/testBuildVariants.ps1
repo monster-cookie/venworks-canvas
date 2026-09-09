@@ -71,13 +71,14 @@ function Invoke-TestCompile {
   param(
     [Parameter(Mandatory = $true)][string]$VariantKey,
     [Parameter(Mandatory = $true)][string]$EnvironmentPath,
-    [Parameter(Mandatory = $true)][string]$OutputDirectory
+    [string]$OutputDirectory
   )
 
-  $output = @(& $powerShellPath -NoProfile -File $compileScriptPath `
-    -VariantKeys $VariantKey `
-    -EnvironmentPath $EnvironmentPath `
-    -OutputDirectory $OutputDirectory 2>&1)
+  $arguments = @('-NoProfile', '-File', $compileScriptPath, '-VariantKeys', $VariantKey, '-EnvironmentPath', $EnvironmentPath)
+  if (![string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $arguments += @('-OutputDirectory', $OutputDirectory)
+  }
+  $output = @(& $powerShellPath @arguments 2>&1)
   return [pscustomobject]@{
     ExitCode = $LASTEXITCODE
     Output = @($output | ForEach-Object { [string]$_ })
@@ -270,6 +271,79 @@ Get-ModuleVariants -VariantKeys 'CHILD' | Out-Null
     -Path $missingSelectedPath `
     -Expected 'selected bytes before missing output' `
     -Description 'Selected output after missing compiler output'
+
+  if ($IsWindows) {
+    $stagingProbePath = Join-Path $fixtureRoot 'invoke-staging-compile.ps1'
+    $sharedBuildPath = Join-Path $PSScriptRoot 'sharedBuild.ps1'
+    $stagingProbe = @'
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory = $true)][string]$CompileScriptPath,
+  [Parameter(Mandatory = $true)][string]$SharedBuildPath,
+  [Parameter(Mandatory = $true)][string]$EnvironmentPath,
+  [Parameter(Mandatory = $true)][string]$WorkRoot,
+  [Parameter(Mandatory = $true)][string]$PapyrusSourceRoot,
+  [Parameter(Mandatory = $true)][string]$SelectedStagingPath,
+  [Parameter(Mandatory = $true)][string]$UnselectedStagingPath
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+. $SharedBuildPath
+Import-BuildEnvironment -Path $EnvironmentPath
+$Global:BuildSettings = @{ WorkRoot = $WorkRoot; PapyrusSourceRoot = $PapyrusSourceRoot }
+$Global:ModuleVariants = @(
+  [pscustomobject]@{ VariantKey = 'EXAMPLE'; PapyrusNamespace = 'Venworks:CanvasExamples'; StagingFolderPath = $SelectedStagingPath; EnvironmentVariableName = 'TEST_SELECTED_STAGE_PATH' }
+  [pscustomobject]@{ VariantKey = 'CANVAS'; PapyrusNamespace = 'Venworks:Canvas'; StagingFolderPath = $UnselectedStagingPath; EnvironmentVariableName = 'TEST_UNSELECTED_STAGE_PATH' }
+)
+$Global:SharedConfigurationLoaded = $true
+& $CompileScriptPath -VariantKeys 'EXAMPLE' -EnvironmentPath $EnvironmentPath
+'@
+    Write-TestText -Path $stagingProbePath -Text ($stagingProbe + [Environment]::NewLine)
+    $selectedTarget = Join-Path $fixtureRoot 'selected-installed'
+    $unselectedTarget = Join-Path $fixtureRoot 'unselected-installed'
+    $selectedStaging = Join-Path $fixtureRoot 'selected-staging'
+    $unselectedStaging = Join-Path $fixtureRoot 'unselected-staging'
+    $stagingWorkRoot = Join-Path $fixtureRoot 'staging-work'
+    New-Item -ItemType Directory -Path $selectedTarget, $unselectedTarget, $stagingWorkRoot | Out-Null
+    New-Item -ItemType Junction -Path $selectedStaging -Target $selectedTarget | Out-Null
+    New-Item -ItemType Junction -Path $unselectedStaging -Target $unselectedTarget | Out-Null
+
+    $stagedSelectedPath = Join-Path (Join-Path $selectedTarget 'Scripts') $selectedRelativeOutput
+    $stagedUnselectedPath = Join-Path (Join-Path $unselectedTarget 'Scripts') $unselectedRelativeOutput
+    $unrelatedStagedPath = Join-Path $selectedTarget 'Interface/unrelated.swf'
+    Write-TestText -Path $stagedSelectedPath -Text 'stale selected staged bytes'
+    Write-TestText -Path $stagedUnselectedPath -Text 'preserved unselected staged bytes'
+    Write-TestText -Path $unrelatedStagedPath -Text 'preserved unrelated staged bytes'
+    $stagingSuccessEnvironment = Join-Path $fixtureRoot 'staging-success.env'
+    $stagingSuccessLog = Join-Path $fixtureRoot 'staging-success.log'
+    New-TestEnvironment -Path $stagingSuccessEnvironment -Mode 'Success' -LogPath $stagingSuccessLog
+    [IO.File]::AppendAllText($stagingSuccessEnvironment, "TEST_SELECTED_STAGE_PATH=$selectedTarget$([Environment]::NewLine)TEST_UNSELECTED_STAGE_PATH=$unselectedTarget$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+
+    $stagingSuccessOutput = @(& $powerShellPath -NoProfile -File $stagingProbePath -CompileScriptPath $compileScriptPath -SharedBuildPath $sharedBuildPath -EnvironmentPath $stagingSuccessEnvironment -WorkRoot $stagingWorkRoot -PapyrusSourceRoot $canvasSourceRoot -SelectedStagingPath $selectedStaging -UnselectedStagingPath $unselectedStaging 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+      throw "Default staged EXAMPLE compile failed: $([string]::Join(' | ', @($stagingSuccessOutput | ForEach-Object { [string]$_ })))"
+    }
+    Assert-TestText -Path $stagedSelectedPath -Expected 'compiled:Venworks/CanvasExamples/ExampleRegistrar.psc' -Description 'Default staged EXAMPLE output'
+    Assert-TestText -Path $stagedUnselectedPath -Expected 'preserved unselected staged bytes' -Description 'Unselected staged CANVAS output'
+    Assert-TestText -Path $unrelatedStagedPath -Expected 'preserved unrelated staged bytes' -Description 'Unrelated staged asset'
+
+    Write-TestText -Path $stagedSelectedPath -Text 'selected staged bytes before compiler failure'
+    $stagingFailureEnvironment = Join-Path $fixtureRoot 'staging-failure.env'
+    $stagingFailureLog = Join-Path $fixtureRoot 'staging-failure.log'
+    New-TestEnvironment -Path $stagingFailureEnvironment -Mode 'Fail' -LogPath $stagingFailureLog
+    [IO.File]::AppendAllText($stagingFailureEnvironment, "TEST_SELECTED_STAGE_PATH=$selectedTarget$([Environment]::NewLine)TEST_UNSELECTED_STAGE_PATH=$unselectedTarget$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+    $stagingFailureOutput = @(& $powerShellPath -NoProfile -File $stagingProbePath -CompileScriptPath $compileScriptPath -SharedBuildPath $sharedBuildPath -EnvironmentPath $stagingFailureEnvironment -WorkRoot $stagingWorkRoot -PapyrusSourceRoot $canvasSourceRoot -SelectedStagingPath $selectedStaging -UnselectedStagingPath $unselectedStaging 2>&1)
+    if ($LASTEXITCODE -eq 0 -or [string]::Join(' | ', @($stagingFailureOutput | ForEach-Object { [string]$_ })) -notmatch 'exit code 23') {
+      throw "Default staged compiler failure was not reported: $([string]::Join(' | ', @($stagingFailureOutput | ForEach-Object { [string]$_ })))"
+    }
+    Assert-TestText -Path $stagedSelectedPath -Expected 'selected staged bytes before compiler failure' -Description 'Default staged output after compiler failure'
+    Assert-TestText -Path $stagedUnselectedPath -Expected 'preserved unselected staged bytes' -Description 'Unselected staged output after selected compiler failure'
+    Assert-TestText -Path $unrelatedStagedPath -Expected 'preserved unrelated staged bytes' -Description 'Unrelated staged asset after compiler failure'
+  }
+  else {
+    Write-Output 'SKIP: default Papyrus staging publication requires Windows Junction support.'
+  }
 }
 finally {
   if (Test-Path -LiteralPath $fixtureRoot -PathType Container) {
@@ -284,4 +358,4 @@ finally {
   }
 }
 
-Write-Output 'Papyrus selected-build tests passed: namespace-derived selection, overlapping-namespace rejection before filtering, installed-source imports, fresh candidate promotion, compiler and missing-output failures, and selected/unselected byte preservation.'
+Write-Output 'Papyrus selected-build tests passed: namespace-derived selection, overlapping-namespace rejection before filtering, installed-source imports, explicit alternative output, default guarded staging publication, compiler and missing-output failures, and selected/unselected byte preservation.'

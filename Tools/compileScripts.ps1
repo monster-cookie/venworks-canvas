@@ -3,7 +3,7 @@
 Compiles the Papyrus scripts owned by one or more configured module variants.
 .DESCRIPTION
 Variant membership comes from each variant's exact Papyrus namespace. Sources compile into
-a unique work candidate before selected outputs are promoted, preserving unselected outputs.
+a unique work candidate before selected outputs are published, preserving unselected outputs.
 
 .PARAMETER VariantKeys
 One or more configured module variant keys. Omit this parameter to compile every configured variant. VariantKey is accepted as an alias.
@@ -12,7 +12,7 @@ One or more configured module variant keys. Omit this parameter to compile every
 Environment file used only by the first successful shared configuration initialization in the current PowerShell session. Later calls in that session reuse the loaded configuration; start a fresh process to select a different file.
 
 .PARAMETER OutputDirectory
-Directory that receives compiled PEX files. The configured BuildSettings.ScriptsDirectory is used by default. The resolved directory must be contained by BuildSettings.WorkRoot.
+Alternative directory that receives compiled PEX files instead of the selected variants' staging Scripts directories. The resolved alternative directory must be contained by BuildSettings.WorkRoot.
 #>
 [CmdletBinding()]
 param(
@@ -36,7 +36,7 @@ if ($null -eq $sharedConfigurationVariable -or ![bool]$sharedConfigurationVariab
   . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
 }
 
-foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot', 'ScriptsDirectory')) {
+foreach ($settingName in @('WorkRoot', 'PapyrusSourceRoot')) {
   if ($null -eq $Global:BuildSettings -or [string]::IsNullOrWhiteSpace([string]$Global:BuildSettings[$settingName])) {
     throw "BuildSettings.$settingName must be configured."
   }
@@ -53,11 +53,18 @@ $workRoot = Get-BuildNormalizedFullPath -Path ([string]$Global:BuildSettings.Wor
 $sourceRoot = Resolve-BuildRequiredDirectory `
   -Path ([string]$Global:BuildSettings.PapyrusSourceRoot) `
   -Description 'Project Papyrus source root'
-if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-  $OutputDirectory = [string]$Global:BuildSettings.ScriptsDirectory
-}
-$resolvedOutputDirectory = Get-BuildNormalizedFullPath -Path $OutputDirectory
+$useStagingOutput = [string]::IsNullOrWhiteSpace($OutputDirectory)
+$resolvedOutputDirectory = if ($useStagingOutput) { $null } else { Get-BuildNormalizedFullPath -Path $OutputDirectory }
+$allVariants = @(Get-ModuleVariants)
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+$stagingOperations = if ($useStagingOutput) {
+  @(Get-BuildStagingOperations -SelectedVariants $variants -AllVariants $allVariants)
+}
+else { @() }
+$stagingOperationsByKey = @{}
+foreach ($operation in $stagingOperations) {
+  $stagingOperationsByKey[[string]$operation.Key] = $operation
+}
 
 $compilerPath = Resolve-BuildExecutable `
   -Path $env:TOOL_PATH_PAPYRUS_COMPILER `
@@ -72,15 +79,26 @@ $resolvedInstalledSourcePath = Resolve-BuildRequiredDirectory `
   -Path $env:PAPYRUS_SCRIPTS_SOURCE_PATH `
   -Description 'Installed Papyrus source directory'
 
-Assert-BuildRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
-[IO.Directory]::CreateDirectory($resolvedOutputDirectory) | Out-Null
+if (!$useStagingOutput) {
+  Assert-BuildRemovalPath -Path $resolvedOutputDirectory -AllowedRoot $workRoot
+}
 
 $relativeOutputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $sources = [Collections.Generic.List[object]]::new()
 foreach ($variant in $variants) {
   foreach ($source in @(Get-BuildPapyrusSources -Variant $variant -SourceRoot $sourceRoot)) {
     if ($relativeOutputs.Add([string]$source.RelativeOutput)) {
-      $sources.Add($source)
+      $destinationRoot = if ($useStagingOutput) {
+        Join-Path ([string]$stagingOperationsByKey[[string]$variant.VariantKey].StagingPath) 'Scripts'
+      }
+      else { $resolvedOutputDirectory }
+      $sources.Add([pscustomobject]@{
+        Source = [string]$source.Source
+        RelativeSource = [string]$source.RelativeSource
+        RelativeOutput = [string]$source.RelativeOutput
+        VariantKey = [string]$variant.VariantKey
+        DestinationPath = Join-Path $destinationRoot ([string]$source.RelativeOutput)
+      })
     }
     elseif (@($sources | Where-Object {
           [string]::Equals([string]$_.RelativeSource, [string]$source.RelativeSource, [StringComparison]::OrdinalIgnoreCase)
@@ -126,23 +144,27 @@ try {
     }
     $compiledOutputs.Add([pscustomobject]@{
       CandidatePath = $candidatePath
-      DestinationPath = Join-Path $resolvedOutputDirectory ([string]$source.RelativeOutput)
+      DestinationPath = [string]$source.DestinationPath
+      VariantKey = [string]$source.VariantKey
     })
   }
 
   foreach ($compiledOutput in $compiledOutputs) {
-    $destinationPath = [string]$compiledOutput.DestinationPath
-    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
-    $temporaryPath = "$destinationPath.$PID-$([guid]::NewGuid().ToString('N')).new"
-    try {
-      Copy-Item -LiteralPath ([string]$compiledOutput.CandidatePath) -Destination $temporaryPath
-      [IO.File]::Move($temporaryPath, $destinationPath, $true)
+    $allowedRoot = if ($useStagingOutput) {
+      [string]$stagingOperationsByKey[[string]$compiledOutput.VariantKey].StagingPath
     }
-    finally {
-      if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-        Remove-Item -LiteralPath $temporaryPath -Force
-      }
+    else { $workRoot }
+    [void](Assert-BuildPublicationDestination -Path ([string]$compiledOutput.DestinationPath) -AllowedRoot $allowedRoot)
+  }
+  foreach ($operation in $stagingOperations) {
+    Assert-BuildJunctionTarget -StagingPath ([string]$operation.StagingPath) -ExpectedTargetPath ([string]$operation.InstallPath)
+  }
+  foreach ($compiledOutput in $compiledOutputs) {
+    $allowedRoot = if ($useStagingOutput) {
+      [string]$stagingOperationsByKey[[string]$compiledOutput.VariantKey].StagingPath
     }
+    else { $workRoot }
+    [void](Publish-BuildFileAtomically -CandidatePath ([string]$compiledOutput.CandidatePath) -DestinationPath ([string]$compiledOutput.DestinationPath) -AllowedRoot $allowedRoot -Description "Papyrus output '$($compiledOutput.VariantKey)'")
   }
 }
 finally {
@@ -152,4 +174,9 @@ finally {
   }
 }
 
-Write-Host -ForegroundColor Green "Compiled $($compiledOutputs.Count) selected Papyrus scripts to $resolvedOutputDirectory"
+if ($useStagingOutput) {
+  Write-Host -ForegroundColor Green "Compiled and staged $($compiledOutputs.Count) selected Papyrus scripts for $([string]::Join(', ', @($variants.VariantKey)))"
+}
+else {
+  Write-Host -ForegroundColor Green "Compiled $($compiledOutputs.Count) selected Papyrus scripts to alternative output $resolvedOutputDirectory"
+}
