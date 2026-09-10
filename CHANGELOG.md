@@ -2,6 +2,7 @@
 
 ## Version 1.0.0 (UNRELEASED)
 
+- Adds a [VWHUD provider inventory](docs/vwhud-provider-inventory.md) for HUD authors, including ownership boundaries and remaining runtime checks. This documentation update requires no installation or save migration.
 - Requires Venworks Core Library 2.1.8 or higher.
 - Adds support for multiple compatible HUD add-ons to display their panels together in the Player HUD.
 - Includes optional Example and Component Gallery panels for testing and demonstration.

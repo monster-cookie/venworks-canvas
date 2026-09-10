@@ -91,6 +91,8 @@ Both bundled demonstration panels request `PlayerData` and `venworks.canvas.exam
 
 For a version 2 add-on, install a Canvas host that supports version 2 alongside the updated consumer package. The existing Papyrus registration record and UI-load request stay unchanged; the contract version is separate from the consumer's descriptor revision. This change adds no automatic package or save migration, and current-build save compatibility still needs gameplay validation. See the [consumer contract](docs/consumer-descriptor-contract.md) for declarations and publishing examples, and [consumer compatibility](docs/consumer-compatibility.md) for update and failure behavior.
 
+The [VWHUD provider inventory](docs/vwhud-provider-inventory.md) records the reviewed provider registrations, consumer-derived fields, ownership boundary, and evidence gaps for VWCANVAS-13. Use its [read-only source and count checks](docs/vwcanvas-13-testing.md) when refreshing the inventory; they do not establish runtime or platform acceptance.
+
 ## Player HUD transport
 
 The bridge carries explicit UI-load commands and named Canvas events. The UI-load packet remains `VWC_EVT/1|canvas.ui.load|` followed by five decimal-length-prefixed fields: protocol version, normalized consumer UUID, descriptor version, normal movie path, and large movie path. Canvas-owned struct-as-enum selectors choose the supported header and packet type so consumer code cannot supply arbitrary wire identifiers.
