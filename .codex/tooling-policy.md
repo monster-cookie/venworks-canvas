@@ -32,6 +32,16 @@ Per the user's direction for this repository, apply these tool and identity sele
 | Operations | task-scoped; read current governing requirements and perform only explicitly authorized operations on related work items in the Target project. Supply the exact project UUID whenever the tool supports project scoping, and verify the returned project for unscoped retrieval. Comments, assignments, and state changes require explicit task authorization. Final acceptance, Done transitions, and completion unassignment retain the repository's separate action-time confirmation requirement. Prohibited: unrelated workspace maintenance and use of the retired Codecks system. |
 | Fallbacks | none |
 
+## Documentation audience and internal research
+
+Choose documentation placement by its intended audience, not by how technical the subject is. Modders and HUD/add-on authors using Canvas are end users. Maintain documentation that helps them install, configure, integrate with, use, or troubleshoot supported Canvas behavior in the repository's `docs` folder. README and changelog content must describe useful end-user guidance or actual user-visible changes, not advertise internal research as a product feature or modder guide.
+
+Keep internal technical research for the project owner and development agents in Plane project pages. This includes source inventories and audits, architecture investigations, design rationale, exploratory ideas, implementation plans, and internal evidence-gap analysis. Put temporary testing instructions and execution handoffs on the relevant Plane work item rather than creating a permanent page or tracked Markdown document. These placement rules supersede broader repository guidance that assigns technical or historical findings to repository documentation; they do not authorize migrating unrelated existing documents.
+
+Do not publish internal research in tracked repository files, commits, pull-request titles or descriptions, GitHub issues or comments, changelogs, or other public artifacts without the user's explicit authorization to publish that specific material. General permission to implement, document, commit, push, or open a pull request is not permission to publish internal research. Keep public delivery summaries limited to the necessary approved change and validation facts, without copying private findings or design details from Plane.
+
+Check the intended audience and the complete staged content before committing, and inspect outgoing commits and public review copy before publishing. Removing a file from the current tree does not erase it from earlier commits or remote history. If internal material has already been published, report the exposure accurately; do not claim that deleting current files makes it private again, and do not rewrite history or change repository visibility without separate explicit authorization.
+
 ## Tool: local-git
 
 | Field | Value |
