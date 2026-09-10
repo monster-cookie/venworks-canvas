@@ -91,7 +91,7 @@ Both bundled demonstration panels request `PlayerData` and `venworks.canvas.exam
 
 For a version 2 add-on, install a Canvas host that supports version 2 alongside the updated consumer package. The existing Papyrus registration record and UI-load request stay unchanged; the contract version is separate from the consumer's descriptor revision. This change adds no automatic package or save migration, and current-build save compatibility still needs gameplay validation. See the [consumer contract](docs/consumer-descriptor-contract.md) for declarations and publishing examples, and [consumer compatibility](docs/consumer-compatibility.md) for update and failure behavior.
 
-The [VWHUD provider inventory](docs/vwhud-provider-inventory.md) records the reviewed provider registrations, consumer-derived fields, ownership boundary, and evidence gaps for VWCANVAS-13. Use its [read-only source and count checks](docs/vwcanvas-13-testing.md) when refreshing the inventory; they do not establish runtime or platform acceptance.
+The VWHUD provider inventory is maintained as a Plane page attached to [VWCANVAS-13](https://app.plane.so/venworks/projects/b9432d80-7966-48dd-86ea-f8eb5668bbd3/issues/3c75d048-9d58-4178-88cc-d94787ee62d4). The same work item contains the temporary testing handoff and runtime evidence gaps.
 
 ## Player HUD transport
 

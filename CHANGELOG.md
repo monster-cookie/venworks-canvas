@@ -2,7 +2,7 @@
 
 ## Version 1.0.0 (UNRELEASED)
 
-- Adds a [VWHUD provider inventory](docs/vwhud-provider-inventory.md) for HUD authors, including ownership boundaries and remaining runtime checks. This documentation update requires no installation or save migration.
+- Adds a VWHUD provider inventory in Plane, attached to [VWCANVAS-13](https://app.plane.so/venworks/projects/b9432d80-7966-48dd-86ea-f8eb5668bbd3/issues/3c75d048-9d58-4178-88cc-d94787ee62d4), for HUD authors, including ownership boundaries and remaining runtime checks. This documentation update requires no installation or save migration.
 - Requires Venworks Core Library 2.1.8 or higher.
 - Adds support for multiple compatible HUD add-ons to display their panels together in the Player HUD.
 - Includes optional Example and Component Gallery panels for testing and demonstration.
