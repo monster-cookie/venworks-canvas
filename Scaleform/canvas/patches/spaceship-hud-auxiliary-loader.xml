@@ -3,7 +3,7 @@
   <validation>
     <requiredSourceTokens>
       <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
-      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this)]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"ship","displayMode":"__VWCANVAS_DISPLAY_MODE__"})]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
       <token><![CDATA[addChild(this.VenworksCanvasRegistryLoader)]]></token>
       <token><![CDATA[removeChild(this.VenworksCanvasRegistryLoader)]]></token>
@@ -16,6 +16,7 @@
       <token><![CDATA[VenworksCanvasRegistryLoader]]></token>
       <token><![CDATA[initialize]]></token>
       <token><![CDATA[dispose]]></token>
+      <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
     </requiredInspectionTokens>
   </validation>
   <insertions>
@@ -71,12 +72,15 @@
             {
                throw new Error("Canvas registry auxiliary does not expose initialize()");
             }
-            this.VenworksCanvasRegistryBridge["initialize"](this);
+            if(this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"ship","displayMode":"__VWCANVAS_DISPLAY_MODE__"}) !== true)
+            {
+               throw new Error("Canvas registry auxiliary rejected host initialization");
+            }
          }
-         catch(venworksCanvasInitError:Error)
+         catch(venworksCanvasInitError:*)
          {
-            trace("VWCANVAS-SHIP-AUX-INIT | " + venworksCanvasInitError.toString());
             this.disposeVenworksCanvasRegistry();
+            trace("VWCANVAS-SHIP-AUX-INIT | initialization failed");
          }
       }
 
@@ -142,7 +146,7 @@
             {
                this.VenworksCanvasRegistryBridge["dispose"]();
             }
-            catch(venworksCanvasDisposeError:Error)
+            catch(venworksCanvasDisposeError:*)
             {
             }
          }

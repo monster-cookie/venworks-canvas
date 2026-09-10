@@ -61,10 +61,10 @@ $Global:ModuleVariants = @(
         OutputSet = 'player-hud-loader'
         PatchPath = 'Scaleform/canvas/patches/player-hud-auxiliary-loader.xml'
         Outputs = @(
-          @{ InputFile = 'hudmenu.swf'; OutputFile = 'hudmenu.swf' }
-          @{ InputFile = 'hudmenu.gfx'; OutputFile = 'hudmenu.gfx' }
-          @{ InputFile = 'hudmenu_lrg.swf'; OutputFile = 'hudmenu_lrg.swf' }
-          @{ InputFile = 'hudmenu_lrg.gfx'; OutputFile = 'hudmenu_lrg.gfx' }
+          @{ InputFile = 'hudmenu.swf'; OutputFile = 'hudmenu.swf'; DisplayMode = 'normal' }
+          @{ InputFile = 'hudmenu.gfx'; OutputFile = 'hudmenu.gfx'; DisplayMode = 'normal' }
+          @{ InputFile = 'hudmenu_lrg.swf'; OutputFile = 'hudmenu_lrg.swf'; DisplayMode = 'large' }
+          @{ InputFile = 'hudmenu_lrg.gfx'; OutputFile = 'hudmenu_lrg.gfx'; DisplayMode = 'large' }
         )
       }
       @{
@@ -73,8 +73,8 @@ $Global:ModuleVariants = @(
         OutputSet = 'ship-hud'
         PatchPath = 'Scaleform/canvas/patches/spaceship-hud-auxiliary-loader.xml'
         Outputs = @(
-          @{ InputFile = 'spaceshiphudmenu.swf'; OutputFile = 'spaceshiphudmenu.swf' }
-          @{ InputFile = 'spaceshiphudmenu_lrg.swf'; OutputFile = 'spaceshiphudmenu_lrg.swf' }
+          @{ InputFile = 'spaceshiphudmenu.swf'; OutputFile = 'spaceshiphudmenu.swf'; DisplayMode = 'normal' }
+          @{ InputFile = 'spaceshiphudmenu_lrg.swf'; OutputFile = 'spaceshiphudmenu_lrg.swf'; DisplayMode = 'large' }
         )
       }
     ),
@@ -85,6 +85,7 @@ $Global:ModuleVariants = @(
         Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $true
+        ScaleformOwnership = 'Host'
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
@@ -127,9 +128,10 @@ $Global:ModuleVariants = @(
         Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $true
+        ScaleformOwnership = 'Consumer'
         Assets = @(
-          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf' }
-          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
         )
       }
     )
@@ -160,9 +162,10 @@ $Global:ModuleVariants = @(
         Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $true
+        ScaleformOwnership = 'Consumer'
         Assets = @(
-          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf' }
-          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
         )
       }
     )

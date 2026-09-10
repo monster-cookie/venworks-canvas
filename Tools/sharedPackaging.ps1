@@ -189,6 +189,100 @@ function Test-BuildArchivePayloadIncluded {
   return $true
 }
 
+function Assert-BuildScaleformArchiveOwnership {
+  param([Parameter(Mandatory = $true)][object]$Variant)
+
+  foreach ($archive in @($Variant.Archives)) {
+    $ownership = [string](Get-BuildPackagePropertyValue -InputObject $archive -Name 'ScaleformOwnership')
+    if ([string]::IsNullOrWhiteSpace($ownership)) { continue }
+    if ($ownership -cnotin @('Host', 'Consumer')) {
+      throw "$($Variant.VariantKey) archive has unsupported ScaleformOwnership '$ownership'. Expected 'Host' or 'Consumer'."
+    }
+
+    $assets = @((Get-BuildPackagePropertyValue -InputObject $archive -Name 'Assets' -DefaultValue @()))
+    $scaleformAssets = @($assets | Where-Object { [string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'Root') -ieq 'Scaleform' })
+    $classifiedAssets = @($assets | Where-Object {
+      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'ConsumerNamespace')) -or
+      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'DisplayMode'))
+    })
+    if ($ownership -ceq 'Host') {
+      if ($classifiedAssets.Count -ne 0) {
+        throw "$($Variant.VariantKey) host archive cannot declare consumer Scaleform asset metadata."
+      }
+      continue
+    }
+    if ($scaleformAssets.Count -eq 0) {
+      throw "$($Variant.VariantKey) consumer archive must declare at least one Scaleform asset pair."
+    }
+    if ($classifiedAssets.Count -ne $scaleformAssets.Count) {
+      throw "$($Variant.VariantKey) consumer archive must classify every Scaleform asset with ConsumerNamespace and DisplayMode."
+    }
+
+    $pairs = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+    foreach ($asset in $scaleformAssets) {
+      $consumerNamespace = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'ConsumerNamespace')
+      $displayMode = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'DisplayMode')
+      $source = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')).Replace('\', '/')
+      $target = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target')).Replace('\', '/')
+      if (![regex]::IsMatch($consumerNamespace, '\A[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]\z', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) {
+        throw "$($Variant.VariantKey) consumer archive has invalid ConsumerNamespace '$consumerNamespace'."
+      }
+      if ($displayMode -cnotin @('normal', 'large')) {
+        throw "$($Variant.VariantKey) consumer archive has unsupported DisplayMode '$displayMode'. Expected 'normal' or 'large'."
+      }
+      if ([string]::IsNullOrWhiteSpace($source)) {
+        throw "$($Variant.VariantKey) consumer archive has an empty Scaleform Source."
+      }
+      $expectedTarget = "Interface/VenworksCanvas/Consumers/$consumerNamespace/$displayMode.swf"
+      if ($target -cne $expectedTarget) {
+        throw "$($Variant.VariantKey) consumer Scaleform target '$target' must be '$expectedTarget'."
+      }
+      if (!$pairs.ContainsKey($consumerNamespace)) {
+        $pairs.Add($consumerNamespace, [pscustomobject]@{
+          Source = $source
+          Modes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        })
+      }
+      $pair = $pairs[$consumerNamespace]
+      if ([string]$pair.Source -cne $source) {
+        throw "$($Variant.VariantKey) consumer '$consumerNamespace' normal and large assets must use the same Scaleform Source."
+      }
+      if (!$pair.Modes.Add($displayMode)) {
+        throw "$($Variant.VariantKey) consumer '$consumerNamespace' declares DisplayMode '$displayMode' more than once."
+      }
+    }
+    foreach ($consumerNamespace in $pairs.Keys) {
+      $modes = $pairs[$consumerNamespace].Modes
+      if ($modes.Count -ne 2 -or !$modes.Contains('normal') -or !$modes.Contains('large')) {
+        throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare one normal and one large Scaleform asset from the same source."
+      }
+    }
+  }
+}
+
+function Assert-BuildConsumerScaleformPayloadOwnership {
+  param(
+    [Parameter(Mandatory = $true)][object]$Variant,
+    [Parameter(Mandatory = $true)][object]$Archive,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Payloads
+  )
+
+  $ownership = [string](Get-BuildPackagePropertyValue -InputObject $Archive -Name 'ScaleformOwnership')
+  if ($ownership -cne 'Consumer') { return }
+  $allowedTargets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($asset in @((Get-BuildPackagePropertyValue -InputObject $Archive -Name 'Assets' -DefaultValue @()))) {
+    if ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Root') -ine 'Scaleform') { continue }
+    [void]$allowedTargets.Add(([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target')).Replace('\', '/'))
+  }
+  foreach ($payload in @($Payloads)) {
+    $target = ([string]$payload.Target).Replace('\', '/')
+    if ([IO.Path]::GetExtension($target).ToLowerInvariant() -notin @('.swf', '.gfx')) { continue }
+    if (!$allowedTargets.Contains($target)) {
+      throw "$($Variant.VariantKey) consumer archive cannot include undeclared Scaleform movie target '$target'."
+    }
+  }
+}
+
 function Get-BuildScaleformStagingPlans {
   param(
     [Parameter(Mandatory = $true)][object[]]$Variants,
@@ -197,6 +291,7 @@ function Get-BuildScaleformStagingPlans {
 
   $variantsByKey = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
   foreach ($variant in @($Variants)) {
+    Assert-BuildScaleformArchiveOwnership -Variant $variant
     $variantKey = [string]$variant.VariantKey
     if ([string]::IsNullOrWhiteSpace($variantKey) -or $variantsByKey.ContainsKey($variantKey)) {
       throw "Scaleform staging requires unique, non-empty selected variant keys."
@@ -286,6 +381,7 @@ function Get-BuildPackageArchivePlans {
 
   $plans = [Collections.Generic.List[object]]::new()
   foreach ($variant in @($Variants)) {
+    Assert-BuildScaleformArchiveOwnership -Variant $variant
     $archiveNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($archive in @($variant.Archives)) {
       $fileName = [string](Get-BuildPackagePropertyValue -InputObject $archive -Name 'FileName')
@@ -343,6 +439,7 @@ function Get-BuildPackageArchivePlans {
         }
       }
 
+      Assert-BuildConsumerScaleformPayloadOwnership -Variant $variant -Archive $archive -Payloads @($payloads)
       $targets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
       foreach ($payload in @($payloads)) {
         [void](Resolve-BuildArchiveTarget -Root $RepositoryRoot -Target ([string]$payload.Target))

@@ -122,12 +122,15 @@ function ConvertTo-BuildScaleformJobs {
           throw "Scaleform output '$outputKey' is declared more than once in the selected variants."
         }
         $inputFile = $null
+        $displayMode = $null
         if ($kind -ceq 'Patch') {
           $inputFile = Assert-BuildScaleformRelativePath -Path ([string](Get-BuildScaleformValue -InputObject $configuredOutput -Name 'InputFile' -Required -Description "Scaleform build job '$name' output '$outputFile'")) -Description "Scaleform build job '$name' input file"
+          $displayMode = [string](Get-BuildScaleformValue -InputObject $configuredOutput -Name 'DisplayMode' -Description "Scaleform build job '$name' output '$outputFile'")
         }
         $outputs.Add([pscustomobject]@{
           InputFile = $inputFile
           OutputFile = $outputFile
+          DisplayMode = $displayMode
         })
       }
 
@@ -148,7 +151,20 @@ function ConvertTo-BuildScaleformJobs {
           -Path ([string](Get-BuildScaleformValue -InputObject $configuredJob -Name 'PatchPath' -Required -Description $description)) `
           -RepositoryRoot $resolvedRepositoryRoot `
           -Description "ActionScript patch for job '$name'"
-        [void](Get-BuildActionScriptPatch -PatchPath $patchPath)
+        foreach ($output in @($outputs)) {
+          [void](Get-BuildActionScriptPatch -PatchPath $patchPath -DisplayMode ([string]$output.DisplayMode))
+          if (![string]::IsNullOrWhiteSpace([string]$output.DisplayMode)) {
+            $inputIsLarge = [regex]::IsMatch([string]$output.InputFile, '_lrg\.(swf|gfx)\z', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            $outputIsLarge = [regex]::IsMatch([string]$output.OutputFile, '_lrg\.(swf|gfx)\z', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            if ($inputIsLarge -ne $outputIsLarge) {
+              throw "Scaleform job '$name' output '$($output.OutputFile)' mixes normal and large input/output filenames."
+            }
+            $expectedDisplayMode = if ($inputIsLarge) { 'large' } else { 'normal' }
+            if ([string]$output.DisplayMode -cne $expectedDisplayMode) {
+              throw "Scaleform job '$name' output '$($output.OutputFile)' must use DisplayMode '$expectedDisplayMode'."
+            }
+          }
+        }
       }
 
       $jobs.Add([pscustomobject]@{
@@ -219,7 +235,10 @@ function Assert-BuildScaleformSourceTokens {
 }
 
 function Get-BuildActionScriptPatch {
-  param([Parameter(Mandatory = $true)][string]$PatchPath)
+  param(
+    [Parameter(Mandatory = $true)][string]$PatchPath,
+    [AllowEmptyString()][string]$DisplayMode
+  )
 
   $resolvedPatchPath = Resolve-BuildRequiredFile -Path $PatchPath -Description 'ActionScript patch'
   [xml]$document = Get-Content -LiteralPath $resolvedPatchPath -Raw
@@ -231,12 +250,49 @@ function Get-BuildActionScriptPatch {
   if ([string]::IsNullOrWhiteSpace([string]$patch.script) -or $insertions.Count -eq 0) {
     throw "Invalid ActionScript patch: $resolvedPatchPath"
   }
+  $displayModeMarker = '__VWCANVAS_DISPLAY_MODE__'
+  $parsedInsertions = @($insertions | ForEach-Object {
+    [pscustomobject]@{
+      Position = [string]$_.position
+      Anchor = [string]$_.anchor.InnerText
+      Content = [string]$_.content.InnerText
+    }
+  })
+  $requiredSourceTokens = @($patch.SelectNodes('validation/requiredSourceTokens/token') | ForEach-Object { [string]$_.InnerText })
+  $requiredInspectionTokens = @($patch.SelectNodes('validation/requiredInspectionTokens/token') | ForEach-Object { [string]$_.InnerText })
+  if (([string]$patch.script).Contains($displayModeMarker) -or @($parsedInsertions | Where-Object { $_.Anchor.Contains($displayModeMarker) }).Count -ne 0) {
+    throw "ActionScript patch '$resolvedPatchPath' uses the display-mode marker outside replaceable content."
+  }
+  $contentUsesDisplayMode = @($parsedInsertions | Where-Object { $_.Content.Contains($displayModeMarker) }).Count -ne 0
+  $sourceValidationUsesDisplayMode = @($requiredSourceTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
+  $inspectionUsesDisplayMode = @($requiredInspectionTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
+  $usesDisplayMode = $contentUsesDisplayMode -or $sourceValidationUsesDisplayMode -or $inspectionUsesDisplayMode
+  if ($usesDisplayMode) {
+    if (!$contentUsesDisplayMode -or !$sourceValidationUsesDisplayMode -or !$inspectionUsesDisplayMode) {
+      throw "ActionScript patch '$resolvedPatchPath' must use the display-mode marker in insertion content and required source and inspection tokens."
+    }
+    if ([string]::IsNullOrWhiteSpace($DisplayMode)) {
+      throw "ActionScript patch '$resolvedPatchPath' requires DisplayMode 'normal' or 'large'."
+    }
+    if ($DisplayMode -cnotin @('normal', 'large')) {
+      throw "ActionScript patch '$resolvedPatchPath' has unsupported DisplayMode '$DisplayMode'. Expected 'normal' or 'large'."
+    }
+    foreach ($insertion in $parsedInsertions) {
+      $insertion.Content = $insertion.Content.Replace($displayModeMarker, $DisplayMode)
+    }
+    $requiredSourceTokens = @($requiredSourceTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
+    $requiredInspectionTokens = @($requiredInspectionTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
+  }
+  elseif (![string]::IsNullOrWhiteSpace($DisplayMode)) {
+    throw "ActionScript patch '$resolvedPatchPath' does not support DisplayMode configuration."
+  }
   return [pscustomobject]@{
     Path = $resolvedPatchPath
     Script = [string]$patch.script
-    Insertions = $insertions
-    RequiredSourceTokens = @($patch.SelectNodes('validation/requiredSourceTokens/token') | ForEach-Object { [string]$_.InnerText })
-    RequiredInspectionTokens = @($patch.SelectNodes('validation/requiredInspectionTokens/token') | ForEach-Object { [string]$_.InnerText })
+    Insertions = $parsedInsertions
+    RequiredSourceTokens = $requiredSourceTokens
+    RequiredInspectionTokens = $requiredInspectionTokens
+    DisplayMode = if ($usesDisplayMode) { $DisplayMode } else { $null }
   }
 }
 
@@ -266,9 +322,9 @@ function Apply-BuildActionScriptPatch {
   $resolvedSourcePath = Resolve-BuildRequiredFile -Path $SourcePath -Description "Exported ActionScript '$($Patch.Script)'"
   $source = [System.IO.File]::ReadAllText($resolvedSourcePath)
   foreach ($insertion in @($Patch.Insertions)) {
-    $position = [string]$insertion.position
-    $anchor = [string]$insertion.anchor.InnerText
-    $content = [string]$insertion.content.InnerText
+    $position = [string]$insertion.Position
+    $anchor = [string]$insertion.Anchor
+    $content = [string]$insertion.Content
     if ($position -cnotin @('before', 'after') -or [string]::IsNullOrEmpty($anchor)) {
       throw "ActionScript patch '$($Patch.Path)' contains an invalid insertion."
     }
@@ -557,6 +613,7 @@ function Invoke-BuildPatchedScaleformMovie {
     [Parameter(Mandatory = $true)][string]$JpexsJarPath,
     [Parameter(Mandatory = $true)][string]$FlexSdkPath,
     [Parameter(Mandatory = $true)][string]$WorkDirectory,
+    [AllowEmptyString()][string]$DisplayMode,
     [switch]$KeepWork
   )
 
@@ -564,7 +621,7 @@ function Invoke-BuildPatchedScaleformMovie {
   $resolvedJavaPath = Resolve-BuildRequiredFile -Path $JavaPath -Description 'Java executable'
   $resolvedJpexsJarPath = Resolve-BuildRequiredFile -Path $JpexsJarPath -Description 'JPEXS JAR'
   $resolvedFlexSdkPath = Resolve-BuildRequiredDirectory -Path $FlexSdkPath -Description 'Apache Flex SDK'
-  $patch = Get-BuildActionScriptPatch -PatchPath $PatchPath
+  $patch = Get-BuildActionScriptPatch -PatchPath $PatchPath -DisplayMode $DisplayMode
   $resolvedOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
   if (Test-Path -LiteralPath $resolvedOutputPath) {
     throw "Patched Scaleform output path is not fresh: $resolvedOutputPath"
@@ -797,7 +854,21 @@ function Invoke-BuildScaleformJobs {
       $patchWorkDirectory = Join-Path $runDirectory "patch-$groupIndex-work"
       New-Item -ItemType Directory -Path $candidateDirectory, $patchWorkDirectory | Out-Null
       foreach ($output in @($job.Outputs)) {
-        [void](Invoke-BuildPatchedScaleformMovie -InputPath (Join-Path $resolvedInputDirectory $output.InputFile) -OutputPath (Join-Path $candidateDirectory $output.OutputFile) -PatchPath $job.PatchPath -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsPath -FlexSdkPath $resolvedFlexSdkPath -WorkDirectory $patchWorkDirectory -KeepWork:$KeepWork)
+        $patchBuildParameters = @{
+          InputPath = Join-Path $resolvedInputDirectory $output.InputFile
+          OutputPath = Join-Path $candidateDirectory $output.OutputFile
+          PatchPath = $job.PatchPath
+          JavaPath = $resolvedJavaPath
+          JpexsJarPath = $resolvedJpexsPath
+          FlexSdkPath = $resolvedFlexSdkPath
+          WorkDirectory = $patchWorkDirectory
+          KeepWork = $KeepWork
+        }
+        $displayMode = [string](Get-BuildScaleformValue -InputObject $output -Name 'DisplayMode' -Description "Scaleform job '$($job.Name)' output '$($output.OutputFile)'")
+        if (![string]::IsNullOrWhiteSpace($displayMode)) {
+          $patchBuildParameters.DisplayMode = $displayMode
+        }
+        [void](Invoke-BuildPatchedScaleformMovie @patchBuildParameters)
         $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $output.OutputFile; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $output.OutputFile); VariantKey = $job.VariantKey })
       }
       $expectedFiles = @($job.Outputs | ForEach-Object { [string]$_.OutputFile })
