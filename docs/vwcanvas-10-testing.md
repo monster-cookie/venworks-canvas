@@ -43,6 +43,8 @@ If a binding reports `CONSOLE_RESOLVE_FAILED`, check the enabled permanent plugi
 
 ## Run the optional diagnostic movies
 
+The VWCANVAS-14 subscriptions registry probe is packaged separately from the four fault-injection movies below. With the current Canvas and Example packages enabled, run `cgf "Venworks:CanvasExamples:ExampleRegistrar.ConsoleSubscriptionsProbe"`, close the console, and require the visible `PASS 5 / 5 | FAIL 0` and `ALL REGISTRY DIAGNOSTICS PASSED` marker. Then run `cgf "Venworks:CanvasExamples:ExampleRegistrar.ConsoleRestoreExample"` to restore the normal Example descriptor. The subscriptions probe uses a fake provider manager inside Scaleform and does not establish native Bethesda provider delivery.
+
 Four test-only ActionScript movies are supplied under [Scaleform/canvas/diagnostics](../Scaleform/canvas/diagnostics). They execute as real consumers in Starfield and deliberately fail callbacks or dispatch bounded loader notifications. They are excluded from the production variants and packages. Their source and manifests are supplied; compiling or installing them is a separate step, and none of the game cases below has been run for this change.
 
 | Manifest under `Scaleform/canvas/diagnostics/build` | Compiled movie | Purpose |

@@ -485,9 +485,13 @@ package
   }
 
   $configuredJobs = @(ConvertTo-BuildScaleformJobs -Variants @(Get-ModuleVariants) -RepositoryRoot $repositoryRoot)
-  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'player-loader', 'ship-loader', 'canvas-example', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
+  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'player-loader', 'ship-loader', 'canvas-example', 'subscriptions-probe', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
   if (@($configuredJobs | Where-Object { $_.OutputSet -ceq 'movies' }).Count -ne 3) {
     throw 'Configured Scaleform ownership validation did not preserve the shared Flex movie output set.'
+  }
+  $subscriptionsProbeJob = @($configuredJobs | Where-Object { $_.Name -ceq 'subscriptions-probe' })[0]
+  if ($subscriptionsProbeJob.OutputSet -cne 'diagnostics' -or $subscriptionsProbeJob.Outputs[0].OutputFile -cne 'CanvasSubscriptionsProbe.swf') {
+    throw 'Configured subscriptions probe output identity changed.'
   }
   $playerJob = @($configuredJobs | Where-Object { $_.Name -ceq 'player-watch' })[0]
   $playerNames = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')

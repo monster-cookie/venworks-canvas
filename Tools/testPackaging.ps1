@@ -118,7 +118,7 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
@@ -126,11 +126,12 @@ if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Arch
 }
 $configuredConsumerMappings = @(
   [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example'; Source = 'movies/CanvasExample.swf' }
+  [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example.subscriptions-probe'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf' }
   [pscustomobject]@{ Variant = $configuredGallery; Namespace = 'venworks.canvas.component-gallery'; Source = 'movies/CanvasComponentGallery.swf' }
 )
 foreach ($mapping in $configuredConsumerMappings) {
   Assert-BuildScaleformArchiveOwnership -Variant $mapping.Variant
-  $assets = @($mapping.Variant.Archives[0].Assets)
+  $assets = @($mapping.Variant.Archives[0].Assets | Where-Object { [string]$_.ConsumerNamespace -ceq $mapping.Namespace })
   Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
   Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
   Assert-TestNames -Actual @($assets.Target) -Expected @(

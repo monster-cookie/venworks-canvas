@@ -10,7 +10,8 @@
   <requiredTokens>
     <token>VWCANVAS_CONSUMER/2</token>
     <token>a8098c1a-f86e-4b1e-9d7c-5a102bf38460</token>
-    <token>venworks.canvas.example</token>
+    <token>venworks.canvas.example.subscriptions-probe</token>
+    <token>"version":2</token>
     <token>SUBSCRIPTIONS-PROBE-TEST-ONLY</token>
     <token>CanvasSubscriptions</token>
     <token>SHARED REPLAY FANOUT</token>

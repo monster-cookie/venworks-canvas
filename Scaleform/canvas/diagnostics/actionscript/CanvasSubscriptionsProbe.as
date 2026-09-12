@@ -27,8 +27,8 @@ package
          return {
             "protocol":"VWCANVAS_CONSUMER/2",
             "consumerId":"a8098c1a-f86e-4b1e-9d7c-5a102bf38460",
-            "assetNamespace":"venworks.canvas.example",
-            "version":1,
+            "assetNamespace":"venworks.canvas.example.subscriptions-probe",
+            "version":2,
             "minimumContractVersion":2,
             "maximumContractVersion":2,
             "uiChannels":[],

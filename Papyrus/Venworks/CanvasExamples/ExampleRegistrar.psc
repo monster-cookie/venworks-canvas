@@ -48,6 +48,32 @@ String Function ConsolePing() Global
   Return result
 EndFunction
 
+; Switches the packaged Example registration to the subscriptions diagnostic and requests one UI load.
+String Function ConsoleSubscriptionsProbe() Global
+  Venworks:CanvasExamples:ExampleRegistrar target = ResolveConsoleExample()
+  If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleSubscriptionsProbe | " + "CONSOLE_RESOLVE_FAILED")
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  String result = target.SelectConsoleSubscriptionsProbe()
+  LogConsoleExample("ConsoleSubscriptionsProbe", "CONSOLE_RESULT | Status=" + result)
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleSubscriptionsProbe | " + result)
+  Return result
+EndFunction
+
+; Restores the packaged Example registration after a subscriptions diagnostic run and requests one UI load.
+String Function ConsoleRestoreExample() Global
+  Venworks:CanvasExamples:ExampleRegistrar target = ResolveConsoleExample()
+  If (target == None)
+    Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleRestoreExample | " + "CONSOLE_RESOLVE_FAILED")
+    Return "CONSOLE_RESOLVE_FAILED"
+  EndIf
+  String result = target.RestoreConsoleExample()
+  LogConsoleExample("ConsoleRestoreExample", "CONSOLE_RESULT | Status=" + result)
+  Venworks:Core:Utilities:Console.ConsoleEcho("VWCANVAS: ExampleRegistrar.ConsoleRestoreExample | " + result)
+  Return result
+EndFunction
+
 ; The command has no caller-selected topic or body and never registers, requests UI work or schedules a retry.
 String Function PublishConsolePing()
   If (Registry == None)
@@ -56,6 +82,30 @@ String Function PublishConsolePing()
   EndIf
   OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.ping", "ping")
   Registry.LogOperation(result)
+  Return result.Status
+EndFunction
+
+; Selects the packaged subscriptions diagnostic using a distinct descriptor version so the host replaces the Example movie.
+String Function SelectConsoleSubscriptionsProbe()
+  Return SubmitConsoleDescriptorUpdate("VWCANVAS Subscriptions Probe", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf", 2)
+EndFunction
+
+; Restores the authored Example descriptor after a diagnostic run.
+String Function RestoreConsoleExample()
+  Return SubmitConsoleDescriptorUpdate(DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
+EndFunction
+
+; Makes one explicit descriptor update and UI-load request; retained deferred input uses the registrar's existing timer reconciliation.
+String Function SubmitConsoleDescriptorUpdate(String requestedDisplayName, String requestedNormalMovieUrl, String requestedLargeMovieUrl, Int requestedDescriptorVersion)
+  OperationResult result = TryApplyDescriptorUpdate(requestedDisplayName, requestedNormalMovieUrl, requestedLargeMovieUrl, requestedDescriptorVersion)
+  RequestRegisteredUi(result)
+  ReportAttempt(result)
+  If (result.Status != "DEFERRED_ATTEMPT_BUSY" && (IsDeferred(result.Status) || IsDeferred(result.UiLoad)))
+    StartTimer(0.5, 1)
+  EndIf
+  If (result.UiLoad != "")
+    Return result.Status + " | " + result.UiLoad
+  EndIf
   Return result.Status
 EndFunction
 
