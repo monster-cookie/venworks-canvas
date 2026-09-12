@@ -111,8 +111,44 @@ try {
     Apply-BuildActionScriptPatch -SourcePath $duplicateAnchorPath -Patch $patch
   }
 
+  $displayPatchPath = Join-Path $fixtureRoot 'display-mode-patch.xml'
+  Write-BuildUtf8WithoutBom -Path $displayPatchPath -Text @'
+<?xml version="1.0" encoding="utf-8"?>
+<actionScriptPatch script="Fixture">
+  <validation>
+    <requiredSourceTokens><token>displayMode:String = "__VWCANVAS_DISPLAY_MODE__"</token></requiredSourceTokens>
+    <requiredInspectionTokens><token>displayMode:String = "__VWCANVAS_DISPLAY_MODE__"</token></requiredInspectionTokens>
+  </validation>
+  <insertions>
+    <insertion position="after"><anchor><![CDATA[trace("anchor");]]></anchor><content><![CDATA[
+      var displayMode:String = "__VWCANVAS_DISPLAY_MODE__";]]></content></insertion>
+  </insertions>
+</actionScriptPatch>
+'@
+  Assert-TestRejected -Description 'Missing parameterized patch DisplayMode' -ExpectedMessage 'requires DisplayMode' -Action {
+    [void](Get-BuildActionScriptPatch -PatchPath $displayPatchPath)
+  }
+  Assert-TestRejected -Description 'Invalid parameterized patch DisplayMode' -ExpectedMessage "unsupported DisplayMode 'compact'" -Action {
+    [void](Get-BuildActionScriptPatch -PatchPath $displayPatchPath -DisplayMode 'compact')
+  }
+  Assert-TestRejected -Description 'DisplayMode on unparameterized patch' -ExpectedMessage 'does not support DisplayMode' -Action {
+    [void](Get-BuildActionScriptPatch -PatchPath $patchPath -DisplayMode 'normal')
+  }
+  $normalDisplayPatch = Get-BuildActionScriptPatch -PatchPath $displayPatchPath -DisplayMode 'normal'
+  $displaySourcePath = Join-Path $fixtureRoot 'DisplayFixture.as'
+  Write-BuildUtf8WithoutBom -Path $displaySourcePath -Text 'trace("anchor");'
+  Apply-BuildActionScriptPatch -SourcePath $displaySourcePath -Patch $normalDisplayPatch
+  $displaySource = [IO.File]::ReadAllText($displaySourcePath)
+  if (!$displaySource.Contains('displayMode:String = "normal"') -or $displaySource.Contains('__VWCANVAS_DISPLAY_MODE__') -or $displaySource.Contains('displayMode:String = "large"')) {
+    throw 'Parameterized ActionScript patch did not select only the configured normal display mode.'
+  }
+  $largeDisplayPatch = Get-BuildActionScriptPatch -PatchPath $displayPatchPath -DisplayMode 'large'
+  if (@($largeDisplayPatch.RequiredInspectionTokens).Count -ne 1 -or $largeDisplayPatch.RequiredInspectionTokens[0] -cne 'displayMode:String = "large"') {
+    throw 'Parameterized ActionScript patch did not produce an exact large-mode inspection token.'
+  }
+
   $playerLoaderPatchPath = Join-Path $repositoryRoot 'Scaleform\canvas\patches\player-hud-auxiliary-loader.xml'
-  $playerLoaderPatch = Get-BuildActionScriptPatch -PatchPath $playerLoaderPatchPath
+  $playerLoaderPatch = Get-BuildActionScriptPatch -PatchPath $playerLoaderPatchPath -DisplayMode 'normal'
   $playerLoaderSourcePath = Join-Path $fixtureRoot 'HUDMenu.as'
   Write-BuildUtf8WithoutBom -Path $playerLoaderSourcePath -Text @'
 package
@@ -144,12 +180,15 @@ package
   $hudSubscriptionIndex = $playerLoaderSource.IndexOf('BSUIDataManager.Subscribe("HudModeData"', [System.StringComparison]::Ordinal)
   $directAttachIndex = $playerLoaderSource.IndexOf('addChild(this.VenworksCanvasRegistryBridge);', [System.StringComparison]::Ordinal)
   $deferredIndex = $playerLoaderSource.IndexOf('addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize', [System.StringComparison]::Ordinal)
-  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this);', [System.StringComparison]::Ordinal)
+  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"normal"})', [System.StringComparison]::Ordinal)
   if ($startIndex -lt 0 -or $hudSubscriptionIndex -le $startIndex) {
     throw 'Player HUD auxiliary loader does not start from HUDMenu onAddedToStage before the vanilla HUD subscriptions.'
   }
   if ($directAttachIndex -lt 0 -or $deferredIndex -le $directAttachIndex -or $initializeIndex -le $deferredIndex) {
     throw 'Player HUD auxiliary loader does not attach CanvasHost directly and defer initialization by one frame.'
+  }
+  if ($playerLoaderSource.Contains('__VWCANVAS_DISPLAY_MODE__') -or $playerLoaderSource.Contains('"displayMode":"large"')) {
+    throw 'Player HUD auxiliary loader normal-mode patch retained an unresolved or wrong display mode.'
   }
   if ($playerLoaderSource -match '(?i)VwHud') {
     throw 'Player HUD auxiliary loader unexpectedly depends on VWHUD.'
@@ -304,6 +343,47 @@ package
   [System.IO.File]::WriteAllBytes($fakeJavaPath, [byte[]](0))
   [System.IO.File]::WriteAllBytes($fakeJpexsPath, [byte[]](0))
   New-Item -ItemType Directory -Path $fakeFlexPath | Out-Null
+  $originalDisplayModeJavaJar = ${function:Invoke-BuildJavaJar}
+  $script:compiledDisplayModeSource = $null
+  function Invoke-BuildJavaJar {
+    param([string]$JavaPath, [string]$JarPath, [string[]]$Arguments, [string]$Description)
+    if ([IO.Path]::GetFullPath($JavaPath) -cne [IO.Path]::GetFullPath($fakeJavaPath) -or
+        [IO.Path]::GetFullPath($JarPath) -cne [IO.Path]::GetFullPath($fakeJpexsPath)) {
+      throw "Display-mode inspection fixture received unexpected native tool paths for $Description."
+    }
+    if ($Arguments -contains '-selectclass') {
+      $exportIndex = [Array]::IndexOf($Arguments, '-export')
+      Write-BuildUtf8WithoutBom -Path (Join-Path ([string]$Arguments[$exportIndex + 2]) 'Fixture.as') -Text 'trace("anchor");'
+      return
+    }
+    if ($Arguments -contains '-importScript') {
+      $importIndex = [Array]::IndexOf($Arguments, '-importScript')
+      $exportDirectory = [string]$Arguments[$importIndex + 3]
+      $script:compiledDisplayModeSource = [IO.File]::ReadAllText((Join-Path $exportDirectory 'Fixture.as'))
+      Write-TestScaleformMovie -Path ([string]$Arguments[$importIndex + 2]) -Marker 'display-mode'
+      return
+    }
+    if ($Arguments -contains '-export') {
+      $exportIndex = [Array]::IndexOf($Arguments, '-export')
+      Write-BuildUtf8WithoutBom -Path (Join-Path ([string]$Arguments[$exportIndex + 2]) 'Fixture.as') -Text $script:compiledDisplayModeSource
+      return
+    }
+    throw "Unexpected display-mode inspection invocation: $Description"
+  }
+  try {
+    foreach ($displayMode in @('normal', 'large')) {
+      $displayModeOutput = Join-Path $fixtureRoot "native-$displayMode.swf"
+      [void](Invoke-BuildPatchedScaleformMovie -InputPath $nativeInputPath -OutputPath $displayModeOutput -PatchPath $displayPatchPath -DisplayMode $displayMode -JavaPath $fakeJavaPath -JpexsJarPath $fakeJpexsPath -FlexSdkPath $fakeFlexPath -WorkDirectory (Join-Path $fixtureRoot "native-$displayMode-work"))
+      if (!$script:compiledDisplayModeSource.Contains("displayMode:String = `"$displayMode`"") -or
+          $script:compiledDisplayModeSource.Contains('__VWCANVAS_DISPLAY_MODE__') -or
+          $script:compiledDisplayModeSource.Contains("displayMode:String = `"$(if ($displayMode -ceq 'normal') { 'large' } else { 'normal' })`"")) {
+        throw "Compiled Scaleform inspection did not retain only the selected '$displayMode' display mode."
+      }
+    }
+  }
+  finally {
+    Set-Item -LiteralPath Function:Invoke-BuildJavaJar -Value $originalDisplayModeJavaJar
+  }
   $originalJavaJar = ${function:Invoke-BuildJavaJar}
   function Invoke-BuildJavaJar { throw 'Fixture native failure' }
   try {
@@ -335,6 +415,42 @@ package
   $arbitraryJobs = @(ConvertTo-BuildScaleformJobs -Variants @($arbitraryVariant) -RepositoryRoot $repositoryRoot)
   if ($arbitraryJobs.Count -ne 1 -or $arbitraryJobs[0].VariantKey -cne 'ARBITRARY' -or $arbitraryJobs[0].OutputSet -cne 'arbitrary-output') {
     throw 'Scaleform job conversion did not preserve arbitrary variant configuration.'
+  }
+
+  $parameterizedVariant = [pscustomobject]@{
+    VariantKey = 'PARAMETERIZED'
+    ScaleformBuilds = @(@{
+      Name = 'parameterized-patch'
+      Kind = 'Patch'
+      OutputSet = 'parameterized-output'
+      PatchPath = [System.IO.Path]::GetRelativePath($repositoryRoot, $displayPatchPath)
+      Outputs = @(@{ InputFile = 'input_lrg.swf'; OutputFile = 'output_lrg.swf'; DisplayMode = 'large' })
+    })
+  }
+  $parameterizedJobs = @(ConvertTo-BuildScaleformJobs -Variants @($parameterizedVariant) -RepositoryRoot $repositoryRoot)
+  if ($parameterizedJobs.Count -ne 1 -or $parameterizedJobs[0].Outputs[0].DisplayMode -cne 'large') {
+    throw 'Scaleform job conversion did not preserve the configured output DisplayMode.'
+  }
+  $missingDisplayModeVariant = $parameterizedVariant.PSObject.Copy()
+  $missingDisplayModeVariant.ScaleformBuilds = @(@{} + $parameterizedVariant.ScaleformBuilds[0])
+  $missingDisplayModeVariant.ScaleformBuilds[0].Name = 'missing-display-mode'
+  $missingDisplayModeVariant.ScaleformBuilds[0].Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'output.swf' })
+  Assert-TestRejected -Description 'Missing output DisplayMode' -ExpectedMessage 'requires DisplayMode' -Action {
+    [void](ConvertTo-BuildScaleformJobs -Variants @($missingDisplayModeVariant) -RepositoryRoot $repositoryRoot)
+  }
+  $invalidDisplayModeVariant = $parameterizedVariant.PSObject.Copy()
+  $invalidDisplayModeVariant.ScaleformBuilds = @(@{} + $parameterizedVariant.ScaleformBuilds[0])
+  $invalidDisplayModeVariant.ScaleformBuilds[0].Name = 'invalid-display-mode'
+  $invalidDisplayModeVariant.ScaleformBuilds[0].Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'output.swf'; DisplayMode = 'compact' })
+  Assert-TestRejected -Description 'Invalid output DisplayMode' -ExpectedMessage "unsupported DisplayMode 'compact'" -Action {
+    [void](ConvertTo-BuildScaleformJobs -Variants @($invalidDisplayModeVariant) -RepositoryRoot $repositoryRoot)
+  }
+  $wrongDisplayModeVariant = $parameterizedVariant.PSObject.Copy()
+  $wrongDisplayModeVariant.ScaleformBuilds = @(@{} + $parameterizedVariant.ScaleformBuilds[0])
+  $wrongDisplayModeVariant.ScaleformBuilds[0].Name = 'wrong-display-mode'
+  $wrongDisplayModeVariant.ScaleformBuilds[0].Outputs = @(@{ InputFile = 'input.swf'; OutputFile = 'output.swf'; DisplayMode = 'large' })
+  Assert-TestRejected -Description 'DisplayMode mismatched with output filename' -ExpectedMessage "must use DisplayMode 'normal'" -Action {
+    [void](ConvertTo-BuildScaleformJobs -Variants @($wrongDisplayModeVariant) -RepositoryRoot $repositoryRoot)
   }
 
   $safeNestedFlexJobs = @(ConvertTo-BuildScaleformJobs -RepositoryRoot $repositoryRoot -Variants @(
@@ -381,6 +497,12 @@ package
   $playerLoaderNames = @('hudmenu.swf', 'hudmenu.gfx', 'hudmenu_lrg.swf', 'hudmenu_lrg.gfx')
   Assert-BuildExactNames -Actual @($playerLoaderJob.Outputs.InputFile) -Expected $playerLoaderNames -Description 'Player HUD loader input configuration'
   Assert-BuildExactNames -Actual @($playerLoaderJob.Outputs.OutputFile) -Expected $playerLoaderNames -Description 'Player HUD loader output configuration'
+  Assert-BuildExactNames -Actual @($playerLoaderJob.Outputs | ForEach-Object { "$($_.OutputFile)=$($_.DisplayMode)" }) -Expected @(
+    'hudmenu.swf=normal'
+    'hudmenu.gfx=normal'
+    'hudmenu_lrg.swf=large'
+    'hudmenu_lrg.gfx=large'
+  ) -Description 'Player HUD loader output/display-mode configuration'
   $canvasVariant = @(Get-ModuleVariants -VariantKeys CANVAS)[0]
   $playerLoaderAssets = @($canvasVariant.Archives | ForEach-Object { @($_.Assets) } | Where-Object { [string]$_.Root -ceq 'Scaleform' -and [string]$_.Source -clike 'player-hud-loader/*' })
   Assert-BuildExactNames -Actual @($playerLoaderAssets.Source) -Expected @($playerLoaderNames | ForEach-Object { "player-hud-loader/$_" }) -Description 'Player HUD loader archive sources'
@@ -389,6 +511,10 @@ package
   $shipNames = @('spaceshiphudmenu.swf', 'spaceshiphudmenu_lrg.swf')
   Assert-BuildExactNames -Actual @($shipJob.Outputs.InputFile) -Expected $shipNames -Description 'Ship HUD input configuration'
   Assert-BuildExactNames -Actual @($shipJob.Outputs.OutputFile) -Expected $shipNames -Description 'Ship HUD output configuration'
+  Assert-BuildExactNames -Actual @($shipJob.Outputs | ForEach-Object { "$($_.OutputFile)=$($_.DisplayMode)" }) -Expected @(
+    'spaceshiphudmenu.swf=normal'
+    'spaceshiphudmenu_lrg.swf=large'
+  ) -Description 'Ship HUD output/display-mode configuration'
 
   $outputRoot = Join-Path $fixtureRoot 'output'
   $publicationWork = Join-Path $fixtureRoot 'publication-work'

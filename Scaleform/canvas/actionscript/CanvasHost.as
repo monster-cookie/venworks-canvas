@@ -33,6 +33,16 @@ package
 
       private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/2";
 
+      private static const HOST_PROTOCOL:String = "VWCANVAS_HOST/1";
+
+      private static const HOST_STATE_NEW:String = "new";
+
+      private static const HOST_STATE_INITIALIZING:String = "initializing";
+
+      private static const HOST_STATE_INITIALIZED:String = "initialized";
+
+      private static const HOST_STATE_DISPOSED:String = "disposed";
+
       private static const HOST_CONTRACT_VERSION:int = 2;
 
       private static const MAX_UI_CHANNELS:int = 18;
@@ -57,6 +67,8 @@ package
 
       private static const MAX_ALERT_DIAGNOSTICS:int = 16;
 
+      private static const MAX_STARTUP_ENVELOPES:int = 256;
+
       private var owner:DisplayObjectContainer;
 
       private var dataManager:Object;
@@ -76,6 +88,14 @@ package
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
+
+      private var hostKind:String = "";
+
+      private var initializationState:String = HOST_STATE_NEW;
+
+      private var startupEnvelopes:Array = [];
+
+      private var startupReplayRejected:Boolean = false;
 
       private var ownerLabel:String = "uninitialized";
 
@@ -124,26 +144,74 @@ package
          addEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage,false,0,true);
       }
 
-      public function initialize(param1:DisplayObjectContainer) : void
+      public function initialize(param1:DisplayObjectContainer, param2:Object) : Boolean
       {
-         if(this.disposed || this.owner != null)
+         var context:Object = null;
+         if(this.disposed)
          {
-            return;
+            return false;
          }
-         this.owner = param1;
-         this.ownerLabel = this.resolveOwnerUrl(param1);
-         this.displayMode = this.ownerLabel.toLowerCase().indexOf("_lrg") >= 0 ? "large" : "normal";
-         this.createDiagnostics();
-         this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
-         this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
-         if(this.resolveHostKind() == "PLAYER HUD")
+         try
          {
-            this.subscribe();
+            context = this.validateHostContext(param1,param2);
          }
-         else
+         catch(contextError:*)
          {
-            this.appendDiagnostic("SHIP UI TRANSPORT DEFERRED");
+            trace("VWCANVAS-HOST-INIT | INVALID CONTEXT | OWNER " + this.resolveOwnerUrl(param1));
+            if(this.initializationState == HOST_STATE_NEW)
+            {
+               this.dispose();
+            }
+            return false;
          }
+         if(this.initializationState == HOST_STATE_INITIALIZED)
+         {
+            if(this.owner === param1 && this.hostKind == context.hostKind && this.displayMode == context.displayMode)
+            {
+               return true;
+            }
+            trace("VWCANVAS-HOST-INIT | CONFLICTING DUPLICATE | OWNER " + this.resolveOwnerUrl(param1));
+            return false;
+         }
+         if(this.initializationState != HOST_STATE_NEW)
+         {
+            trace("VWCANVAS-HOST-INIT | REENTRANT INITIALIZE REJECTED | OWNER " + this.resolveOwnerUrl(param1));
+            return false;
+         }
+         this.initializationState = HOST_STATE_INITIALIZING;
+         try
+         {
+            this.owner = param1;
+            this.ownerLabel = this.resolveOwnerUrl(param1);
+            this.hostKind = context.hostKind;
+            this.displayMode = context.displayMode;
+            this.createDiagnostics();
+            this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
+            this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
+            this.appendDiagnostic("OWNER " + this.ownerLabel);
+            if(this.hostKind == "player")
+            {
+               this.subscribe();
+            }
+            else
+            {
+               this.appendDiagnostic("SHIP UI TRANSPORT DEFERRED");
+            }
+            if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING)
+            {
+               throw new Error("host startup ownership changed");
+            }
+            this.initializationState = HOST_STATE_INITIALIZED;
+            this.flushStartupEnvelopes();
+            return !this.disposed && this.initializationState == HOST_STATE_INITIALIZED;
+         }
+         catch(startupError:*)
+         {
+            trace("VWCANVAS-HOST-INIT | STARTUP FAILED | " + this.sanitizeText(startupError,140) + " | OWNER " + this.ownerLabel);
+            this.dispose();
+            return false;
+         }
+         return false;
       }
 
       public function reapplyVanillaPlacements() : void
@@ -168,6 +236,7 @@ package
             return;
          }
          this.disposed = true;
+         this.initializationState = HOST_STATE_DISPOSED;
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
          if(this.subscribed && this.dataManager != null && this.callback != null)
          {
@@ -196,6 +265,8 @@ package
          this.loaderGenerations = {};
          this.loaderStates = {};
          this.consumerContracts = {};
+         this.startupEnvelopes = [];
+         this.startupReplayRejected = false;
          this.resetPendingGeneration();
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {
@@ -212,57 +283,47 @@ package
 
       private function subscribe() : void
       {
-         if(this.disposed || this.subscribed)
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING || this.subscribed)
          {
-            return;
+            throw new Error("load bridge subscription ownership unavailable");
          }
-         try
+         var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
+         if(watch == null || !("getCanvasWatchDisabled" in watch) || !("getCanvasWatchSubscriptionsRestored" in watch))
          {
-            var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
-            if(watch == null || !("getCanvasWatchDisabled" in watch) || !("getCanvasWatchSubscriptionsRestored" in watch))
-            {
-               throw new Error("WATCH PATCH MISSING; verify Host archive deployment");
-            }
-            if(!watch.getCanvasWatchSubscriptionsRestored())
-            {
-               throw new Error("WATCH SUBSCRIPTIONS NOT RESTORED");
-            }
-            this.appendDiagnostic("WATCH SUBSCRIPTIONS RESTORED");
-            if(!watch.getCanvasWatchDisabled())
-            {
-               throw new Error("WATCH PRESENTATION ACTIVE");
-            }
-            this.appendDiagnostic("WATCH PRESENTATION DISABLED");
-            // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
-            this.dataManager = watch.getCanvasWatchDataManager();
-            this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
-            var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
-            if(provider == null)
-            {
-               throw new Error("CustomAlertsData provider unavailable");
-            }
-            this.appendDiagnostic("PROVIDER " + (provider.dataReady ? "READY" : "WAITING FOR CLIENT"));
-            // Get first, then Subscribe: vanilla replays an existing ready provider synchronously.
-            // Record ownership before that callback so failure cleanup cannot leave an orphan listener.
-            this.subscribed = true;
-            this.dataManager.Subscribe(PROVIDER,this.callback);
-            this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
+            throw new Error("WATCH PATCH MISSING; verify Host archive deployment");
          }
-         catch(subscriptionError:*)
+         if(!watch.getCanvasWatchSubscriptionsRestored())
          {
-            if(this.subscribed && this.dataManager != null)
-            {
-               try { this.dataManager.Unsubscribe(PROVIDER,this.callback); }
-               catch(cleanupError:*) { this.appendDiagnostic("BRIDGE CLEANUP ERROR"); }
-            }
-            this.subscribed = false;
-            if(this.consumerSubscriptions != null)
-            {
-               this.consumerSubscriptions.dispose();
-               this.consumerSubscriptions = null;
-            }
-            this.appendDiagnostic("BRIDGE ERROR | " + this.sanitizeText(subscriptionError,140));
+            throw new Error("WATCH SUBSCRIPTIONS NOT RESTORED");
          }
+         this.appendDiagnostic("WATCH SUBSCRIPTIONS RESTORED");
+         if(!watch.getCanvasWatchDisabled())
+         {
+            throw new Error("WATCH PRESENTATION ACTIVE");
+         }
+         this.appendDiagnostic("WATCH PRESENTATION DISABLED");
+         // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
+         this.dataManager = watch.getCanvasWatchDataManager();
+         this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
+         var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
+         if(provider == null)
+         {
+            throw new Error("CustomAlertsData provider unavailable");
+         }
+         this.appendDiagnostic("PROVIDER " + (provider.dataReady ? "READY" : "WAITING FOR CLIENT"));
+         // Get first, then Subscribe: vanilla replays an existing ready provider synchronously.
+         // Record ownership before that callback so failure cleanup cannot leave an orphan listener.
+         this.subscribed = true;
+         this.dataManager.Subscribe(PROVIDER,this.callback);
+         if(this.disposed || !this.subscribed || this.initializationState != HOST_STATE_INITIALIZING)
+         {
+            throw new Error("load bridge subscription ownership changed");
+         }
+         if(this.startupReplayRejected)
+         {
+            throw new Error("startup replay exceeded the host queue limit");
+         }
+         this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
       }
 
       private function onCustomAlertsData(param1:Object) : void
@@ -274,7 +335,7 @@ package
          var uiLoadPrefixMatch:int = 0;
          var canvasEventPrefixMatch:int = 0;
          var envelopePrefixMatch:int = 0;
-         if(this.disposed)
+         if(this.disposed || !this.subscribed)
          {
             return;
          }
@@ -316,7 +377,7 @@ package
                if(uiLoadPrefixMatch > 0)
                {
                   this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
-                  this.receiveEnvelope(text);
+                  this.queueOrReceiveEnvelope(text);
                }
                else
                {
@@ -324,7 +385,7 @@ package
                   if(canvasEventPrefixMatch > 0)
                   {
                      this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
-                     this.receiveEnvelope(text);
+                     this.queueOrReceiveEnvelope(text);
                   }
                   else
                   {
@@ -344,6 +405,46 @@ package
          catch(payloadError:*)
          {
             this.receiveNote("error","PROVIDER PAYLOAD REJECTED | " + this.sanitizeText(payloadError,100));
+         }
+      }
+
+      private function queueOrReceiveEnvelope(param1:String) : void
+      {
+         if(this.disposed || !this.subscribed)
+         {
+            return;
+         }
+         if(this.initializationState == HOST_STATE_INITIALIZING)
+         {
+            if(param1.length > MAX_UI_LOAD_CHARACTERS && param1.length > MAX_CANVAS_EVENT_CHARACTERS)
+            {
+               this.receiveEnvelope(param1);
+               return;
+            }
+            if(this.startupEnvelopes.length >= MAX_STARTUP_ENVELOPES)
+            {
+               this.startupReplayRejected = true;
+               return;
+            }
+            // Strings are immutable; never retain the mutable provider event or alerts collection.
+            this.startupEnvelopes.push(String(param1));
+            return;
+         }
+         if(this.initializationState == HOST_STATE_INITIALIZED)
+         {
+            this.receiveEnvelope(param1);
+         }
+      }
+
+      private function flushStartupEnvelopes() : void
+      {
+         var envelopes:Array = this.startupEnvelopes;
+         this.startupEnvelopes = [];
+         var index:int = 0;
+         while(index < envelopes.length && !this.disposed && this.initializationState == HOST_STATE_INITIALIZED)
+         {
+            this.receiveEnvelope(String(envelopes[index]));
+            index++;
          }
       }
 
@@ -981,7 +1082,7 @@ package
 
       private function isConsumerCurrent(param1:String, param2:Object, param3:int) : Boolean
       {
-         return !this.disposed && this.loaders[param1] === param2 && int(this.loaderGenerations[param1]) == param3;
+         return !this.disposed && (this.hostKind != "player" || this.subscribed) && this.loaders[param1] === param2 && int(this.loaderGenerations[param1]) == param3;
       }
 
       private function reconcile(param1:Object, param2:Boolean) : void
@@ -1321,7 +1422,19 @@ package
 
       private function resolveHostKind() : String
       {
-         return this.ownerLabel.toLowerCase().indexOf("spaceship") >= 0 ? "SHIP HUD" : "PLAYER HUD";
+         return this.hostKind == "ship" ? "SHIP HUD" : "PLAYER HUD";
+      }
+
+      private function validateHostContext(param1:DisplayObjectContainer, param2:Object) : Object
+      {
+         if(param1 == null || param2 == null || typeof param2 != "object" || typeof param2.protocol != "string" || param2.protocol != HOST_PROTOCOL || typeof param2.hostKind != "string" || (param2.hostKind != "player" && param2.hostKind != "ship") || typeof param2.displayMode != "string" || (param2.displayMode != "normal" && param2.displayMode != "large"))
+         {
+            throw new Error("unsupported host context");
+         }
+         return {
+            "hostKind":String(param2.hostKind),
+            "displayMode":String(param2.displayMode)
+         };
       }
 
       private function resolveOwnerUrl(param1:DisplayObjectContainer) : String

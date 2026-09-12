@@ -113,11 +113,69 @@ $configuredGallery = @(Get-ModuleVariants -VariantKeys 'COMPONENTGALLERY')[0]
 if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string]$configuredCanvas.Archives[0].FileName -cne 'Venworks-Canvas - Main.ba2') {
   throw 'Canvas ESM/archive output identities changed.'
 }
+if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
+    [string]$configuredExample.Archives[0].ScaleformOwnership -cne 'Consumer' -or
+    [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
+  throw 'Configured Canvas host and consumer archive ownership classifications changed.'
+}
 if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 2 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
   throw 'Each Canvas variant must own one Papyrus-bearing archive.'
+}
+$configuredConsumerMappings = @(
+  [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example'; Source = 'movies/CanvasExample.swf' }
+  [pscustomobject]@{ Variant = $configuredGallery; Namespace = 'venworks.canvas.component-gallery'; Source = 'movies/CanvasComponentGallery.swf' }
+)
+foreach ($mapping in $configuredConsumerMappings) {
+  Assert-BuildScaleformArchiveOwnership -Variant $mapping.Variant
+  $assets = @($mapping.Variant.Archives[0].Assets)
+  Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
+  Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
+  Assert-TestNames -Actual @($assets.Target) -Expected @(
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/normal.swf"
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/large.swf"
+  ) -Description "$($mapping.Variant.VariantKey) normal/large consumer targets"
+}
+$unknownOwnershipArchive = @{} + $configuredExample.Archives[0]
+$unknownOwnershipArchive.ScaleformOwnership = 'Addon'
+$unknownOwnershipVariant = [pscustomobject]@{ VariantKey = 'UNKNOWN-OWNERSHIP'; Archives = @($unknownOwnershipArchive) }
+Assert-TestRejected -Description 'Unknown Scaleform archive ownership classification' -MessagePattern 'unsupported ScaleformOwnership' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $unknownOwnershipVariant
+}
+$unclassifiedConsumerArchive = @{} + $configuredExample.Archives[0]
+$unclassifiedConsumerArchive.Assets = @($configuredExample.Archives[0].Assets | ForEach-Object {
+  $asset = @{} + $_
+  [void]$asset.Remove('ConsumerNamespace')
+  [void]$asset.Remove('DisplayMode')
+  $asset
+})
+$unclassifiedConsumerVariant = [pscustomobject]@{ VariantKey = 'UNCLASSIFIED-CONSUMER'; Archives = @($unclassifiedConsumerArchive) }
+Assert-TestRejected -Description 'Consumer archive with removed asset ownership metadata' -MessagePattern 'must classify every Scaleform asset' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $unclassifiedConsumerVariant
+}
+$hostTargetConsumerArchive = @{} + $configuredExample.Archives[0]
+$hostTargetConsumerArchive.Assets = @($configuredExample.Archives[0].Assets) + @(
+  @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+)
+$hostTargetConsumerVariant = [pscustomobject]@{ VariantKey = 'HOST-TARGET-CONSUMER'; Archives = @($hostTargetConsumerArchive) }
+Assert-TestRejected -Description 'Canvas host target in consumer archive' -MessagePattern 'must classify every Scaleform asset' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $hostTargetConsumerVariant
+}
+$mismatchedConsumerSourceArchive = @{} + $configuredExample.Archives[0]
+$mismatchedConsumerSourceArchive.Assets = @($configuredExample.Archives[0].Assets | ForEach-Object { @{} + $_ })
+$mismatchedConsumerSourceArchive.Assets[1].Source = 'movies/OtherConsumer.swf'
+$mismatchedConsumerSourceVariant = [pscustomobject]@{ VariantKey = 'MISMATCHED-CONSUMER'; Archives = @($mismatchedConsumerSourceArchive) }
+Assert-TestRejected -Description 'Mismatched normal/large consumer sources' -MessagePattern 'must use the same Scaleform Source' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $mismatchedConsumerSourceVariant
+}
+$wrongConsumerTargetArchive = @{} + $configuredExample.Archives[0]
+$wrongConsumerTargetArchive.Assets = @($configuredExample.Archives[0].Assets | ForEach-Object { @{} + $_ })
+$wrongConsumerTargetArchive.Assets[1].Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/compact.swf'
+$wrongConsumerTargetVariant = [pscustomobject]@{ VariantKey = 'WRONG-CONSUMER-TARGET'; Archives = @($wrongConsumerTargetArchive) }
+Assert-TestRejected -Description 'Wrong configured consumer display target' -MessagePattern 'must be.*large\.swf' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $wrongConsumerTargetVariant
 }
 
 $wrapperTokens = $null
@@ -171,6 +229,7 @@ try {
   Write-TestPex -Path (Join-Path $scriptsDirectory 'Venworks/Canvas/Deleted.pex')
   Write-TestScaleform -Path (Join-Path $scaleformDirectory 'movies/Consumer.swf')
   [IO.File]::WriteAllText((Join-Path $repositoryAssets 'readme.txt'), 'repository asset')
+  Write-TestScaleform -Path (Join-Path $repositoryAssets 'host.swf')
   Write-TestEsm -Path (Join-Path $stagingTarget 'ExplicitAnchor.esm')
   New-Item -ItemType Directory -Force -Path (Join-Path $stagingTarget 'Scripts'), (Join-Path $stagingTarget 'Textures') | Out-Null
   [IO.File]::WriteAllBytes((Join-Path $stagingTarget 'Scripts/Foreign.pex'), [byte[]]::new(0))
@@ -178,6 +237,43 @@ try {
   [IO.File]::WriteAllText((Join-Path $stagingTarget 'meta.ini'), 'metadata')
   [IO.File]::WriteAllText((Join-Path $stagingTarget 'loose.txt'), 'loose payload')
   [IO.File]::WriteAllText((Join-Path $stagingTarget 'DifferentArchiveBase - Main.ba2'), 'old invalid archive')
+
+  $consumerAssets = @(
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'normal' }
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'large' }
+    @{ Root = 'Repository'; Source = 'assets/readme.txt'; Target = 'Docs/readme.txt' }
+  )
+  $consumerArchive = @{
+    FileName = 'Consumer.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $false
+    ScaleformOwnership = 'Consumer'; Assets = $consumerAssets
+  }
+  $consumerVariant = [pscustomobject]@{ VariantKey = 'CONSUMER'; StagingFolderPath = $stagingTarget; Archives = @($consumerArchive) }
+  $consumerPlans = @(Get-BuildPackageArchivePlans -Variants @($consumerVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScaleformDirectory $scaleformDirectory)
+  Assert-TestNames -Actual @($consumerPlans[0].Payloads.Target) -Expected @(
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Docs/readme.txt'
+  ) -Description 'Consumer archive movie ownership with legitimate nonmovie asset'
+
+  $repositoryHostArchive = @{} + $consumerArchive
+  $repositoryHostArchive.Assets = @($consumerAssets) + @(
+    @{ Root = 'Repository'; Source = 'assets/host.swf'; Target = 'Interface/venworkscui.swf' }
+  )
+  $repositoryHostVariant = [pscustomobject]@{ VariantKey = 'REPOSITORY-HOST'; StagingFolderPath = $stagingTarget; Archives = @($repositoryHostArchive) }
+  Assert-TestRejected -Description 'Repository asset targeting a Canvas host movie' -MessagePattern "undeclared Scaleform movie target 'Interface/venworkscui\.swf'" -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($repositoryHostVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScaleformDirectory $scaleformDirectory)
+  }
+
+  $consumerStaging = Join-Path $fixtureRoot 'consumer-staging'
+  Write-TestScaleform -Path (Join-Path $consumerStaging 'Interface/venworkscui.swf')
+  $stagingHostArchive = @{} + $consumerArchive
+  $stagingHostArchive.Assets = @($consumerAssets) + @(
+    @{ Root = 'Staging'; Source = '.'; Target = '' }
+  )
+  $stagingHostVariant = [pscustomobject]@{ VariantKey = 'STAGING-HOST'; StagingFolderPath = $consumerStaging; Archives = @($stagingHostArchive) }
+  Assert-TestRejected -Description 'Staging directory expanding to a Canvas host movie' -MessagePattern "undeclared Scaleform movie target 'Interface/venworkscui\.swf'" -Action {
+    [void](Get-BuildPackageArchivePlans -Variants @($stagingHostVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScaleformDirectory $scaleformDirectory)
+  }
 
   $mainArchive = @{
     FileName = 'DifferentArchiveBase - Main.ba2'; Format = 'General'; Compression = 'None'; MaxSizeMB = 2048; IncludePapyrus = $true

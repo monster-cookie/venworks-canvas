@@ -21,11 +21,13 @@
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
     <token>PlayerData</token>
-    <token>public function initialize</token>
+    <token>public function initialize(param1:DisplayObjectContainer, param2:Object) : Boolean</token>
     <token>public function reapplyVanillaPlacements</token>
     <token>public function updateVanillaHudModeVisibility</token>
     <token>public function dispose</token>
-    <token>spaceship</token>
+    <token>VWCANVAS_HOST/1</token>
+    <token>HOST_STATE_INITIALIZED</token>
+    <token>MAX_STARTUP_ENVELOPES</token>
     <token>IOErrorEvent.IO_ERROR</token>
     <token>SecurityErrorEvent.SECURITY_ERROR</token>
     <token>SNAPSHOT REJECTED</token>
