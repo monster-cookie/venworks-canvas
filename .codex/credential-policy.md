@@ -1,4 +1,4 @@
-# Venworks Canvas service-account credential policy
+# Venworks Canvas Service-Account Credential Policy
 
 Policy-Version: 1
 

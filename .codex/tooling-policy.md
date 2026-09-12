@@ -1,4 +1,4 @@
-# Venworks Canvas tooling policy
+# Venworks Canvas Tooling Policy
 
 Policy-Version: 1
 
