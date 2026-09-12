@@ -1035,7 +1035,7 @@ package
                throw new Error(param3 ? "invalid UI channel" : "invalid event topic");
             }
             value = source[index];
-            if(seen.hasOwnProperty("$" + value) || (param3 && !this.isAllowedUiChannel(value)) || (!param3 && !this.isEventTopicValid(value)))
+            if(seen.hasOwnProperty("$" + value) || (!param3 && !this.isEventTopicValid(value)))
             {
                throw new Error(param3 ? "invalid or duplicate UI channel" : "invalid or duplicate event topic");
             }
@@ -1044,11 +1044,6 @@ package
             index++;
          }
          return result;
-      }
-
-      private function isAllowedUiChannel(param1:String) : Boolean
-      {
-         return param1 == "LocalEnvironmentData" || param1 == "LocalEnvData_Frequent" || param1 == "PlayerData" || param1 == "PlayerFrequentData" || param1 == "PlayerInventoryData" || param1 == "WeaponData" || param1 == "HudJetpackData" || param1 == "HUDStarbornPowersData" || param1 == "FavoritesData" || param1 == "ControlMapData" || param1 == "EnvironmentEffectsData" || param1 == "PersonalEffectsData" || param1 == "StarmapSystemBodyInfoProvider" || param1 == "HudCompassData" || param1 == "HudCrosshairData" || param1 == "HUDStealthData" || param1 == "HUDVehicleData" || param1 == "HUDOpacityData";
       }
 
       private function isEventTopicValid(param1:String) : Boolean
