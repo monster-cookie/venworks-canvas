@@ -4,6 +4,12 @@ package
    {
       private static const MAX_CONSUMERS:int = 32;
 
+      private static const MAX_UI_CHANNELS:int = 18;
+
+      private static const MAX_EVENT_TOPICS:int = 16;
+
+      private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
+
       private var dataManager:Object;
 
       private var currentConsumer:Function;
@@ -19,6 +25,8 @@ package
       private var channelCallbacks:Object = {};
 
       private var channelSubscribed:Object = {};
+
+      private var channelCleanupCallbacks:Object = {};
 
       private var channelSnapshots:Object = {};
 
@@ -37,29 +45,38 @@ package
 
       public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array) : void
       {
-         if(this.disposed || this.memberships[param1] != null || this.membershipCount >= MAX_CONSUMERS)
+         if(this.disposed || this.dataManager == null || this.memberships[param1] != null || this.membershipCount >= MAX_CONSUMERS)
          {
             throw new Error("consumer subscription membership unavailable");
+         }
+         var channels:Array = this.preflightList(param5,MAX_UI_CHANNELS,true);
+         var topics:Array = this.preflightList(param6,MAX_EVENT_TOPICS,false);
+         var index:int = 0;
+         var name:String = null;
+         while(index < channels.length)
+         {
+            name = String(channels[index]);
+            this.requireCleanupResolved(name);
+            index++;
          }
          var membership:Object = {
             "consumerId":param1,
             "bridge":param2,
             "loader":param3,
             "generation":param4,
-            "channels":param5.concat(),
-            "topics":param6.concat(),
+            "channels":channels,
+            "topics":topics,
             "ready":false
          };
          this.memberships[param1] = membership;
          this.membershipCount++;
          try
          {
-            var index:int = 0;
-            var name:String = null;
             var recipients:Array = null;
-            while(index < param5.length)
+            index = 0;
+            while(index < channels.length)
             {
-               name = String(param5[index]);
+               name = String(channels[index]);
                recipients = this.channelMembers[name] as Array;
                if(recipients == null)
                {
@@ -78,9 +95,9 @@ package
                index++;
             }
             index = 0;
-            while(index < param6.length)
+            while(index < topics.length)
             {
-               name = String(param6[index]);
+               name = String(topics[index]);
                recipients = this.topicMembers[name] as Array;
                if(recipients == null)
                {
@@ -218,11 +235,25 @@ package
             this.removeConsumer(String(consumerIds[index]));
             index++;
          }
+         var cleanupChannels:Array = [];
+         var cleanupChannel:String = null;
+         for(cleanupChannel in this.channelCleanupCallbacks)
+         {
+            cleanupChannels.push(cleanupChannel);
+         }
+         index = 0;
+         while(index < cleanupChannels.length)
+         {
+            cleanupChannel = String(cleanupChannels[index]);
+            this.tryCleanupCallback(cleanupChannel,this.channelCleanupCallbacks[cleanupChannel] as Function,"UI DATA DISPOSE CLEANUP ERROR | ");
+            index++;
+         }
          this.memberships = {};
          this.channelMembers = {};
          this.topicMembers = {};
          this.channelCallbacks = {};
          this.channelSubscribed = {};
+         this.channelCleanupCallbacks = {};
          this.channelSnapshots = {};
          this.channelHasSnapshot = {};
          this.membershipCount = 0;
@@ -258,14 +289,7 @@ package
                delete this.channelSubscribed[param1];
                delete this.channelCallbacks[param1];
             }
-            try
-            {
-               this.dataManager.Unsubscribe(param1,callback);
-            }
-            catch(cleanupError:*)
-            {
-               this.report("UI DATA CLEANUP ERROR | " + param1);
-            }
+            this.tryCleanupCallback(param1,callback,"UI DATA CLEANUP ERROR | ");
             throw subscriptionError;
          }
          if(this.disposed || this.channelSubscribed[param1] !== true || this.channelCallbacks[param1] !== callback)
@@ -285,15 +309,59 @@ package
          delete this.channelHasSnapshot[param1];
          if(subscribed && callback != null && this.dataManager != null)
          {
-            try
-            {
-               this.dataManager.Unsubscribe(param1,callback);
-            }
-            catch(unsubscribeError:*)
-            {
-               this.report("UI DATA UNSUBSCRIBE ERROR | " + param1);
-            }
+            this.tryCleanupCallback(param1,callback,"UI DATA UNSUBSCRIBE ERROR | ");
          }
+      }
+
+      private function requireCleanupResolved(param1:String) : void
+      {
+         var callback:Function = this.channelCleanupCallbacks[param1] as Function;
+         if(callback == null)
+         {
+            delete this.channelCleanupCallbacks[param1];
+            return;
+         }
+         if(this.dataManager == null)
+         {
+            throw new Error("UI data cleanup unresolved: " + param1);
+         }
+         try
+         {
+            this.dataManager.Unsubscribe(param1,callback);
+         }
+         catch(cleanupError:*)
+         {
+            this.report("UI DATA CLEANUP RETRY ERROR | " + param1);
+            throw new Error("UI data cleanup unresolved: " + param1);
+         }
+         if(this.disposed || this.channelCleanupCallbacks[param1] !== callback)
+         {
+            throw new Error("UI data cleanup ownership changed: " + param1);
+         }
+         delete this.channelCleanupCallbacks[param1];
+      }
+
+      private function tryCleanupCallback(param1:String, param2:Function, param3:String) : Boolean
+      {
+         if(param2 == null || this.dataManager == null)
+         {
+            return true;
+         }
+         try
+         {
+            this.dataManager.Unsubscribe(param1,param2);
+         }
+         catch(cleanupError:*)
+         {
+            this.channelCleanupCallbacks[param1] = param2;
+            this.report(param3 + param1);
+            return false;
+         }
+         if(this.channelCleanupCallbacks[param1] === param2)
+         {
+            delete this.channelCleanupCallbacks[param1];
+         }
+         return true;
       }
 
       private function makeChannelCallback(param1:String) : Function
@@ -419,6 +487,48 @@ package
             index++;
          }
          return retained;
+      }
+
+      private function preflightList(param1:Array, param2:int, param3:Boolean) : Array
+      {
+         if(param1 == null || param1.length > param2)
+         {
+            throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         var index:int = 0;
+         var value:String = null;
+         while(index < param1.length)
+         {
+            if(typeof param1[index] != "string")
+            {
+               throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
+            }
+            value = String(param1[index]);
+            if(seen.hasOwnProperty("$" + value) || (param3 && !this.isAllowedUiChannel(value)) || (!param3 && !this.isEventTopicValid(value)))
+            {
+               throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
+            }
+            seen["$" + value] = true;
+            result.push(value);
+            index++;
+         }
+         return result;
+      }
+
+      private function isAllowedUiChannel(param1:String) : Boolean
+      {
+         return param1 == "LocalEnvironmentData" || param1 == "LocalEnvData_Frequent" || param1 == "PlayerData" || param1 == "PlayerFrequentData" || param1 == "PlayerInventoryData" || param1 == "WeaponData" || param1 == "HudJetpackData" || param1 == "HUDStarbornPowersData" || param1 == "FavoritesData" || param1 == "ControlMapData" || param1 == "EnvironmentEffectsData" || param1 == "PersonalEffectsData" || param1 == "StarmapSystemBodyInfoProvider" || param1 == "HudCompassData" || param1 == "HudCrosshairData" || param1 == "HUDStealthData" || param1 == "HUDVehicleData" || param1 == "HUDOpacityData";
+      }
+
+      private function isEventTopicValid(param1:String) : Boolean
+      {
+         if(param1 == null || param1.length < 3 || param1.length > MAX_EVENT_TOPIC_CHARACTERS || !/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)+$/.test(param1))
+         {
+            return false;
+         }
+         return param1.substr(0,7).toLowerCase() != "canvas.";
       }
 
       private function report(param1:String) : void
