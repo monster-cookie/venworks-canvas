@@ -1,0 +1,6 @@
+.gallery { color: #ffffff; font-family: $MAIN_Font_Bold; font-size: 18px; display: flex; flex-direction: column; }
+.gallery-header { color: #66ffff; }
+.gallery-example { margin: 8px; padding: 8px; }
+.gallery-source { color: #a0a0a0; font-family: $MAIN_Font_Bold; font-size: 14px; }
+.gallery img { width: 32px; height: 32px; }
+.gallery-footer { color: #a0a0a0; }

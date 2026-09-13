@@ -21,7 +21,7 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
   WorkRoot = Join-Path $repositoryRoot '.work/canvas'
   PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
-  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform/canvas'
+  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform'
 }
 
 $Global:ModuleVariants = @(
@@ -160,7 +160,7 @@ $Global:ModuleVariants = @(
         Name = 'canvas-component-gallery'
         Kind = 'Flex'
         OutputSet = 'movies'
-        ManifestPath = 'Scaleform/canvas/build/component-gallery.build.xml'
+        ManifestPath = 'Scaleform/component-gallery/build/component-gallery.build.xml'
         Outputs = @(
           @{ OutputFile = 'CanvasComponentGallery.swf' }
         )
@@ -177,6 +177,7 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Repository'; Source = 'Scaleform/component-gallery/resources'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' }
         )
       }
     )

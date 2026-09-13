@@ -19,11 +19,27 @@
     <token>handleLifecycle</token>
     <token>venworks.canvas.example.ping</token>
     <token>public function dispose</token>
+    <token>getCanvasHtmlRegistration</token>
+    <token>VWCANVAS_HTML/2</token>
+    <token>index.html</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>Game.ShowCustomWatchAlert</token>
     <token>CustomAlertsData</token>
-    <token>URLLoader</token>
     <token>ExternalInterface</token>
+    <token>CanvasHtmlEngine</token>
+    <token>CanvasHtmlDocumentLoader</token>
+    <token>CanvasHtmlTokenizer</token>
+    <token>CanvasHtmlParser</token>
+    <token>CanvasUtf8Decoder</token>
+    <token>URLLoader</token>
+    <token>URLRequest</token>
+    <token>ByteArray</token>
+    <token>XMLList</token>
+    <token>XMLDocument</token>
+    <token>parseXML</token>
+    <token>htmlText</token>
+    <token>StyleSheet</token>
+    <token>parseCSS</token>
   </forbiddenTokens>
 </movieBuild>

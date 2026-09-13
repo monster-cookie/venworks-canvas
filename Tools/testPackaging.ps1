@@ -118,9 +118,36 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 3) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
+$galleryTextAssets = @($configuredGallery.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
+if ($galleryTextAssets.Count -ne 1 -or
+    [string]$galleryTextAssets[0].Source -cne 'Scaleform/component-gallery/resources' -or
+    [string]$galleryTextAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery') {
+  throw 'Component Gallery text resource mapping changed.'
+}
+$galleryResourceRoot = Join-Path $PSScriptRoot '..\Scaleform\component-gallery\resources'
+$galleryResourceFiles = @(Get-ChildItem -LiteralPath $galleryResourceRoot -Recurse -File | ForEach-Object {
+  [IO.Path]::GetRelativePath($galleryResourceRoot, $_.FullName)
+})
+Assert-TestNames -Actual $galleryResourceFiles -Expected @(
+  'gallery-icon.svg'
+  'gallery.css'
+  'html-tests/cycle/a.html'
+  'html-tests/cycle/b.html'
+  'html-tests/cycle/index.html'
+  'html-tests/depth/index.html'
+  'html-tests/entities/index.html'
+  'html-tests/malformed/index.html'
+  'html-tests/traversal/index.html'
+  'html-tests/unsupported/index.html'
+  'html-tests/valid/details.html'
+  'html-tests/valid/gallery-icon.svg'
+  'html-tests/valid/index.html'
+  'html-tests/valid/panel.css'
+  'index.html'
+) -Description 'Component Gallery packaged text resource inventory'
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
   throw 'Each Canvas variant must own one Papyrus-bearing archive.'
 }
@@ -131,7 +158,9 @@ $configuredConsumerMappings = @(
 )
 foreach ($mapping in $configuredConsumerMappings) {
   Assert-BuildScaleformArchiveOwnership -Variant $mapping.Variant
-  $assets = @($mapping.Variant.Archives[0].Assets | Where-Object { [string]$_.ConsumerNamespace -ceq $mapping.Namespace })
+  $assets = @($mapping.Variant.Archives[0].Assets | Where-Object {
+    $_ -is [Collections.IDictionary] -and $_.Contains('ConsumerNamespace') -and [string]$_['ConsumerNamespace'] -ceq $mapping.Namespace
+  })
   Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
   Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
   Assert-TestNames -Actual @($assets.Target) -Expected @(

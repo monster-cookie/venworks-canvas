@@ -85,6 +85,8 @@ package
 
       private var consumerSubscriptions:CanvasSubscriptions;
 
+      private var htmlEngine:CanvasHtmlEngine;
+
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
@@ -186,6 +188,7 @@ package
             this.hostKind = context.hostKind;
             this.displayMode = context.displayMode;
             this.createDiagnostics();
+            this.htmlEngine = new CanvasHtmlEngine();
             this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
             this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
             this.appendDiagnostic("OWNER " + this.ownerLabel);
@@ -254,6 +257,11 @@ package
          {
             this.unloadConsumer(consumerId);
          }
+         if(this.htmlEngine != null)
+         {
+            this.htmlEngine.dispose();
+         }
+         this.htmlEngine = null;
          if(this.consumerSubscriptions != null)
          {
             this.consumerSubscriptions.dispose();
@@ -990,10 +998,26 @@ package
          {
             throw new Error("consumer is missing fixed v2 callbacks");
          }
+         var htmlRegistration:Object = null;
+         if("getCanvasHtmlRegistration" in param3)
+         {
+            if(typeof param3["getCanvasHtmlRegistration"] != "function")
+            {
+               throw new Error("consumer HTML registration must be a function");
+            }
+            htmlRegistration = param3["getCanvasHtmlRegistration"]();
+            if(htmlRegistration == null)
+            {
+               throw new Error("consumer HTML registration returned null");
+            }
+         }
          return {
             "protocol":String(protocol),
             "contractVersion":HOST_CONTRACT_VERSION,
             "bridge":param3,
+            "assetNamespace":expectedNamespace,
+            "htmlRegistration":htmlRegistration,
+            "htmlResult":null,
             "uiChannels":uiChannels,
             "eventTopics":eventTopics
          };
@@ -1067,9 +1091,14 @@ package
 
       private function createLifecycleContext(param1:Object) : Object
       {
+         var features:Array = ["uiData","canvasEvents","lifecycle"];
+         if(param1.htmlRegistration != null)
+         {
+            features.push("htmlDocuments");
+         }
          return {
             "contractVersion":int(param1.contractVersion),
-            "features":["uiData","canvasEvents","lifecycle"],
+            "features":features,
             "uiChannels":param1.uiChannels.concat(),
             "eventTopics":param1.eventTopics.concat()
          };
@@ -1255,6 +1284,63 @@ package
             }
             return;
          }
+         if(contract.contractVersion == HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
+         {
+            if(this.htmlEngine == null)
+            {
+               this.appendDiagnostic("INVALID " + consumerId + " | HTML ENGINE UNAVAILABLE");
+               this.unloadConsumer(consumerId);
+               return;
+            }
+            this.loaderStates[consumerId] = "html-loading";
+            try
+            {
+               this.htmlEngine.load(consumerId,String(contract.assetNamespace),contract.htmlRegistration,this.onConsumerHtmlComplete);
+            }
+            catch(htmlLoadError:*)
+            {
+               if(this.isConsumerCurrent(consumerId,loader,generation))
+               {
+                  this.appendDiagnostic("INVALID " + consumerId + " | HTML REGISTRATION | " + this.sanitizeText(htmlLoadError,80));
+                  this.unloadConsumer(consumerId);
+               }
+            }
+            return;
+         }
+         this.completeConsumerReady(consumerId,loader,generation,contract);
+      }
+
+      private function onConsumerHtmlComplete(param1:String, param2:CanvasHtmlLoadResult) : void
+      {
+         var loader:Loader = this.loaders[param1] as Loader;
+         var contract:Object = this.consumerContracts[param1];
+         var generation:int = int(this.loaderGenerations[param1]);
+         if(loader == null || contract == null || !this.isConsumerCurrent(param1,loader,generation) || this.loaderStates[param1] != "html-loading")
+         {
+            return;
+         }
+         if(param2 == null || !param2.success)
+         {
+            var detail:String = param2 == null || param2.diagnostic == null ? "missing terminal result" : param2.diagnostic.toString();
+            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,100));
+            this.unloadConsumer(param1);
+            return;
+         }
+         contract.htmlResult = param2;
+         this.appendDiagnostic("HTML PARSED " + param1 + " | RESOURCES " + param2.resources.length);
+         this.completeConsumerReady(param1,loader,generation,contract);
+      }
+
+      private function completeConsumerReady(param1:String, param2:Loader, param3:int, param4:Object) : void
+      {
+         var consumerId:String = param1;
+         var loader:Loader = param2;
+         var generation:int = param3;
+         var contract:Object = param4;
+         if(!this.isConsumerCurrent(consumerId,loader,generation) || this.consumerContracts[consumerId] !== contract)
+         {
+            return;
+         }
          this.loaderStates[consumerId] = "completing";
          if(contract.contractVersion == HOST_CONTRACT_VERSION)
          {
@@ -1314,6 +1400,10 @@ package
          var loader:Loader = this.loaders[param1] as Loader;
          var contract:Object = this.consumerContracts[param1];
          var content:Object = loader == null ? null : loader.content;
+         if(this.htmlEngine != null)
+         {
+            this.htmlEngine.remove(param1);
+         }
          delete this.loaders[param1];
          delete this.paths[param1];
          delete this.versions[param1];

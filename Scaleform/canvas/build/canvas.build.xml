@@ -17,6 +17,15 @@
     <token>readFrame</token>
     <token>parseUnsignedInt</token>
     <token>getCanvasRegistration</token>
+    <token>getCanvasHtmlRegistration</token>
+    <token>VWCANVAS_HTML/2</token>
+    <token>CanvasHtmlEngine</token>
+    <token>CanvasHtmlDocumentLoader</token>
+    <token>CanvasHtmlTokenizer</token>
+    <token>CanvasHtmlParser</token>
+    <token>CanvasUtf8Decoder</token>
+    <token>URLLoaderDataFormat.BINARY</token>
+    <token>HTML PARSED</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -47,9 +56,14 @@
     <token>PROVIDER PAYLOAD REJECTED</token>
   </requiredTokens>
   <forbiddenTokens>
-    <token>URLLoader</token>
     <token>FileReference</token>
     <token>ExternalInterface</token>
     <token>navigateToURL</token>
+    <token>XMLList</token>
+    <token>XMLDocument</token>
+    <token>parseXML</token>
+    <token>htmlText</token>
+    <token>StyleSheet</token>
+    <token>parseCSS</token>
   </forbiddenTokens>
 </movieBuild>
