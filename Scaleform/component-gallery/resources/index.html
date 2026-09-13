@@ -1,1 +1,86 @@
-<!doctype html><html><head><title>Venworks Canvas Component Gallery</title><meta charset="utf-8"></meta><link rel="stylesheet" href="gallery.css"></link></head><body><main id="component-gallery" class="gallery"><header class="gallery-header"><h1>Venworks Canvas Component Gallery</h1><p>Each example shows the declarative source first and the Canvas-rendered control second.</p></header><section id="text-example" class="gallery-example"><h2>Text</h2><p class="gallery-source">&lt;p class=&quot;sample-text&quot;&gt;Rendered Canvas text&lt;/p&gt;</p><p class="sample-text">Rendered Canvas text</p></section><section id="binding-example" class="gallery-example"><h2>Text binding</h2><p class="gallery-source">&lt;p data-vw-text=&quot;sample-text&quot;&gt;&lt;/p&gt;</p><p data-vw-text="sample-text"></p></section><section id="visibility-example" class="gallery-example"><h2>Visibility binding</h2><p class="gallery-source">&lt;div data-vw-visible=&quot;sample-visible&quot;&gt;Visible from Canvas data&lt;/div&gt;</p><div data-vw-visible="sample-visible">Visible from Canvas data</div></section><section id="state-example" class="gallery-example"><h2>Conditional state</h2><p class="gallery-source">&lt;vw-state when=&quot;sample-visible&quot;&gt;&lt;p&gt;Active state&lt;/p&gt;&lt;/vw-state&gt;</p><vw-state when="sample-visible"><p>Active state</p></vw-state></section><section id="repeat-example" class="gallery-example"><h2>Repeat</h2><p class="gallery-source">&lt;vw-repeat items=&quot;sample-items&quot;&gt;&lt;p&gt;Repeated row&lt;/p&gt;&lt;/vw-repeat&gt;</p><vw-repeat items="sample-items"><p>Repeated row</p></vw-repeat></section><section id="meter-example" class="gallery-example"><h2>Meter</h2><p class="gallery-source">&lt;vw-meter value=&quot;sample-meter&quot;&gt;&lt;/vw-meter&gt;</p><vw-meter value="sample-meter"></vw-meter></section><section id="button-example" class="gallery-example"><h2>Button presentation</h2><p class="gallery-source">&lt;button&gt;Non-interactive Canvas button&lt;/button&gt;</p><button>Non-interactive Canvas button</button></section><section id="list-example" class="gallery-example"><h2>Lists</h2><p class="gallery-source">&lt;ul&gt;&lt;li&gt;Alpha&lt;/li&gt;&lt;li&gt;Beta&lt;/li&gt;&lt;/ul&gt;</p><ul><li>Alpha</li><li>Beta</li></ul></section><section id="image-example" class="gallery-example"><h2>Local SVG asset</h2><p class="gallery-source">&lt;img src=&quot;gallery-icon.svg&quot; alt=&quot;Canvas gallery icon&quot;&gt;&lt;/img&gt;</p><img src="gallery-icon.svg" alt="Canvas gallery icon"></img></section><section id="inline-svg-example" class="gallery-example"><h2>Inline SVG path</h2><p class="gallery-source">&lt;svg viewbox=&quot;0 0 16 16&quot;&gt;&lt;path d=&quot;M 1 1 L 15 1 L 15 15 L 1 15 Z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;</p><svg viewbox="0 0 16 16"><path d="M 1 1 L 15 1 L 15 15 L 1 15 Z"></path></svg></section><section id="template-example" class="gallery-example"><h2>Template use</h2><p class="gallery-source">&lt;template id=&quot;sample-template&quot;&gt;&lt;p&gt;Template content&lt;/p&gt;&lt;/template&gt;&lt;vw-use template=&quot;#sample-template&quot;&gt;&lt;/vw-use&gt;</p><template id="sample-template"><p>Template content</p></template><vw-use template="#sample-template"></vw-use></section><footer class="gallery-footer"><p>Loader and parser diagnostics are owned by CanvasHost. Layout and native rendering are completed by VWCANVAS-27.</p></footer></main></body></html>
+<!doctype html>
+<html>
+  <head>
+    <title>Venworks Canvas Component Gallery</title>
+    <meta charset="utf-8"></meta>
+    <link rel="stylesheet" href="gallery.css"></link>
+  </head>
+  <body>
+    <main id="component-gallery" class="gallery">
+      <header class="gallery-header">
+        <h1>Venworks Canvas Component Gallery</h1>
+        <p>Each example shows the declarative source first and the Canvas-rendered control second.</p>
+      </header>
+      <section id="text-example" class="gallery-example">
+        <h2>Text</h2>
+        <p class="gallery-source">&lt;p class=&quot;sample-text&quot;&gt;Rendered Canvas text&lt;/p&gt;</p>
+        <p class="sample-text">Rendered Canvas text</p>
+      </section>
+      <section id="binding-example" class="gallery-example">
+        <h2>Text binding</h2>
+        <p class="gallery-source">&lt;p data-vw-text=&quot;sample-text&quot;&gt;&lt;/p&gt;</p>
+        <p data-vw-text="sample-text"></p>
+      </section>
+      <section id="visibility-example" class="gallery-example">
+        <h2>Visibility binding</h2>
+        <p class="gallery-source">&lt;div data-vw-visible=&quot;sample-visible&quot;&gt;Visible from Canvas data&lt;/div&gt;</p>
+        <div data-vw-visible="sample-visible">Visible from Canvas data</div>
+      </section>
+      <section id="state-example" class="gallery-example">
+        <h2>Conditional state</h2>
+        <p class="gallery-source">&lt;vw-state when=&quot;sample-visible&quot;&gt;&lt;p&gt;Active state&lt;/p&gt;&lt;/vw-state&gt;</p>
+        <vw-state when="sample-visible">
+          <p>Active state</p>
+        </vw-state>
+      </section>
+      <section id="repeat-example" class="gallery-example">
+        <h2>Repeat</h2>
+        <p class="gallery-source">&lt;vw-repeat items=&quot;sample-items&quot;&gt;&lt;p&gt;Repeated row&lt;/p&gt;&lt;/vw-repeat&gt;</p>
+        <vw-repeat items="sample-items">
+          <p>Repeated row</p>
+        </vw-repeat>
+      </section>
+      <section id="meter-example" class="gallery-example">
+        <h2>Meter</h2>
+        <p class="gallery-source">&lt;vw-meter value=&quot;sample-meter&quot;&gt;&lt;/vw-meter&gt;</p>
+        <vw-meter value="sample-meter"></vw-meter>
+      </section>
+      <section id="button-example" class="gallery-example">
+        <h2>Button presentation</h2>
+        <p class="gallery-source">&lt;button&gt;Non-interactive Canvas button&lt;/button&gt;</p>
+        <button>Non-interactive Canvas button</button>
+      </section>
+      <section id="list-example" class="gallery-example">
+        <h2>Lists</h2>
+        <p class="gallery-source">&lt;ul&gt;&lt;li&gt;Alpha&lt;/li&gt;&lt;li&gt;Beta&lt;/li&gt;&lt;/ul&gt;</p>
+        <ul>
+          <li>Alpha</li>
+          <li>Beta</li>
+        </ul>
+      </section>
+      <section id="image-example" class="gallery-example">
+        <h2>Local SVG asset</h2>
+        <p class="gallery-source">&lt;img src=&quot;gallery-icon.svg&quot; alt=&quot;Canvas gallery icon&quot;&gt;&lt;/img&gt;</p>
+        <img src="gallery-icon.svg" alt="Canvas gallery icon"></img>
+      </section>
+      <section id="inline-svg-example" class="gallery-example">
+        <h2>Inline SVG path</h2>
+        <p class="gallery-source">&lt;svg viewbox=&quot;0 0 16 16&quot;&gt;&lt;path d=&quot;M 1 1 L 15 1 L 15 15 L 1 15 Z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;</p>
+        <svg viewbox="0 0 16 16">
+          <path d="M 1 1 L 15 1 L 15 15 L 1 15 Z"></path>
+        </svg>
+      </section>
+      <section id="template-example" class="gallery-example">
+        <h2>Template use</h2>
+        <p class="gallery-source">&lt;template id=&quot;sample-template&quot;&gt;&lt;p&gt;Template content&lt;/p&gt;&lt;/template&gt;&lt;vw-use template=&quot;#sample-template&quot;&gt;&lt;/vw-use&gt;</p>
+        <template id="sample-template">
+          <p>Template content</p>
+        </template>
+        <vw-use template="#sample-template"></vw-use>
+      </section>
+      <footer class="gallery-footer">
+        <p>Loader and parser diagnostics are owned by CanvasHost. Layout and native rendering are completed by VWCANVAS-27.</p>
+      </footer>
+    </main>
+  </body>
+</html>

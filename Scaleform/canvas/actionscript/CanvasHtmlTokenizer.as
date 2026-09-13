@@ -144,12 +144,13 @@ package
                return null;
             }
             this.position++;
+            var attributeValueOffset:int = this.position;
             var attributeValue:String = this.readAttributeValue();
             if(attributeValue == null)
             {
                return null;
             }
-            token.attributes.push(new CanvasHtmlAttribute(attributeName,attributeValue,attributeOffset));
+            token.attributes.push(new CanvasHtmlAttribute(attributeName,attributeValue,attributeOffset,attributeValueOffset));
             hadWhitespace = this.skipWhitespace();
          }
          if(this.position >= this.source.length || this.source.charAt(this.position) != ">")

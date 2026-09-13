@@ -2,6 +2,7 @@ package
 {
    import flash.events.Event;
    import flash.events.IOErrorEvent;
+   import flash.events.ProgressEvent;
    import flash.events.SecurityErrorEvent;
    import flash.net.URLLoader;
    import flash.net.URLLoaderDataFormat;
@@ -18,7 +19,9 @@ package
 
       private var resources:Array = [];
 
-      private var scheduled:Object = {};
+      private var loadedPaths:Object = {};
+
+      private var pendingByPath:Object = {};
 
       private var documentsByPath:Object = {};
 
@@ -27,8 +30,6 @@ package
       private var entryDocument:CanvasHtmlDocument;
 
       private var aggregateBytes:int;
-
-      private var includeCount:int;
 
       private var stylesheetCount:int;
 
@@ -84,8 +85,9 @@ package
             this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-path",param1));
             return;
          }
-         this.scheduled[param1] = true;
-         this.pending.push({"path":param1,"includeDepth":0,"includeChain":[param1]});
+         var entry:Object = {"path":param1};
+         this.pendingByPath[param1] = entry;
+         this.pending.push(entry);
          this.startNext();
       }
 
@@ -121,7 +123,7 @@ package
          }
          if(this.pending.length == 0)
          {
-            var graphFailure:CanvasHtmlDiagnostic = this.validateIncludeGraph();
+            var graphFailure:CanvasHtmlDiagnostic = this.validateComposedDocument();
             if(graphFailure != null)
             {
                this.finishFailure(graphFailure);
@@ -131,9 +133,11 @@ package
             return;
          }
          this.activeItem = this.pending.shift();
+         delete this.pendingByPath[String(this.activeItem.path)];
          var loader:URLLoader = new URLLoader();
          loader.dataFormat = URLLoaderDataFormat.BINARY;
          loader.addEventListener(Event.COMPLETE,this.onLoadComplete,false,0,true);
+         loader.addEventListener(ProgressEvent.PROGRESS,this.onLoadProgress,false,0,true);
          loader.addEventListener(IOErrorEvent.IO_ERROR,this.onLoadError,false,0,true);
          loader.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError,false,0,true);
          this.activeLoader = loader;
@@ -207,6 +211,7 @@ package
             }
             var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),extension.substr(1),decoded.text,bytes.length,document);
             this.resources.push(resource);
+            this.loadedPaths[String(item.path)] = true;
             if(String(item.path) == this.entryPath)
             {
                this.entryDocument = document;
@@ -230,11 +235,11 @@ package
       private function scheduleReferences(param1:Object, param2:Array) : Boolean
       {
          var candidates:Array = [];
+         var candidatePaths:Object = {};
          var reference:CanvasHtmlReference = null;
          var resolved:String = null;
          var expectedExtension:String = null;
-         var depth:int = 0;
-         var chain:Array = null;
+         var candidate:Object = null;
          for each(reference in param2)
          {
             resolved = CanvasHtmlPath.resolve(String(param1.path),reference.path);
@@ -244,106 +249,141 @@ package
                this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-path",String(param1.path),reference.offset));
                return false;
             }
-            depth = int(param1.includeDepth);
-            chain = param1.includeChain as Array;
-            if(reference.kind == CanvasHtmlReference.INCLUDE)
-            {
-               this.includeCount++;
-               depth++;
-               if(chain.indexOf(resolved) >= 0)
-               {
-                  this.finishFailure(new CanvasHtmlDiagnostic("compose","cycle",String(param1.path),reference.offset));
-                  return false;
-               }
-               if(depth > CanvasHtmlLimits.MAX_INCLUDE_DEPTH)
-               {
-                  this.finishFailure(new CanvasHtmlDiagnostic("compose","limit-exceeded",String(param1.path),reference.offset,"include-depth"));
-                  return false;
-               }
-               if(this.includeCount > CanvasHtmlLimits.MAX_INCLUDE_COUNT)
-               {
-                  this.finishFailure(new CanvasHtmlDiagnostic("compose","limit-exceeded",String(param1.path),reference.offset,"include-count"));
-                  return false;
-               }
-               chain = chain.concat([resolved]);
-            }
-            if(this.scheduled.hasOwnProperty(resolved))
+            if(this.loadedPaths.hasOwnProperty(resolved) || candidatePaths.hasOwnProperty(resolved))
             {
                continue;
             }
-            if(this.resources.length + this.pending.length + candidates.length >= CanvasHtmlLimits.MAX_RESOURCES)
+            candidate = this.takePending(resolved);
+            if(candidate == null)
             {
-               this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",resolved,-1,"resource-count"));
-               return false;
-            }
-            if(reference.kind == CanvasHtmlReference.STYLESHEET)
-            {
-               this.stylesheetCount++;
-               if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
+               if(this.resources.length + this.pending.length + candidates.length >= CanvasHtmlLimits.MAX_RESOURCES)
                {
-                  this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",resolved,-1,"stylesheet-count"));
+                  this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",resolved,-1,"resource-count"));
                   return false;
                }
+               candidate = {"path":resolved};
+               if(reference.kind == CanvasHtmlReference.STYLESHEET)
+               {
+                  this.stylesheetCount++;
+                  if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
+                  {
+                     this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",resolved,-1,"stylesheet-count"));
+                     return false;
+                  }
+               }
             }
-            this.scheduled[resolved] = true;
-            candidates.push({"path":resolved,"includeDepth":depth,"includeChain":chain});
+            candidatePaths[resolved] = true;
+            candidates.push(candidate);
          }
          for(var index:int = candidates.length - 1; index >= 0; index--)
          {
+            this.pendingByPath[String(candidates[index].path)] = candidates[index];
             this.pending.unshift(candidates[index]);
          }
          return true;
       }
 
-      private function validateIncludeGraph() : CanvasHtmlDiagnostic
+      private function takePending(param1:String) : Object
       {
-         var frames:Array = [{"path":this.entryPath,"depth":0,"chain":[this.entryPath],"referenceIndex":0}];
-         var expansions:int = 0;
+         if(!this.pendingByPath.hasOwnProperty(param1))
+         {
+            return null;
+         }
+         var candidate:Object = this.pendingByPath[param1];
+         delete this.pendingByPath[param1];
+         for(var index:int = 0; index < this.pending.length; index++)
+         {
+            if(this.pending[index] === candidate)
+            {
+               this.pending.splice(index,1);
+               break;
+            }
+         }
+         return candidate;
+      }
+
+      private function validateComposedDocument() : CanvasHtmlDiagnostic
+      {
+         if(this.entryDocument == null || this.entryDocument.root == null)
+         {
+            return new CanvasHtmlDiagnostic("load","resource-unavailable",this.entryPath);
+         }
+         var frames:Array = [{"node":this.entryDocument.root,"depth":1,"resource":this.entryPath,"includeDepth":0,"chain":[this.entryPath],"causeResource":null,"causeOffset":-1}];
+         var expandedNodes:int = 0;
+         var includeExpansions:int = 0;
          while(frames.length > 0)
          {
-            var frame:Object = frames[frames.length - 1];
-            var document:CanvasHtmlDocument = this.documentsByPath[String(frame.path)] as CanvasHtmlDocument;
-            if(document == null)
+            var frame:Object = frames.pop();
+            var node:CanvasHtmlNode = frame.node as CanvasHtmlNode;
+            if(node == null)
             {
-               return new CanvasHtmlDiagnostic("load","resource-unavailable",String(frame.path));
+               return new CanvasHtmlDiagnostic("lifecycle","adapter-failure",String(frame.resource));
             }
-            var reference:CanvasHtmlReference = null;
-            while(int(frame.referenceIndex) < document.references.length)
+            if(node.type == CanvasHtmlNode.ELEMENT && node.name == "vw-include")
             {
-               reference = document.references[int(frame.referenceIndex)] as CanvasHtmlReference;
-               frame.referenceIndex = int(frame.referenceIndex) + 1;
-               if(reference.kind == CanvasHtmlReference.INCLUDE)
+               var resolved:String = CanvasHtmlPath.resolve(String(frame.resource),node.getAttribute("src"));
+               if(resolved == null)
                {
-                  break;
+                  return new CanvasHtmlDiagnostic("asset","invalid-path",String(frame.resource),node.referenceOffset);
                }
-               reference = null;
-            }
-            if(reference == null)
-            {
-               frames.pop();
+               var chain:Array = frame.chain as Array;
+               if(chain.indexOf(resolved) >= 0)
+               {
+                  return new CanvasHtmlDiagnostic("compose","cycle",String(frame.resource),node.referenceOffset);
+               }
+               var includeDepth:int = int(frame.includeDepth) + 1;
+               if(includeDepth > CanvasHtmlLimits.MAX_INCLUDE_DEPTH)
+               {
+                  return new CanvasHtmlDiagnostic("compose","limit-exceeded",String(frame.resource),node.referenceOffset,"include-depth");
+               }
+               includeExpansions++;
+               if(includeExpansions > CanvasHtmlLimits.MAX_INCLUDE_COUNT)
+               {
+                  return new CanvasHtmlDiagnostic("compose","limit-exceeded",String(frame.resource),node.referenceOffset,"include-count");
+               }
+               var includedDocument:CanvasHtmlDocument = this.documentsByPath[resolved] as CanvasHtmlDocument;
+               var body:CanvasHtmlNode = this.getDocumentBody(includedDocument);
+               if(body == null)
+               {
+                  return new CanvasHtmlDiagnostic("load","resource-unavailable",resolved);
+               }
+               var includedChain:Array = chain.concat([resolved]);
+               for(var includedIndex:int = body.children.length - 1; includedIndex >= 0; includedIndex--)
+               {
+                  frames.push({"node":body.children[includedIndex],"depth":frame.depth,"resource":resolved,"includeDepth":includeDepth,"chain":includedChain,"causeResource":frame.resource,"causeOffset":node.referenceOffset});
+               }
                continue;
             }
-            var resolved:String = CanvasHtmlPath.resolve(String(frame.path),reference.path);
-            if(resolved == null)
+            expandedNodes++;
+            if(expandedNodes > CanvasHtmlLimits.MAX_DOM_NODES)
             {
-               return new CanvasHtmlDiagnostic("asset","invalid-path",String(frame.path),reference.offset);
+               return new CanvasHtmlDiagnostic("compose","limit-exceeded",frame.causeResource == null ? String(frame.resource) : String(frame.causeResource),int(frame.causeOffset),"expanded-dom-nodes");
             }
-            var chain:Array = frame.chain as Array;
-            if(chain.indexOf(resolved) >= 0)
+            if(int(frame.depth) > CanvasHtmlLimits.MAX_DOM_DEPTH)
             {
-               return new CanvasHtmlDiagnostic("compose","cycle",String(frame.path),reference.offset);
+               return new CanvasHtmlDiagnostic("compose","limit-exceeded",frame.causeResource == null ? String(frame.resource) : String(frame.causeResource),int(frame.causeOffset),"dom-depth");
             }
-            var depth:int = int(frame.depth) + 1;
-            if(depth > CanvasHtmlLimits.MAX_INCLUDE_DEPTH)
+            for(var childIndex:int = node.children.length - 1; childIndex >= 0; childIndex--)
             {
-               return new CanvasHtmlDiagnostic("compose","limit-exceeded",String(frame.path),reference.offset,"include-depth");
+               frames.push({"node":node.children[childIndex],"depth":int(frame.depth) + 1,"resource":frame.resource,"includeDepth":frame.includeDepth,"chain":frame.chain,"causeResource":frame.causeResource,"causeOffset":frame.causeOffset});
             }
-            expansions++;
-            if(expansions > CanvasHtmlLimits.MAX_INCLUDE_COUNT)
+         }
+         return null;
+      }
+
+      private function getDocumentBody(param1:CanvasHtmlDocument) : CanvasHtmlNode
+      {
+         if(param1 == null || param1.root == null)
+         {
+            return null;
+         }
+         var child:CanvasHtmlNode = null;
+         for each(child in param1.root.children)
+         {
+            if(child.type == CanvasHtmlNode.ELEMENT && child.name == "body")
             {
-               return new CanvasHtmlDiagnostic("compose","limit-exceeded",String(frame.path),reference.offset,"include-count");
+               return child;
             }
-            frames.push({"path":resolved,"depth":depth,"chain":chain.concat([resolved]),"referenceIndex":0});
          }
          return null;
       }
@@ -351,6 +391,29 @@ package
       private function onLoadError(param1:IOErrorEvent) : void
       {
          this.handleResourceError(param1);
+      }
+
+      private function onLoadProgress(param1:ProgressEvent) : void
+      {
+         if(!this.isCurrentEvent(param1))
+         {
+            return;
+         }
+         var observedBytes:Number = param1.bytesLoaded;
+         if(param1.bytesTotal > observedBytes)
+         {
+            observedBytes = param1.bytesTotal;
+         }
+         var resource:String = String(this.activeItem.path);
+         if(observedBytes > CanvasHtmlLimits.MAX_SOURCE_BYTES)
+         {
+            this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",resource,-1,"source-file-bytes"));
+            return;
+         }
+         if(Number(this.aggregateBytes) + observedBytes > CanvasHtmlLimits.MAX_AGGREGATE_BYTES)
+         {
+            this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",resource,-1,"aggregate-loaded-bytes"));
+         }
       }
 
       private function onLoadSecurityError(param1:SecurityErrorEvent) : void
@@ -432,6 +495,7 @@ package
       private function detachLoader(param1:URLLoader) : void
       {
          param1.removeEventListener(Event.COMPLETE,this.onLoadComplete);
+         param1.removeEventListener(ProgressEvent.PROGRESS,this.onLoadProgress);
          param1.removeEventListener(IOErrorEvent.IO_ERROR,this.onLoadError);
          param1.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError);
       }
@@ -440,12 +504,12 @@ package
       {
          this.pending = [];
          this.resources = [];
-         this.scheduled = {};
+         this.loadedPaths = {};
+         this.pendingByPath = {};
          this.documentsByPath = {};
          this.entryPath = null;
          this.entryDocument = null;
          this.aggregateBytes = 0;
-         this.includeCount = 0;
          this.stylesheetCount = 0;
          this.activeItem = null;
       }

@@ -8,11 +8,14 @@ package
 
       public var offset:int;
 
-      public function CanvasHtmlAttribute(param1:String, param2:String, param3:int)
+      public var valueOffset:int;
+
+      public function CanvasHtmlAttribute(param1:String, param2:String, param3:int, param4:int)
       {
          this.name = param1;
          this.value = param2;
          this.offset = param3;
+         this.valueOffset = param4;
       }
    }
 }

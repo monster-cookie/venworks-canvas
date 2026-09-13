@@ -167,7 +167,7 @@ package
          var parent:CanvasHtmlNode = this.stack[this.stack.length - 1] as CanvasHtmlNode;
          if(!this.allowsText(parent.name))
          {
-            if(this.isOnlyWhitespace(param1.text) && (parent.name == "html" || parent.name == "head"))
+            if(this.isOnlyWhitespace(param1.text))
             {
                return;
             }
@@ -410,6 +410,7 @@ package
 
       private function recordIdentityAndReferences(param1:CanvasHtmlNode) : void
       {
+         var referenceOffset:int = -1;
          var identifier:String = param1.getAttribute("id");
          if(identifier != null)
          {
@@ -422,15 +423,21 @@ package
          }
          if(param1.name == "link")
          {
-            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.STYLESHEET,param1.getAttribute("href"),CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeOffset("href"))));
+            referenceOffset = CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeValueOffset("href"));
+            param1.referenceOffset = referenceOffset;
+            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.STYLESHEET,param1.getAttribute("href"),referenceOffset));
          }
          else if(param1.name == "img")
          {
-            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.IMAGE,param1.getAttribute("src"),CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeOffset("src"))));
+            referenceOffset = CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeValueOffset("src"));
+            param1.referenceOffset = referenceOffset;
+            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.IMAGE,param1.getAttribute("src"),referenceOffset));
          }
          else if(param1.name == "vw-include")
          {
-            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.INCLUDE,param1.getAttribute("src"),CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeOffset("src"))));
+            referenceOffset = CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeValueOffset("src"));
+            param1.referenceOffset = referenceOffset;
+            this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.INCLUDE,param1.getAttribute("src"),referenceOffset));
          }
          else if(param1.name == "style")
          {
