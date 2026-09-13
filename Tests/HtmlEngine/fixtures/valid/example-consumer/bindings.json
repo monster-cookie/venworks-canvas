@@ -1,0 +1,15 @@
+{
+  "schema": "VWCANVAS_HTML_BINDINGS/1",
+  "consumerNamespace": "example-consumer",
+  "entryDocument": "index.html",
+  "bindings": {
+    "display-text": {
+      "type": "string",
+      "default": ""
+    },
+    "panel-visible": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

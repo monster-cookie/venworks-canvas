@@ -91,6 +91,12 @@ Both bundled demonstration panels request `PlayerData` and `venworks.canvas.exam
 
 For a version 2 add-on, install a Canvas host that supports version 2 alongside the updated consumer package. The existing Papyrus registration record and UI-load request stay unchanged; the contract version is separate from the consumer's descriptor revision. This change adds no automatic package or save migration, and current-build save compatibility still needs gameplay validation. See the [consumer contract](docs/consumer-descriptor-contract.md) for declarations and publishing examples, and [consumer compatibility](docs/consumer-compatibility.md) for update and failure behavior.
 
+## HTML Engine contract
+
+The [Canvas HTML Engine 2.0 contract](docs/html-engine-contract.md) defines the exact `VWCANVAS_HTML/2` document, CSS, local-asset, typed-binding, failure, transaction, and resource-limit boundaries. Its version is independent of the consumer descriptor revision, loaded-movie protocol, wire protocol, and negotiated host API. Runtime text resources have one byte-first, strict BOM-free UTF-8, plain-String route into Canvas-owned custom parsers; binding schemas are registered out-of-band and `.json` is not a runtime resource format.
+
+This change establishes the machine-readable contract and conformance corpus, not a production parser or renderer. The corpus contains deterministic future-engine results and at-limit/over-limit recipes for every numeric ceiling; the current integrity check validates those artifacts without parsing HTML, CSS, or SVG. Native rendering, responsiveness, and PC or PS5 acceptance remain unverified.
+
 ## Player HUD transport
 
 The bridge carries explicit UI-load commands and named Canvas events. The UI-load packet remains `VWC_EVT/1|canvas.ui.load|` followed by five decimal-length-prefixed fields: protocol version, normalized consumer UUID, descriptor version, normal movie path, and large movie path. Canvas-owned struct-as-enum selectors choose the supported header and packet type so consumer code cannot supply arbitrary wire identifiers.
@@ -185,9 +191,10 @@ Source layout and local PowerShell tooling checks:
 
 Hosted CI runs this source-only verification and PowerShell lint only; it does not claim native Papyrus, Scaleform, Archive2, Spriggit, game, or platform acceptance.
 
-The five individual tooling checks exercise the actual PowerShell setup, build-routing, patch/publication, and packaging helpers with isolated fixtures. They do not execute or model Papyrus or ActionScript lifecycle behavior:
+The six individual source checks cover the HTML contract corpus plus the actual PowerShell setup, build-routing, patch/publication, and packaging helpers with isolated fixtures. They do not execute an HTML/CSS/SVG engine or model Papyrus or ActionScript lifecycle behavior:
 
 ```powershell
+.\Tools\testHtmlEngineContract.ps1
 .\Tools\testPackaging.ps1
 .\Tools\testBuildVariants.ps1
 .\Tools\testBuildEvidence.ps1
@@ -256,4 +263,5 @@ Canvas console functions print one final result through Venworks Core `ConsoleEc
 - Ship HUD and pilot-seat delivery are not runtime accepted.
 - PS5 work waits for the first player-facing HUD implementation and hardware-friendly test package.
 - Version 2 data subscriptions and named-event delivery still require current-build PC gameplay validation; source checks or compilation alone do not establish runtime acceptance.
+- HTML Engine 2.0 currently has a contract and conformance corpus only; no production parser, renderer, or native PC/PS5 runtime acceptance is claimed.
 - The Example's player-facing UTC/local time panel and the full component catalog remain follow-up implementation work.

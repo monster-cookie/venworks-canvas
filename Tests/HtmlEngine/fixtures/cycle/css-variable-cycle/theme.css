@@ -1,0 +1,1 @@
+.panel { --a:var(--b); --b:var(--a); color:var(--a); }

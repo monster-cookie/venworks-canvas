@@ -1,0 +1,1 @@
+{"schema":"VWCANVAS_HTML_BINDINGS/1","consumerNamespace":"binding-wrong-type","entryDocument":"index.html","bindings":{"ratio":{"type":"number","default":"0.5"}}}

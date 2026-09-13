@@ -1,0 +1,2 @@
+.example-panel { display: flex; flex-direction: column; }
+#example-text { color: #ffffff; font-family: $MAIN_Font_Bold; font-size: 18px; }

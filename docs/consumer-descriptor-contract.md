@@ -1,19 +1,20 @@
 # Canvas consumer descriptor contract
 
-This document defines the developer-facing contract between a Canvas host movie and a loaded consumer movie. It covers the persistent Papyrus registration record, the explicit UI-load packet, the version 1 and version 2 loaded-child handshake, shared Player HUD data subscriptions, and Papyrus-origin named Canvas events.
+This document defines the developer-facing contract between a Canvas host movie and a loaded consumer movie. It covers the persistent Papyrus registration record, the explicit UI-load packet, the version 1 and version 2 loaded-child handshake, shared Player HUD data subscriptions, and Papyrus-origin named Canvas events. The independent [`VWCANVAS_HTML/2` contract](html-engine-contract.md) defines future HTML-engine resources and limits.
 
 The authoritative implementation is [Registry.psc](../Papyrus/Venworks/Canvas/Registry.psc), [Enumerations.psc](../Papyrus/Venworks/Canvas/Enumerations.psc), [CanvasHost.as](../Scaleform/canvas/actionscript/CanvasHost.as), and [CanvasSubscriptions.as](../Scaleform/canvas/actionscript/CanvasSubscriptions.as). The bundled [Example](../Scaleform/canvas/actionscript/CanvasExample.as) and [Component Gallery](../Scaleform/canvas/actionscript/CanvasComponentGallery.as) movies are representative version 2 consumers.
 
 ## Separate version boundaries
 
-Canvas uses four version concepts with different responsibilities.
+Canvas uses five version concepts with different responsibilities.
 
 - The descriptor revision is the positive `version` stored in the native registration record and identifies the consumer's asset or configuration revision. It must match the revision in the UI-load packet and the loaded movie handshake.
 - The consumer protocol is `VWCANVAS_CONSUMER/1` or `VWCANVAS_CONSUMER/2` and describes the fields and callbacks a loaded movie provides.
 - The wire envelope is `VWC_EVT/1|`; its packet type is selected by Canvas-owned enum values such as `canvas.ui.load` and `canvas.event`.
 - The negotiated host API is the `contractVersion` selected from a version 2 consumer's minimum and maximum range. The current host selects API version `2` when the range includes `2`.
+- The HTML document contract is exactly `VWCANVAS_HTML/2` and versions Canvas-owned parser, style, layout, local-asset, out-of-band binding metadata, failure, and resource-limit behavior independently of the loaded-movie handshake.
 
-Do not use the descriptor revision as an API version. Changing a movie asset or its configuration can increment the descriptor revision without changing the consumer protocol or host API.
+Do not use the descriptor revision as an API or HTML contract version. Changing a movie asset or its configuration can increment the descriptor revision without changing the consumer protocol, host API, or HTML contract.
 
 ## Registration and UI loading
 
@@ -277,7 +278,7 @@ These limits describe the current implementation and its bounded in-memory routi
 | Event body length | 400 | Printable ASCII characters, including the body frame contents only. |
 | Complete event packet | 512 | Printable ASCII characters, including the envelope, packet type, and frame syntax. |
 
-The list and packet limits above are native Canvas contract limits, not PC, PS5, Flash, Scaleform, or HTML rendering budgets. HTML Engine numeric ceilings are outside this contract and remain unmeasured by this change.
+The list and packet limits above are native Canvas consumer-contract limits, not PC, PS5, Flash, Scaleform, or HTML rendering budgets. The separate [HTML Engine 2.0 contract](html-engine-contract.md#limits) now defines compatibility and resource-control ceilings with at-limit and over-limit corpus recipes; those values are not measured performance ceilings or native runtime acceptance.
 
 ## Specification and acceptance vectors
 
@@ -289,11 +290,11 @@ The following vectors are specification and review cases for the current contrac
 
 ### Repository tooling checks
 
-The five retained focused PowerShell checks are [testPackaging.ps1](../Tools/testPackaging.ps1), [testBuildVariants.ps1](../Tools/testBuildVariants.ps1), [testBuildEvidence.ps1](../Tools/testBuildEvidence.ps1), [testSetup.ps1](../Tools/testSetup.ps1), and [testScaleformSetup.ps1](../Tools/testScaleformSetup.ps1). They inspect package transactions, selected-build routing, artifact evidence, staging setup, and Scaleform tool setup; they are tooling checks and do not model the Papyrus VM, consumer callbacks, Watch provider delivery, native timers, or gameplay. Run the retained scripts individually when isolating a result. The full `pwsh -NoProfile -File Tools/verifyCanvas.ps1 -SourceOnly` command runs these five checks; it does not establish native build or game-runtime acceptance. Report these results as tooling evidence only.
+The six retained focused PowerShell checks are [testHtmlEngineContract.ps1](../Tools/testHtmlEngineContract.ps1), [testPackaging.ps1](../Tools/testPackaging.ps1), [testBuildVariants.ps1](../Tools/testBuildVariants.ps1), [testBuildEvidence.ps1](../Tools/testBuildEvidence.ps1), [testSetup.ps1](../Tools/testSetup.ps1), and [testScaleformSetup.ps1](../Tools/testScaleformSetup.ps1). The HTML check validates contract and corpus integrity without parsing HTML, CSS, or SVG; the other checks inspect package transactions, selected-build routing, artifact evidence, staging setup, and Scaleform tool setup. They do not model a production HTML engine, the Papyrus VM, consumer callbacks, Watch provider delivery, native timers, or gameplay. Run the retained scripts individually when isolating a result. The full `pwsh -NoProfile -File Tools/verifyCanvas.ps1 -SourceOnly` command runs all six checks; it does not establish native build or game-runtime acceptance. Report these results as source and tooling evidence only.
 
 ### Language compiler, build, and package evidence
 
-The native build and package steps are [compileScripts.ps1](../Tools/compileScripts.ps1), [buildScaleform.ps1](../Tools/buildScaleform.ps1), and [createPackages.ps1](../Tools/createPackages.ps1), with the required variant and tool arguments documented in the repository [build pipeline](../README.md#build-pipeline). Successful Papyrus or ActionScript/Scaleform compilation confirms that the selected compiler accepted the sources and produced the selected artifacts. Successful packaging confirms the selected package transaction and configured outputs. These artifact results are separate from the five retained PowerShell tooling checks and do not establish Papyrus VM execution, ActionScript callback delivery, Watch provider behavior, timer ownership, event delivery, package installation in the game, or rendering.
+The native build and package steps are [compileScripts.ps1](../Tools/compileScripts.ps1), [buildScaleform.ps1](../Tools/buildScaleform.ps1), and [createPackages.ps1](../Tools/createPackages.ps1), with the required variant and tool arguments documented in the repository [build pipeline](../README.md#build-pipeline). Successful Papyrus or ActionScript/Scaleform compilation confirms that the selected compiler accepted the sources and produced the selected artifacts. Successful packaging confirms the selected package transaction and configured outputs. These artifact results are separate from the six retained PowerShell source checks and do not establish HTML Engine execution, Papyrus VM execution, ActionScript callback delivery, Watch provider behavior, timer ownership, event delivery, package installation in the game, or rendering.
 
 ### Player HUD manual acceptance
 
