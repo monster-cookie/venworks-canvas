@@ -53,7 +53,6 @@ foreach ($variant in $allVariants) {
 [void](ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
 
 foreach ($repositoryToolTest in @(
-  'testHtmlEngineContract.ps1',
   'testPackaging.ps1',
   'testBuildVariants.ps1',
   'testBuildEvidence.ps1',
@@ -65,7 +64,7 @@ foreach ($repositoryToolTest in @(
 # The tooling checks intentionally exercise failing native processes; clear their status after every assertion passes.
 $global:LASTEXITCODE = 0
 if ($SourceOnly) {
-  Write-Host -ForegroundColor Green 'Verified Canvas HTML contract plus repository build, setup, and packaging tooling contracts.'
+  Write-Host -ForegroundColor Green 'Verified Canvas repository build, setup, and packaging tooling contracts.'
   return
 }
 

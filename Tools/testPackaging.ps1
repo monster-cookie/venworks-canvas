@@ -134,18 +134,6 @@ $galleryResourceFiles = @(Get-ChildItem -LiteralPath $galleryResourceRoot -Recur
 Assert-TestNames -Actual $galleryResourceFiles -Expected @(
   'gallery-icon.svg'
   'gallery.css'
-  'html-tests/cycle/a.html'
-  'html-tests/cycle/b.html'
-  'html-tests/cycle/index.html'
-  'html-tests/depth/index.html'
-  'html-tests/entities/index.html'
-  'html-tests/malformed/index.html'
-  'html-tests/traversal/index.html'
-  'html-tests/unsupported/index.html'
-  'html-tests/valid/details.html'
-  'html-tests/valid/gallery-icon.svg'
-  'html-tests/valid/index.html'
-  'html-tests/valid/panel.css'
   'index.html'
 ) -Description 'Component Gallery packaged text resource inventory'
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
