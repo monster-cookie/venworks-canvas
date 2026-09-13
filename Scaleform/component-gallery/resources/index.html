@@ -8,78 +8,180 @@
   <body>
     <main id="component-gallery" class="gallery">
       <header class="gallery-header">
-        <h1>Venworks Canvas Component Gallery</h1>
-        <p>Each example shows the declarative source first and the Canvas-rendered control second.</p>
+        <h1>Venworks Canvas HTML and CSS Cheatsheet</h1>
+        <p class="gallery-intro">Each row shows a supported tag, the exact declarative syntax, and the native result Canvas renders from that syntax.</p>
+        <p class="gallery-help">Use the mouse wheel, arrow keys, or page keys to browse the examples.</p>
       </header>
-      <section id="text-example" class="gallery-example">
-        <h2>Text</h2>
-        <p class="gallery-source">&lt;p class=&quot;sample-text&quot;&gt;Rendered Canvas text&lt;/p&gt;</p>
-        <p class="sample-text">Rendered Canvas text</p>
-      </section>
-      <section id="binding-example" class="gallery-example">
-        <h2>Text binding</h2>
-        <p class="gallery-source">&lt;p data-vw-text=&quot;sample-text&quot;&gt;&lt;/p&gt;</p>
-        <p data-vw-text="sample-text"></p>
-      </section>
-      <section id="visibility-example" class="gallery-example">
-        <h2>Visibility binding</h2>
-        <p class="gallery-source">&lt;div data-vw-visible=&quot;sample-visible&quot;&gt;Visible from Canvas data&lt;/div&gt;</p>
-        <div data-vw-visible="sample-visible">Visible from Canvas data</div>
-      </section>
-      <section id="state-example" class="gallery-example">
-        <h2>Conditional state</h2>
-        <p class="gallery-source">&lt;vw-state when=&quot;sample-visible&quot;&gt;&lt;p&gt;Active state&lt;/p&gt;&lt;/vw-state&gt;</p>
-        <vw-state when="sample-visible">
-          <p>Active state</p>
-        </vw-state>
-      </section>
-      <section id="repeat-example" class="gallery-example">
-        <h2>Repeat</h2>
-        <p class="gallery-source">&lt;vw-repeat items=&quot;sample-items&quot;&gt;&lt;p&gt;Repeated row&lt;/p&gt;&lt;/vw-repeat&gt;</p>
-        <vw-repeat items="sample-items">
-          <p>Repeated row</p>
-        </vw-repeat>
-      </section>
-      <section id="meter-example" class="gallery-example">
-        <h2>Meter</h2>
-        <p class="gallery-source">&lt;vw-meter value=&quot;sample-meter&quot;&gt;&lt;/vw-meter&gt;</p>
-        <vw-meter value="sample-meter"></vw-meter>
-      </section>
-      <section id="button-example" class="gallery-example">
-        <h2>Button presentation</h2>
-        <p class="gallery-source">&lt;button&gt;Non-interactive Canvas button&lt;/button&gt;</p>
-        <button>Non-interactive Canvas button</button>
-      </section>
-      <section id="list-example" class="gallery-example">
-        <h2>Lists</h2>
-        <p class="gallery-source">&lt;ul&gt;&lt;li&gt;Alpha&lt;/li&gt;&lt;li&gt;Beta&lt;/li&gt;&lt;/ul&gt;</p>
-        <ul>
-          <li>Alpha</li>
-          <li>Beta</li>
-        </ul>
-      </section>
-      <section id="image-example" class="gallery-example">
-        <h2>Local SVG asset</h2>
-        <p class="gallery-source">&lt;img src=&quot;gallery-icon.svg&quot; alt=&quot;Canvas gallery icon&quot;&gt;&lt;/img&gt;</p>
-        <img src="gallery-icon.svg" alt="Canvas gallery icon"></img>
-      </section>
-      <section id="inline-svg-example" class="gallery-example">
-        <h2>Inline SVG path</h2>
-        <p class="gallery-source">&lt;svg viewbox=&quot;0 0 16 16&quot;&gt;&lt;path d=&quot;M 1 1 L 15 1 L 15 15 L 1 15 Z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;</p>
-        <svg viewbox="0 0 16 16">
-          <path d="M 1 1 L 15 1 L 15 15 L 1 15 Z"></path>
-        </svg>
-      </section>
-      <section id="template-example" class="gallery-example">
-        <h2>Template use</h2>
-        <p class="gallery-source">&lt;template id=&quot;sample-template&quot;&gt;&lt;p&gt;Template content&lt;/p&gt;&lt;/template&gt;&lt;vw-use template=&quot;#sample-template&quot;&gt;&lt;/vw-use&gt;</p>
-        <template id="sample-template">
-          <p>Template content</p>
-        </template>
-        <vw-use template="#sample-template"></vw-use>
-      </section>
+      <div class="gallery-table">
+        <div class="gallery-row gallery-column-header">
+          <div class="gallery-tag"><span>Tag</span></div>
+          <div class="gallery-syntax"><span>Syntax</span></div>
+          <div class="gallery-result"><span>Rendered Result</span></div>
+        </div>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Text and document flow</h2>
+          <div id="heading-one-row" class="gallery-row">
+            <div class="gallery-tag"><span>h1</span></div>
+            <div class="gallery-syntax"><p>&lt;h1 class=&quot;demo-h1&quot;&gt;My First Heading&lt;/h1&gt;</p></div>
+            <div class="gallery-result"><h1 class="demo-h1">My First Heading</h1></div>
+          </div>
+          <div id="heading-two-row" class="gallery-row">
+            <div class="gallery-tag"><span>h2</span></div>
+            <div class="gallery-syntax"><p>&lt;h2 class=&quot;demo-h2&quot;&gt;Section Heading&lt;/h2&gt;</p></div>
+            <div class="gallery-result"><h2 class="demo-h2">Section Heading</h2></div>
+          </div>
+          <div id="heading-three-row" class="gallery-row">
+            <div class="gallery-tag"><span>h3</span></div>
+            <div class="gallery-syntax"><p>&lt;h3 class=&quot;demo-h3&quot;&gt;Topic Heading&lt;/h3&gt;</p></div>
+            <div class="gallery-result"><h3 class="demo-h3">Topic Heading</h3></div>
+          </div>
+          <div id="heading-four-row" class="gallery-row">
+            <div class="gallery-tag"><span>h4</span></div>
+            <div class="gallery-syntax"><p>&lt;h4 class=&quot;demo-h4&quot;&gt;Detail Heading&lt;/h4&gt;</p></div>
+            <div class="gallery-result"><h4 class="demo-h4">Detail Heading</h4></div>
+          </div>
+          <div id="heading-five-row" class="gallery-row">
+            <div class="gallery-tag"><span>h5</span></div>
+            <div class="gallery-syntax"><p>&lt;h5 class=&quot;demo-h5&quot;&gt;Minor Heading&lt;/h5&gt;</p></div>
+            <div class="gallery-result"><h5 class="demo-h5">Minor Heading</h5></div>
+          </div>
+          <div id="heading-six-row" class="gallery-row">
+            <div class="gallery-tag"><span>h6</span></div>
+            <div class="gallery-syntax"><p>&lt;h6 class=&quot;demo-h6&quot;&gt;Small Heading&lt;/h6&gt;</p></div>
+            <div class="gallery-result"><h6 class="demo-h6">Small Heading</h6></div>
+          </div>
+          <div id="paragraph-row" class="gallery-row">
+            <div class="gallery-tag"><span>p</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;Canvas renders paragraph text.&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>Canvas renders paragraph text.</p></div>
+          </div>
+          <div id="span-row" class="gallery-row">
+            <div class="gallery-tag"><span>span</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;Text with a &lt;span class=&quot;demo-accent&quot;&gt;highlight&lt;/span&gt;.&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>Text with a <span class="demo-accent">highlight</span>.</p></div>
+          </div>
+          <div id="line-break-row" class="gallery-row">
+            <div class="gallery-tag"><span>br</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;First line&lt;br&gt;&lt;/br&gt;Second line&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>First line<br></br>Second line</p></div>
+          </div>
+          <div id="rule-row" class="gallery-row">
+            <div class="gallery-tag"><span>hr</span></div>
+            <div class="gallery-syntax"><p>&lt;hr&gt;&lt;/hr&gt;</p></div>
+            <div class="gallery-result"><hr></hr></div>
+          </div>
+          <div id="container-row" class="gallery-row">
+            <div class="gallery-tag"><span>div</span></div>
+            <div class="gallery-syntax"><p>&lt;div class=&quot;demo-panel&quot;&gt;&lt;p&gt;Grouped content&lt;/p&gt;&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div class="demo-panel"><p>Grouped content</p></div></div>
+          </div>
+          <div id="unordered-list-row" class="gallery-row">
+            <div class="gallery-tag"><span>ul / li</span></div>
+            <div class="gallery-syntax"><p>&lt;ul&gt;&lt;li&gt;Alpha&lt;/li&gt;&lt;li&gt;Beta&lt;/li&gt;&lt;/ul&gt;</p></div>
+            <div class="gallery-result"><ul><li>Alpha</li><li>Beta</li></ul></div>
+          </div>
+          <div id="ordered-list-row" class="gallery-row">
+            <div class="gallery-tag"><span>ol / li</span></div>
+            <div class="gallery-syntax"><p>&lt;ol&gt;&lt;li&gt;First&lt;/li&gt;&lt;li&gt;Second&lt;/li&gt;&lt;/ol&gt;</p></div>
+            <div class="gallery-result"><ol><li>First</li><li>Second</li></ol></div>
+          </div>
+          <div id="button-row" class="gallery-row">
+            <div class="gallery-tag"><span>button</span></div>
+            <div class="gallery-syntax"><p>&lt;button class=&quot;demo-button&quot;&gt;Continue&lt;/button&gt;</p></div>
+            <div class="gallery-result"><button class="demo-button">Continue</button></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Assets and reusable components</h2>
+          <div id="image-row" class="gallery-row">
+            <div class="gallery-tag"><span>img (png)</span></div>
+            <div class="gallery-syntax"><p>&lt;img class=&quot;demo-image&quot; src=&quot;gallery-logo.png&quot; alt=&quot;Venworks logo&quot;&gt;&lt;/img&gt;</p></div>
+            <div class="gallery-result"><img class="demo-image" src="gallery-logo.png" alt="Venworks logo"></img></div>
+          </div>
+          <div id="svg-image-row" class="gallery-row">
+            <div class="gallery-tag"><span>img (svg)</span></div>
+            <div class="gallery-syntax"><p>&lt;img class=&quot;demo-image&quot; src=&quot;gallery-icon.svg&quot; alt=&quot;Canvas gallery icon&quot;&gt;&lt;/img&gt;</p></div>
+            <div class="gallery-result"><img class="demo-image" src="gallery-icon.svg" alt="Canvas gallery icon"></img></div>
+          </div>
+          <div id="svg-row" class="gallery-row">
+            <div class="gallery-tag"><span>svg / path</span></div>
+            <div class="gallery-syntax"><p>&lt;svg class=&quot;demo-svg&quot; viewbox=&quot;0 0 16 16&quot;&gt;&lt;path d=&quot;M 1 1 L 15 1 L 15 15 L 1 15 Z&quot; fill=&quot;#66ffff&quot;&gt;&lt;/path&gt;&lt;/svg&gt;</p></div>
+            <div class="gallery-result"><svg class="demo-svg" viewbox="0 0 16 16"><path d="M 1 1 L 15 1 L 15 15 L 1 15 Z" fill="#66ffff"></path></svg></div>
+          </div>
+          <div id="template-row" class="gallery-row">
+            <div class="gallery-tag"><span>template / vw-use</span></div>
+            <div class="gallery-syntax"><p>&lt;template id=&quot;sampletemplate&quot;&gt;&lt;p&gt;Reusable content&lt;/p&gt;&lt;/template&gt;&lt;vw-use template=&quot;#sampletemplate&quot;&gt;&lt;/vw-use&gt;</p></div>
+            <div class="gallery-result"><template id="sampletemplate"><p>Reusable content</p></template><vw-use template="#sampletemplate"></vw-use></div>
+          </div>
+          <div id="include-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-include</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-include src=&quot;include-example.html&quot;&gt;&lt;/vw-include&gt;</p></div>
+            <div class="gallery-result"><vw-include src="include-example.html"></vw-include></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Position and stacking</h2>
+          <div id="position-row" class="gallery-row">
+            <div class="gallery-tag"><span>position / z-index</span></div>
+            <div class="gallery-syntax">
+              <p>&lt;div class=&quot;demo-position-stage&quot;&gt;&lt;div class=&quot;demo-position-back&quot;&gt;Back layer&lt;/div&gt;&lt;div class=&quot;demo-position-front&quot;&gt;Front layer&lt;/div&gt;&lt;/div&gt;</p>
+              <p>.demo-position-stage { position: relative; width: 420px; height: 110px; }</p>
+              <p>.demo-position-back { position: absolute; left: 20px; top: 20px; z-index: 1; }</p>
+              <p>.demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; }</p>
+            </div>
+            <div class="gallery-result"><div class="demo-position-stage"><div class="demo-position-back">Back layer</div><div class="demo-position-front">Front layer</div></div></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Canvas data layer</h2>
+          <div id="text-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-text</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampletext&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampletext"></p></div>
+          </div>
+          <div id="format-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-format</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleformat&quot; data-vw-format=&quot;Score: {value}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampleformat" data-vw-format="Score: {value}"></p></div>
+          </div>
+          <div id="data-update-row" class="gallery-row">
+            <div class="gallery-tag"><span>PlayerData</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleupdates&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampleupdates"></p></div>
+          </div>
+          <div id="visibility-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-visible</span></div>
+            <div class="gallery-syntax"><p>&lt;div data-vw-visible=&quot;samplevisible&quot;&gt;Visible when true&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div data-vw-visible="samplevisible">Visible when true</div></div>
+          </div>
+          <div id="state-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-state</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-state when=&quot;samplevisible&quot;&gt;&lt;p&gt;Active state&lt;/p&gt;&lt;/vw-state&gt;</p></div>
+            <div class="gallery-result"><vw-state when="samplevisible"><p>Active state</p></vw-state></div>
+          </div>
+          <div id="event-state-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-state event</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-state name=&quot;pingstate&quot; event=&quot;venworks.canvas.example.ping&quot;&gt;&lt;p&gt;Ping event activated this state&lt;/p&gt;&lt;/vw-state&gt;</p></div>
+            <div class="gallery-result"><vw-state name="pingstate" event="venworks.canvas.example.ping"><p>Ping event activated this state</p></vw-state></div>
+          </div>
+          <div id="repeat-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-repeat</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-repeat items=&quot;sampleitems&quot;&gt;&lt;p&gt;Repeated item&lt;/p&gt;&lt;/vw-repeat&gt;</p></div>
+            <div class="gallery-result"><vw-repeat items="sampleitems"><p>Repeated item</p></vw-repeat></div>
+          </div>
+          <div id="meter-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-meter</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-meter class=&quot;demo-meter&quot; value=&quot;samplemeter&quot;&gt;&lt;/vw-meter&gt;</p></div>
+            <div class="gallery-result"><vw-meter class="demo-meter" value="samplemeter"></vw-meter></div>
+          </div>
+        </section>
+      </div>
       <footer class="gallery-footer">
-        <p>Loader and parser diagnostics are owned by CanvasHost. Layout and native rendering are completed by VWCANVAS-27.</p>
+        <p>The syntax and the result in every row come from this Gallery document; Canvas owns parsing, binding, layout, and rendering.</p>
       </footer>
     </main>
   </body>

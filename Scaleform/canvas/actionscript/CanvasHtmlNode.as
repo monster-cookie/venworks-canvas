@@ -20,11 +20,17 @@ package
 
       public var referenceOffset:int;
 
+      public var resource:String;
+
+      public var bindingValue:Object;
+
       public function CanvasHtmlNode(param1:String, param2:int)
       {
          this.type = param1;
          this.offset = param2;
          this.referenceOffset = -1;
+         this.resource = null;
+         this.bindingValue = null;
          this.attributes = [];
          this.children = [];
       }

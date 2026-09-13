@@ -8,7 +8,7 @@ Venworks Canvas is a shared Starfield Player HUD framework used by compatible Ve
 | --- | --- | --- |
 | Venworks Canvas | Base runtime and shared HUD host | Yes |
 | Venworks Canvas Example | Optional example consumer | No |
-| Venworks Canvas Component Gallery | Optional preview of Canvas HTML/CSS components | No |
+| Venworks Canvas Component Gallery | Optional live cheatsheet of Canvas HTML/CSS examples | No |
 
 Install the base Canvas package before any package that lists Canvas as a requirement. The Example and Component Gallery are separate optional packages and are not included in the base runtime.
 
@@ -24,7 +24,9 @@ Start with a new or disposable save when evaluating a new Canvas build. Existing
 
 The Example package demonstrates an independently installed Canvas consumer.
 
-The Component Gallery is the example documentation for the Canvas HTML/CSS surface. Each gallery entry presents its source followed by the control produced from that source. The current development build can load and parse the Gallery document, but CSS evaluation, data binding, layout, and visible native rendering are still under development; do not install the current Gallery expecting a completed visible catalog.
+The Component Gallery is a live cheatsheet and example UI rendered by Canvas from the Gallery's packaged HTML and CSS. Its `Tag | Syntax | Rendered Result` columns place literal HTML beside the result it produces. Examples cover text, lists, buttons, images, reusable content, and sample data such as bound text, visibility, repeated items, and a meter.
+
+Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gallery. The current development build still needs in-game verification on PC and PS5; these examples describe Canvas's supported HTML/CSS subset and do not imply full web-browser compatibility.
 
 ## Current compatibility
 

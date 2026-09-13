@@ -1,5 +1,7 @@
 package
 {
+   import flash.display.Bitmap;
+   import flash.display.Loader;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.ProgressEvent;
@@ -8,12 +10,23 @@ package
    import flash.net.URLLoaderDataFormat;
    import flash.net.URLRequest;
    import flash.utils.ByteArray;
+   import flash.utils.Endian;
 
    public final class CanvasHtmlDocumentLoader
    {
       private var activeLoader:URLLoader;
 
       private var activeItem:Object;
+
+      private var activeRasterLoader:Loader;
+
+      private var activeRasterResource:CanvasHtmlResource;
+
+      private var activeRasterWidth:uint;
+
+      private var activeRasterHeight:uint;
+
+      private var activeRasterPixels:Number = 0;
 
       private var pending:Array = [];
 
@@ -30,6 +43,8 @@ package
       private var entryDocument:CanvasHtmlDocument;
 
       private var aggregateBytes:int;
+
+      private var aggregateRasterPixels:Number = 0;
 
       private var stylesheetCount:int;
 
@@ -97,7 +112,7 @@ package
          {
             return;
          }
-         var resource:String = this.activeItem == null ? this.entryPath : String(this.activeItem.path);
+         var resource:String = this.activeRasterResource != null ? this.activeRasterResource.path : this.activeItem == null ? this.entryPath : String(this.activeItem.path);
          this.abortActiveLoader();
          this.finishFailure(new CanvasHtmlDiagnostic("load","cancelled",resource),true);
       }
@@ -110,6 +125,7 @@ package
          }
          this.disposed = true;
          this.abortActiveLoader();
+         this.abortRasterLoader();
          this.active = false;
          this.callback = null;
          this.resetAttempt();
@@ -173,7 +189,9 @@ package
                this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",String(item.path)));
                return;
             }
-            if(bytes.length > CanvasHtmlLimits.MAX_SOURCE_BYTES)
+            var extension:String = CanvasHtmlPath.getExtension(String(item.path));
+            var sourceLimit:int = extension == ".png" ? CanvasHtmlLimits.MAX_RASTER_BYTES : CanvasHtmlLimits.MAX_SOURCE_BYTES;
+            if(bytes.length > sourceLimit)
             {
                this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",String(item.path),-1,"source-file-bytes"));
                return;
@@ -183,14 +201,31 @@ package
                this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",String(item.path),-1,"aggregate-loaded-bytes"));
                return;
             }
+            this.aggregateBytes += bytes.length;
+            if(extension == ".png")
+            {
+               var dimensions:Object = this.readPngDimensions(bytes);
+               if(dimensions == null)
+               {
+                  this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-raster",String(item.path)));
+                  return;
+               }
+               var rasterPixels:Number = Number(dimensions.width) * Number(dimensions.height);
+               if(this.aggregateRasterPixels > CanvasHtmlLimits.MAX_AGGREGATE_RASTER_PIXELS - rasterPixels)
+               {
+                  this.finishFailure(new CanvasHtmlDiagnostic("asset","limit-exceeded",String(item.path),-1,"aggregate-raster-pixels"));
+                  return;
+               }
+               this.aggregateRasterPixels += rasterPixels;
+               this.beginRasterDecode(String(item.path),bytes,uint(dimensions.width),uint(dimensions.height),rasterPixels);
+               return;
+            }
             var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
             if(!decoded.success)
             {
                this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
                return;
             }
-            this.aggregateBytes += bytes.length;
-            var extension:String = CanvasHtmlPath.getExtension(String(item.path));
             var document:CanvasHtmlDocument = null;
             if(extension == ".html")
             {
@@ -220,6 +255,23 @@ package
             {
                return;
             }
+            var imports:CanvasCssImportResult = null;
+            if(extension == ".css")
+            {
+               imports = new CanvasCssImportScanner().scan(decoded.text,String(item.path));
+               if(!imports.success || !this.scheduleCssImports(item,imports.imports))
+               {
+                  if(!imports.success)
+                  {
+                     this.finishFailure(imports.diagnostic);
+                  }
+                  return;
+               }
+            }
+            else if(document != null && !this.scheduleInlineCssImports(item,document))
+            {
+               return;
+            }
             this.startNext();
          }
          catch(processError:*)
@@ -243,7 +295,11 @@ package
          for each(reference in param2)
          {
             resolved = CanvasHtmlPath.resolve(String(param1.path),reference.path);
-            expectedExtension = reference.kind == CanvasHtmlReference.INCLUDE ? ".html" : reference.kind == CanvasHtmlReference.STYLESHEET ? ".css" : ".svg";
+            expectedExtension = reference.kind == CanvasHtmlReference.INCLUDE ? ".html" : reference.kind == CanvasHtmlReference.STYLESHEET ? ".css" : CanvasHtmlPath.getExtension(reference.path);
+            if(reference.kind == CanvasHtmlReference.IMAGE && expectedExtension != ".svg" && expectedExtension != ".png")
+            {
+               expectedExtension = null;
+            }
             if(resolved == null || CanvasHtmlPath.getExtension(resolved) != expectedExtension)
             {
                this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-path",String(param1.path),reference.offset));
@@ -279,6 +335,54 @@ package
          {
             this.pendingByPath[String(candidates[index].path)] = candidates[index];
             this.pending.unshift(candidates[index]);
+         }
+         return true;
+      }
+
+      private function scheduleCssImports(param1:Object, param2:Array) : Boolean
+      {
+         var references:Array = [];
+         var imported:Object = null;
+         for each(imported in param2)
+         {
+            references.push(new CanvasHtmlReference(CanvasHtmlReference.STYLESHEET,String(imported.path),int(imported.byteOffset)));
+         }
+         return this.scheduleReferences(param1,references);
+      }
+
+      private function scheduleInlineCssImports(param1:Object, param2:CanvasHtmlDocument) : Boolean
+      {
+         var head:CanvasHtmlNode = null;
+         var child:CanvasHtmlNode = null;
+         for each(child in param2.root.children)
+         {
+            if(child.type == CanvasHtmlNode.ELEMENT && child.name == "head")
+            {
+               head = child;
+               break;
+            }
+         }
+         if(head == null)
+         {
+            return true;
+         }
+         for each(child in head.children)
+         {
+            if(child.name != "style")
+            {
+               continue;
+            }
+            var styleText:String = child.children.length == 0 ? "" : CanvasHtmlNode(child.children[0]).text;
+            var imports:CanvasCssImportResult = new CanvasCssImportScanner().scan(styleText,String(param1.path));
+            if(!imports.success)
+            {
+               this.finishFailure(imports.diagnostic);
+               return false;
+            }
+            if(!this.scheduleCssImports(param1,imports.imports))
+            {
+               return false;
+            }
          }
          return true;
       }
@@ -405,7 +509,8 @@ package
             observedBytes = param1.bytesTotal;
          }
          var resource:String = String(this.activeItem.path);
-         if(observedBytes > CanvasHtmlLimits.MAX_SOURCE_BYTES)
+         var sourceLimit:int = CanvasHtmlPath.getExtension(resource) == ".png" ? CanvasHtmlLimits.MAX_RASTER_BYTES : CanvasHtmlLimits.MAX_SOURCE_BYTES;
+         if(observedBytes > sourceLimit)
          {
             this.finishFailure(new CanvasHtmlDiagnostic("load","limit-exceeded",resource,-1,"source-file-bytes"));
             return;
@@ -443,7 +548,9 @@ package
          {
             return;
          }
-         var result:CanvasHtmlLoadResult = new CanvasHtmlLoadResult(true,false,this.entryDocument,this.resources.concat(),null);
+         var publishedResources:Array = this.resources.concat();
+         this.resources = [];
+         var result:CanvasHtmlLoadResult = new CanvasHtmlLoadResult(true,false,this.entryDocument,publishedResources,null);
          this.publish(result);
       }
 
@@ -454,8 +561,11 @@ package
             return;
          }
          this.abortActiveLoader();
+         this.abortRasterLoader();
          this.pending = [];
+         this.disposeResources();
          this.resources = [];
+         this.aggregateRasterPixels = 0;
          this.entryDocument = null;
          this.publish(new CanvasHtmlLoadResult(false,param2,null,[],param1));
       }
@@ -492,6 +602,140 @@ package
          }
       }
 
+      private function beginRasterDecode(param1:String, param2:ByteArray, param3:uint, param4:uint, param5:Number) : void
+      {
+         var loader:Loader = new Loader();
+         loader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onRasterComplete,false,0,true);
+         loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onRasterError,false,0,true);
+         loader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onRasterError,false,0,true);
+         this.activeRasterLoader = loader;
+         this.activeRasterResource = new CanvasHtmlResource(param1,"png",null,param2.length);
+         this.activeRasterWidth = param3;
+         this.activeRasterHeight = param4;
+         this.activeRasterPixels = param5;
+         try
+         {
+            param2.position = 0;
+            loader.loadBytes(param2);
+         }
+         catch(loadError:*)
+         {
+            this.abortRasterLoader();
+            this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-raster",param1));
+         }
+      }
+
+      private function onRasterComplete(param1:Event) : void
+      {
+         if(!this.isCurrentRasterEvent(param1))
+         {
+            return;
+         }
+         var loader:Loader = this.activeRasterLoader;
+         var resource:CanvasHtmlResource = this.activeRasterResource;
+         var expectedWidth:uint = this.activeRasterWidth;
+         var expectedHeight:uint = this.activeRasterHeight;
+         var reservedPixels:Number = this.activeRasterPixels;
+         var bitmap:Bitmap = loader.content as Bitmap;
+         this.detachRasterLoader(loader);
+         this.activeRasterLoader = null;
+         this.activeRasterResource = null;
+         this.activeRasterWidth = 0;
+         this.activeRasterHeight = 0;
+         this.activeRasterPixels = 0;
+         if(bitmap == null || bitmap.bitmapData == null || bitmap.bitmapData.width != expectedWidth || bitmap.bitmapData.height != expectedHeight || Number(bitmap.bitmapData.width) * Number(bitmap.bitmapData.height) != reservedPixels || bitmap.bitmapData.width > CanvasHtmlLimits.MAX_RASTER_DIMENSION || bitmap.bitmapData.height > CanvasHtmlLimits.MAX_RASTER_DIMENSION || reservedPixels > CanvasHtmlLimits.MAX_RASTER_PIXELS)
+         {
+            this.aggregateRasterPixels = Math.max(0,this.aggregateRasterPixels - reservedPixels);
+            if(bitmap != null && bitmap.bitmapData != null)
+            {
+               bitmap.bitmapData.dispose();
+            }
+            this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-raster",resource.path));
+            return;
+         }
+         resource.bitmapData = bitmap.bitmapData;
+         this.resources.push(resource);
+         this.loadedPaths[resource.path] = true;
+         this.startNext();
+      }
+
+      private function onRasterError(param1:Event) : void
+      {
+         if(!this.isCurrentRasterEvent(param1))
+         {
+            return;
+         }
+         var resource:String = this.activeRasterResource == null ? this.entryPath : this.activeRasterResource.path;
+         this.abortRasterLoader();
+         this.finishFailure(new CanvasHtmlDiagnostic("asset","invalid-raster",resource));
+      }
+
+      private function isCurrentRasterEvent(param1:Event) : Boolean
+      {
+         return this.active && !this.disposed && this.activeRasterLoader != null && param1.currentTarget === this.activeRasterLoader.contentLoaderInfo;
+      }
+
+      private function abortRasterLoader() : void
+      {
+         if(this.activeRasterLoader == null)
+         {
+            this.activeRasterResource = null;
+            this.aggregateRasterPixels = Math.max(0,this.aggregateRasterPixels - this.activeRasterPixels);
+            this.activeRasterWidth = 0;
+            this.activeRasterHeight = 0;
+            this.activeRasterPixels = 0;
+            return;
+         }
+         var loader:Loader = this.activeRasterLoader;
+         this.detachRasterLoader(loader);
+         this.activeRasterLoader = null;
+         this.activeRasterResource = null;
+         this.aggregateRasterPixels = Math.max(0,this.aggregateRasterPixels - this.activeRasterPixels);
+         this.activeRasterWidth = 0;
+         this.activeRasterHeight = 0;
+         this.activeRasterPixels = 0;
+         try
+         {
+            loader.close();
+         }
+         catch(closeError:*)
+         {
+         }
+         try
+         {
+            loader.unload();
+         }
+         catch(unloadError:*)
+         {
+         }
+      }
+
+      private function detachRasterLoader(param1:Loader) : void
+      {
+         param1.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onRasterComplete);
+         param1.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onRasterError);
+         param1.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onRasterError);
+      }
+
+      private function readPngDimensions(param1:ByteArray) : Object
+      {
+         if(param1 == null || param1.length < 33)
+         {
+            return null;
+         }
+         var originalPosition:uint = param1.position;
+         var originalEndian:String = param1.endian;
+         param1.position = 0;
+         param1.endian = Endian.BIG_ENDIAN;
+         var valid:Boolean = param1.readUnsignedByte() == 137 && param1.readUnsignedByte() == 80 && param1.readUnsignedByte() == 78 && param1.readUnsignedByte() == 71 && param1.readUnsignedByte() == 13 && param1.readUnsignedByte() == 10 && param1.readUnsignedByte() == 26 && param1.readUnsignedByte() == 10;
+         valid = valid && param1.readUnsignedInt() == 13 && param1.readUTFBytes(4) == "IHDR";
+         var width:uint = valid ? param1.readUnsignedInt() : 0;
+         var height:uint = valid ? param1.readUnsignedInt() : 0;
+         param1.position = originalPosition;
+         param1.endian = originalEndian;
+         return valid && width > 0 && height > 0 && width <= CanvasHtmlLimits.MAX_RASTER_DIMENSION && height <= CanvasHtmlLimits.MAX_RASTER_DIMENSION && Number(width) * Number(height) <= CanvasHtmlLimits.MAX_RASTER_PIXELS ? {"width":width,"height":height} : null;
+      }
+
       private function detachLoader(param1:URLLoader) : void
       {
          param1.removeEventListener(Event.COMPLETE,this.onLoadComplete);
@@ -502,6 +746,7 @@ package
 
       private function resetAttempt() : void
       {
+         this.disposeResources();
          this.pending = [];
          this.resources = [];
          this.loadedPaths = {};
@@ -510,8 +755,21 @@ package
          this.entryPath = null;
          this.entryDocument = null;
          this.aggregateBytes = 0;
+         this.aggregateRasterPixels = 0;
          this.stylesheetCount = 0;
          this.activeItem = null;
+         this.activeRasterWidth = 0;
+         this.activeRasterHeight = 0;
+         this.activeRasterPixels = 0;
+      }
+
+      private function disposeResources() : void
+      {
+         var resource:CanvasHtmlResource = null;
+         for each(resource in this.resources)
+         {
+            resource.dispose();
+         }
       }
    }
 }

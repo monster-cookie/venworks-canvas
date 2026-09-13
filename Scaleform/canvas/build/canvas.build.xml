@@ -24,8 +24,34 @@
     <token>CanvasHtmlTokenizer</token>
     <token>CanvasHtmlParser</token>
     <token>CanvasUtf8Decoder</token>
+    <token>CanvasCssParser</token>
+    <token>CanvasCssImportScanner</token>
+    <token>CanvasHtmlComposer</token>
+    <token>CanvasHtmlRenderer</token>
+    <token>CanvasHtmlBridge</token>
     <token>URLLoaderDataFormat.BINARY</token>
+    <token>loadBytes</token>
+    <token>MAX_RASTER_BYTES</token>
+    <token>MAX_AGGREGATE_RASTER_PIXELS</token>
+    <token>MAX_SVG_WORK</token>
+    <token>MAX_CSS_MATCH_WORK</token>
+    <token>MAX_COMPOSITION_WORK</token>
+    <token>MAX_CLASSES_PER_ELEMENT</token>
+    <token>MAX_EVENT_TOPIC_CODE_UNITS</token>
+    <token>css-import-depth</token>
+    <token>composition-work</token>
+    <token>data-vw-format</token>
+    <token>z-index</token>
+    <token>invalid-raster</token>
+    <token>aggregate-raster-pixels</token>
+    <token>svg-work</token>
     <token>HTML PARSED</token>
+    <token>HTML RENDERED</token>
+    <token>htmlRendering</token>
+    <token>public function setData(param1:Object) : void</token>
+    <token>public function setViewport(param1:Number, param2:Number) : void</token>
+    <token>public function scrollBy(param1:Number) : void</token>
+    <token>public function dispatch(param1:String) : void</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -65,5 +91,11 @@
     <token>htmlText</token>
     <token>StyleSheet</token>
     <token>parseCSS</token>
+    <token>URLLoaderDataFormat.TEXT</token>
+    <token>http://</token>
+    <token>https://</token>
+    <token>url(</token>
+    <token>.jpg</token>
+    <token>.jpeg</token>
   </forbiddenTokens>
 </movieBuild>

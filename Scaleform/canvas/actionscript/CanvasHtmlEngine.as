@@ -1,5 +1,7 @@
 package
 {
+   import flash.display.DisplayObjectContainer;
+
    public final class CanvasHtmlEngine
    {
       private var consumers:Object = {};
@@ -10,7 +12,7 @@ package
       {
       }
 
-      public function load(param1:String, param2:String, param3:Object, param4:Function) : void
+      public function load(param1:String, param2:String, param3:Object, param4:DisplayObjectContainer, param5:Function) : void
       {
          if(this.disposed)
          {
@@ -22,6 +24,10 @@ package
          }
          if(param4 == null)
          {
+            throw new Error("Canvas HTML engine requires a display mount");
+         }
+         if(param5 == null)
+         {
             throw new Error("Canvas HTML engine requires a completion callback");
          }
          var registration:Object = this.validateRegistration(param2,param3);
@@ -29,8 +35,11 @@ package
          var entry:Object = {
             "loader":loader,
             "registration":registration,
-            "callback":param4,
-            "result":null
+            "mount":param4,
+            "callback":param5,
+            "result":null,
+            "session":null,
+            "bridge":null
          };
          this.consumers[param1] = entry;
          var owner:CanvasHtmlEngine = this;
@@ -61,9 +70,22 @@ package
          }
          delete this.consumers[param1];
          entry.callback = null;
+         var bridge:CanvasHtmlBridge = entry.bridge as CanvasHtmlBridge;
+         entry.bridge = null;
+         if(bridge != null)
+         {
+            bridge.invalidate();
+         }
+         var session:CanvasHtmlSession = entry.session as CanvasHtmlSession;
+         entry.session = null;
+         if(session != null)
+         {
+            session.dispose();
+         }
          var loader:CanvasHtmlDocumentLoader = entry.loader as CanvasHtmlDocumentLoader;
          entry.loader = null;
          entry.result = null;
+         entry.mount = null;
          if(loader != null)
          {
             loader.dispose();
@@ -88,6 +110,12 @@ package
             this.remove(consumerId);
          }
          this.consumers = {};
+      }
+
+      public function getBridge(param1:String) : Object
+      {
+         var entry:Object = this.consumers[param1];
+         return this.disposed || entry == null ? null : entry.bridge;
       }
 
       private function validateRegistration(param1:String, param2:Object) : Object
@@ -134,14 +162,41 @@ package
          {
             loader.dispose();
          }
-         param2.result = param3.success ? param3 : null;
+         var finalResult:CanvasHtmlLoadResult = param3;
+         if(param3.success)
+         {
+            try
+            {
+               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3);
+               var diagnostic:CanvasHtmlDiagnostic = session.initialize();
+               if(diagnostic == null)
+               {
+                  param2.session = session;
+                  param2.bridge = new CanvasHtmlBridge(session);
+               }
+               else
+               {
+                  session.dispose();
+                  finalResult = new CanvasHtmlLoadResult(false,false,null,[],diagnostic);
+               }
+            }
+            catch(renderError:*)
+            {
+               if(session != null)
+               {
+                  session.dispose();
+               }
+               finalResult = new CanvasHtmlLoadResult(false,false,null,[],new CanvasHtmlDiagnostic("lifecycle","adapter-failure",param3.entryDocument == null ? null : param3.entryDocument.resource));
+            }
+         }
+         param2.result = finalResult.success ? finalResult : null;
          var callback:Function = param2.callback as Function;
          param2.callback = null;
          if(callback != null)
          {
-            callback(param1,param3);
+            callback(param1,finalResult);
          }
-         if(!param3.success && this.consumers[param1] === param2)
+         if(!finalResult.success && this.consumers[param1] === param2)
          {
             delete this.consumers[param1];
          }

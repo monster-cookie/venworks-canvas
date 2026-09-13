@@ -1018,6 +1018,7 @@ package
             "assetNamespace":expectedNamespace,
             "htmlRegistration":htmlRegistration,
             "htmlResult":null,
+            "htmlBridge":null,
             "uiChannels":uiChannels,
             "eventTopics":eventTopics
          };
@@ -1095,13 +1096,19 @@ package
          if(param1.htmlRegistration != null)
          {
             features.push("htmlDocuments");
+            features.push("htmlRendering");
          }
-         return {
+         var context:Object = {
             "contractVersion":int(param1.contractVersion),
             "features":features,
             "uiChannels":param1.uiChannels.concat(),
             "eventTopics":param1.eventTopics.concat()
          };
+         if(param1.htmlBridge != null)
+         {
+            context.html = param1.htmlBridge;
+         }
+         return context;
       }
 
       private function isConsumerCurrent(param1:String, param2:Object, param3:int) : Boolean
@@ -1295,7 +1302,7 @@ package
             this.loaderStates[consumerId] = "html-loading";
             try
             {
-               this.htmlEngine.load(consumerId,String(contract.assetNamespace),contract.htmlRegistration,this.onConsumerHtmlComplete);
+               this.htmlEngine.load(consumerId,String(contract.assetNamespace),contract.htmlRegistration,loader.content as DisplayObjectContainer,this.onConsumerHtmlComplete);
             }
             catch(htmlLoadError:*)
             {
@@ -1327,7 +1334,15 @@ package
             return;
          }
          contract.htmlResult = param2;
+         contract.htmlBridge = this.htmlEngine == null ? null : this.htmlEngine.getBridge(param1);
+         if(contract.htmlBridge == null)
+         {
+            this.appendDiagnostic("INVALID " + param1 + " | HTML RENDER BRIDGE UNAVAILABLE");
+            this.unloadConsumer(param1);
+            return;
+         }
          this.appendDiagnostic("HTML PARSED " + param1 + " | RESOURCES " + param2.resources.length);
+         this.appendDiagnostic("HTML RENDERED " + param1 + " | V1");
          this.completeConsumerReady(param1,loader,generation,contract);
       }
 
@@ -1374,6 +1389,10 @@ package
          if(loader.parent !== this)
          {
             addChild(loader);
+         }
+         if(this.diagnostics != null && this.diagnostics.parent === this)
+         {
+            setChildIndex(this.diagnostics,numChildren - 1);
          }
          if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "ready")
          {

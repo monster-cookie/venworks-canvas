@@ -104,6 +104,7 @@ package
          }
          var node:CanvasHtmlNode = new CanvasHtmlNode(CanvasHtmlNode.ELEMENT,param1.offset);
          node.name = param1.name;
+         node.resource = this.resource;
          node.attributes = param1.attributes;
          if(this.stack.length == 0)
          {
@@ -192,6 +193,7 @@ package
          }
          var textNode:CanvasHtmlNode = new CanvasHtmlNode(CanvasHtmlNode.TEXT,param1.offset);
          textNode.text = param1.text;
+         textNode.resource = this.resource;
          parent.children.push(textNode);
          this.document.nodeCount++;
       }
@@ -266,7 +268,14 @@ package
          }
          else if(param1.name == "vw-state")
          {
-            required = ["when"];
+            var hasWhen:Boolean = this.tokenHasAttribute(param1,"when");
+            var hasName:Boolean = this.tokenHasAttribute(param1,"name");
+            var hasEvent:Boolean = this.tokenHasAttribute(param1,"event");
+            if(hasWhen && (hasName || hasEvent) || !hasWhen && (!hasName || !hasEvent))
+            {
+               this.reject("invalid-value",param1.offset);
+               return false;
+            }
          }
          else if(param1.name == "vw-meter")
          {
@@ -286,6 +295,14 @@ package
 
       private function isAllowedAttribute(param1:String, param2:String) : Boolean
       {
+         if(param1 == "body" && (param2 == "data-vw-text" || param2 == "data-vw-format" || param2 == "data-vw-visible"))
+         {
+            return false;
+         }
+         if((param2 == "data-vw-text" || param2 == "data-vw-format") && !this.allowsTextBinding(param1))
+         {
+            return false;
+         }
          if(this.isGlobalElement(param1) && this.isGlobalAttribute(param2))
          {
             return true;
@@ -308,11 +325,11 @@ package
          }
          if(param1 == "svg")
          {
-            return param2 == "viewbox" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible" || param2 == "width" || param2 == "height" || param2 == "x" || param2 == "y" || param2 == "fill" || param2 == "stroke" || param2 == "stroke-width" || param2 == "clip-rule" || param2 == "preserveaspectratio" || param2 == "fill-rule" || param2 == "stroke-linecap" || param2 == "stroke-linejoin" || param2 == "vector-effect";
+            return param2 == "viewbox" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible";
          }
          if(param1 == "path")
          {
-            return param2 == "d" || param2 == "id" || param2 == "class" || param2 == "fill" || param2 == "stroke" || param2 == "stroke-width" || param2 == "fill-rule";
+            return param2 == "d" || param2 == "fill" || param2 == "stroke" || param2 == "stroke-width";
          }
          if(param1 == "vw-include")
          {
@@ -328,7 +345,7 @@ package
          }
          if(param1 == "vw-state")
          {
-            return param2 == "when";
+            return param2 == "when" || param2 == "name" || param2 == "event";
          }
          if(param1 == "vw-meter")
          {
@@ -341,9 +358,17 @@ package
       {
          var name:String = param2.name;
          var value:String = param2.value;
-         if(name == "id" || name == "data-vw-text" || name == "data-vw-visible" || name == "items" || name == "when" || name == "value")
+         if(name == "id" || name == "data-vw-text" || name == "data-vw-visible" || name == "items" || name == "when" || name == "value" || name == "name")
          {
             return this.isIdentifier(value);
+         }
+         if(name == "event")
+         {
+            return this.isEventTopic(value);
+         }
+         if(name == "data-vw-format")
+         {
+            return this.isFormat(value);
          }
          if(name == "class")
          {
@@ -371,35 +396,11 @@ package
          }
          if(name == "width" || name == "height" || name == "stroke-width")
          {
-            return name == "stroke-width" ? this.isFiniteNumber(value,true) : this.isLength(value,true);
-         }
-         if(name == "x" || name == "y")
-         {
-            return this.isLength(value,false);
+            return name == "stroke-width" ? this.isFiniteNumber(value,true) && Number(value) <= CanvasHtmlLimits.MAX_SVG_STROKE_WIDTH : this.isLength(value,true);
          }
          if(name == "fill" || name == "stroke")
          {
             return this.isPaint(value);
-         }
-         if(name == "clip-rule" || name == "fill-rule")
-         {
-            return value == "nonzero" || value == "evenodd";
-         }
-         if(name == "preserveaspectratio")
-         {
-            return value == "none" || value == "xmidymid meet" || value == "xmidymid slice";
-         }
-         if(name == "stroke-linecap")
-         {
-            return value == "butt" || value == "round" || value == "square";
-         }
-         if(name == "stroke-linejoin")
-         {
-            return value == "miter" || value == "round" || value == "bevel";
-         }
-         if(name == "vector-effect")
-         {
-            return value == "none" || value == "non-scaling-stroke";
          }
          if(name == "d")
          {
@@ -449,6 +450,11 @@ package
       {
          var child:CanvasHtmlNode = null;
          if(param1.getAttribute("data-vw-text") != null && param1.children.length != 0)
+         {
+            this.reject("invalid-value",param1.offset);
+            return false;
+         }
+         if(param1.getAttribute("data-vw-format") != null && param1.getAttribute("data-vw-text") == null)
          {
             this.reject("invalid-value",param1.offset);
             return false;
@@ -524,7 +530,7 @@ package
          }
          if(param1.name == "svg")
          {
-            return param2 == "svg" || param2 == "path";
+            return param2 == "path";
          }
          if(this.isFlowContainer(param1.name))
          {
@@ -560,7 +566,12 @@ package
 
       private function isGlobalAttribute(param1:String) : Boolean
       {
-         return param1 == "id" || param1 == "class" || param1 == "data-vw-text" || param1 == "data-vw-visible";
+         return param1 == "id" || param1 == "class" || param1 == "data-vw-text" || param1 == "data-vw-visible" || param1 == "data-vw-format";
+      }
+
+      private function allowsTextBinding(param1:String) : Boolean
+      {
+         return param1 == "main" || param1 == "header" || param1 == "footer" || param1 == "section" || param1 == "div" || param1 == "span" || param1 == "h1" || param1 == "h2" || param1 == "h3" || param1 == "h4" || param1 == "h5" || param1 == "h6" || param1 == "p" || param1 == "li" || param1 == "button";
       }
 
       private function isEmptyElement(param1:String) : Boolean
@@ -605,22 +616,33 @@ package
          {
             return false;
          }
-         var item:String = null;
-         for each(item in param1.split(" "))
+         var items:Array = param1.split(" ");
+         if(items.length > CanvasHtmlLimits.MAX_CLASSES_PER_ELEMENT)
          {
-            if(!this.isIdentifier(item))
+            return false;
+         }
+         var seen:Object = {};
+         var item:String = null;
+         for each(item in items)
+         {
+            if(!this.isIdentifier(item) || seen.hasOwnProperty("$" + item))
             {
                return false;
             }
+            seen["$" + item] = true;
          }
          return true;
       }
 
       private function exceedsIdentifierLimit(param1:String, param2:String) : Boolean
       {
-         if(param1 == "id" || param1 == "data-vw-text" || param1 == "data-vw-visible" || param1 == "items" || param1 == "when" || param1 == "value")
+         if(param1 == "id" || param1 == "data-vw-text" || param1 == "data-vw-visible" || param1 == "items" || param1 == "when" || param1 == "value" || param1 == "name")
          {
             return param2.length > CanvasHtmlLimits.MAX_IDENTIFIER_LENGTH;
+         }
+         if(param1 == "event")
+         {
+            return param2.length > CanvasHtmlLimits.MAX_EVENT_TOPIC_CODE_UNITS;
          }
          if(param1 == "template")
          {
@@ -652,14 +674,42 @@ package
             return false;
          }
          var value:String = null;
+         var numbers:Array = [];
          for each(value in values)
          {
-            if(!this.isFiniteNumber(value,false))
+            if(!this.isFiniteNumber(value,false) || Math.abs(Number(value)) > CanvasHtmlLimits.MAX_SVG_COORDINATE)
             {
                return false;
             }
+            numbers.push(Number(value));
          }
-         return true;
+         return Number(numbers[2]) > 0 && Number(numbers[3]) > 0 && Math.abs(Number(numbers[0]) + Number(numbers[2])) <= CanvasHtmlLimits.MAX_SVG_COORDINATE && Math.abs(Number(numbers[1]) + Number(numbers[3])) <= CanvasHtmlLimits.MAX_SVG_COORDINATE;
+      }
+
+      private function isFormat(param1:String) : Boolean
+      {
+         if(param1 == null || param1.length == 0 || param1.length > CanvasHtmlLimits.MAX_FORMAT_CODE_UNITS)
+         {
+            return false;
+         }
+         var marker:String = "{value}";
+         var markerIndex:int = param1.indexOf(marker);
+         if(markerIndex < 0 || markerIndex != param1.lastIndexOf(marker))
+         {
+            return false;
+         }
+         var before:String = param1.substring(0,markerIndex);
+         var after:String = param1.substring(markerIndex + marker.length);
+         return before.indexOf("{") < 0 && before.indexOf("}") < 0 && after.indexOf("{") < 0 && after.indexOf("}") < 0;
+      }
+
+      private function isEventTopic(param1:String) : Boolean
+      {
+         if(param1 == null || param1.length < 3 || param1.length > CanvasHtmlLimits.MAX_EVENT_TOPIC_CODE_UNITS || !/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)+$/.test(param1))
+         {
+            return false;
+         }
+         return param1.substr(0,7).toLowerCase() != "canvas.";
       }
 
       private function isFiniteNumber(param1:String, param2:Boolean) : Boolean

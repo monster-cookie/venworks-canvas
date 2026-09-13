@@ -22,6 +22,27 @@
     <token>getCanvasHtmlRegistration</token>
     <token>VWCANVAS_HTML/2</token>
     <token>index.html</token>
+    <token>htmlRendering</token>
+    <token>setData</token>
+    <token>setViewport</token>
+    <token>scrollBy</token>
+    <token>createSampleData</token>
+    <token>submitSampleData</token>
+    <token>sampletext</token>
+    <token>sampleformat</token>
+    <token>samplevisible</token>
+    <token>sampleitems</token>
+    <token>samplemeter</token>
+    <token>sampleupdates</token>
+    <token>PlayerData snapshots received: </token>
+    <token>dispatch</token>
+    <token>Event.ADDED_TO_STAGE</token>
+    <token>Event.REMOVED_FROM_STAGE</token>
+    <token>MouseEvent.MOUSE_WHEEL</token>
+    <token>KeyboardEvent.KEY_DOWN</token>
+    <token>Keyboard.PAGE_UP</token>
+    <token>Keyboard.PAGE_DOWN</token>
+    <token>clearHtmlBridge</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>Game.ShowCustomWatchAlert</token>
@@ -32,6 +53,19 @@
     <token>CanvasHtmlTokenizer</token>
     <token>CanvasHtmlParser</token>
     <token>CanvasUtf8Decoder</token>
+    <token>CanvasCssParser</token>
+    <token>CanvasHtmlComposer</token>
+    <token>CanvasHtmlRenderer</token>
+    <token>CanvasSvgPathRenderer</token>
+    <token>CanvasHtmlSession</token>
+    <token>CanvasHtmlBridge</token>
+    <token>Graphics</token>
+    <token>Bitmap</token>
+    <token>BitmapData</token>
+    <token>Shape</token>
+    <token>Sprite</token>
+    <token>TextField</token>
+    <token>TextFormat</token>
     <token>URLLoader</token>
     <token>URLRequest</token>
     <token>ByteArray</token>
