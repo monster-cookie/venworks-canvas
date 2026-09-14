@@ -14,6 +14,7 @@
     <token>getCanvasRegistration</token>
     <token>minimumContractVersion</token>
     <token>maximumContractVersion</token>
+    <token>"hostKinds":["menu"]</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -25,7 +26,6 @@
     <token>htmlRendering</token>
     <token>setData</token>
     <token>setViewport</token>
-    <token>scrollBy</token>
     <token>createSampleData</token>
     <token>submitSampleData</token>
     <token>sampletext</token>
@@ -34,14 +34,9 @@
     <token>sampleitems</token>
     <token>samplemeter</token>
     <token>sampleupdates</token>
-    <token>PlayerData snapshots received: </token>
+    <token>Menu-local sample data</token>
     <token>dispatch</token>
     <token>Event.ADDED_TO_STAGE</token>
-    <token>Event.REMOVED_FROM_STAGE</token>
-    <token>MouseEvent.MOUSE_WHEEL</token>
-    <token>KeyboardEvent.KEY_DOWN</token>
-    <token>Keyboard.PAGE_UP</token>
-    <token>Keyboard.PAGE_DOWN</token>
     <token>clearHtmlBridge</token>
   </requiredTokens>
   <forbiddenTokens>
@@ -75,5 +70,8 @@
     <token>htmlText</token>
     <token>StyleSheet</token>
     <token>parseCSS</token>
+    <token>KeyboardEvent</token>
+    <token>MouseEvent</token>
+    <token>flash.ui.Keyboard</token>
   </forbiddenTokens>
 </movieBuild>

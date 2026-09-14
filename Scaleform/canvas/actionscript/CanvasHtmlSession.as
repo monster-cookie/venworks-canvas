@@ -116,6 +116,32 @@ package
          this.documentDisplay.y = -this.scrollOffset;
       }
 
+      public function scrollTo(param1:Number) : void
+      {
+         if(this.disposed || this.documentDisplay == null)
+         {
+            return;
+         }
+         if(!isFinite(param1) || Math.abs(param1) > 8192)
+         {
+            throw new Error("Canvas HTML scroll position must be finite and bounded");
+         }
+         this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - this.viewportHeight),param1));
+         this.documentDisplay.y = -this.scrollOffset;
+      }
+
+      public function getScrollState() : Object
+      {
+         var maximum:Number = Math.max(0,this.documentHeight - this.viewportHeight);
+         return {
+            "offset":this.scrollOffset,
+            "maximum":maximum,
+            "viewportHeight":this.viewportHeight,
+            "documentHeight":this.documentHeight,
+            "canScroll":!this.disposed && this.documentDisplay != null && maximum > 0
+         };
+      }
+
       public function dispatch(param1:String) : void
       {
          if(this.disposed)

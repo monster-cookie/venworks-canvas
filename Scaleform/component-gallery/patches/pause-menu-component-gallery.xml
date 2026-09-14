@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actionScriptPatch name="vwcanvas-component-gallery-pause-menu" version="1" script="PauseMenu">
+  <validation>
+    <requiredSourceTokens>
+      <token><![CDATA[CANVAS COMPONENT GALLERY]]></token>
+      <token><![CDATA[openVenworksCanvasGallery]]></token>
+      <token><![CDATA[closeVenworksCanvasGallery]]></token>
+      <token><![CDATA[loadLocalConsumer]]></token>
+      <token><![CDATA[scrollConsumerBy]]></token>
+      <token><![CDATA[scrollConsumerTo]]></token>
+      <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA["hostKind":"menu"]]></token>
+      <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
+      <token><![CDATA[MouseEvent.MOUSE_WHEEL]]></token>
+      <token><![CDATA[Event.ENTER_FRAME]]></token>
+      <token><![CDATA[Event.REMOVED_FROM_STAGE]]></token>
+      <token><![CDATA[IOErrorEvent.IO_ERROR]]></token>
+      <token><![CDATA[SecurityErrorEvent.SECURITY_ERROR]]></token>
+    </requiredSourceTokens>
+    <requiredInspectionTokens>
+      <token><![CDATA[CANVAS COMPONENT GALLERY]]></token>
+      <token><![CDATA[venworkscui.swf]]></token>
+      <token><![CDATA[loadLocalConsumer]]></token>
+      <token><![CDATA[scrollConsumerBy]]></token>
+      <token><![CDATA[scrollConsumerTo]]></token>
+      <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
+    </requiredInspectionTokens>
+  </validation>
+  <insertions>
+    <insertion position="after"><anchor><![CDATA[   import flash.display.MovieClip;]]></anchor><content><![CDATA[
+   import flash.display.Loader;
+   import flash.display.Stage;
+   import flash.events.IOErrorEvent;
+   import flash.events.MouseEvent;
+   import flash.events.SecurityErrorEvent;
+   import flash.net.URLRequest;
+   import flash.text.TextFormat;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[      private var AllowQuitToDesktop:Boolean;]]></anchor><content><![CDATA[
+
+      private const VENWORKS_CANVAS_GALLERY_ACTION:uint = 2147483000;
+
+      private const VENWORKS_CANVAS_GALLERY_CONSUMER_ID:String = "beef70b2-024e-4e9b-a8d5-70a0c882c431";
+
+      private const VENWORKS_CANVAS_GALLERY_SCROLL_DELTA:Number = 30;
+
+      private const VENWORKS_CANVAS_GALLERY_WHEEL_DELTA:Number = 120;
+
+      private const VENWORKS_CANVAS_GALLERY_STICK_DELTA:Number = 15;
+
+      private var VenworksCanvasGalleryActive:Boolean = false;
+
+      private var VenworksCanvasGalleryUpHeld:Boolean = false;
+
+      private var VenworksCanvasGalleryDownHeld:Boolean = false;
+
+      private var VenworksCanvasGalleryDragging:Boolean = false;
+
+      private var VenworksCanvasGalleryDragStartY:Number = 0;
+
+      private var VenworksCanvasGalleryDragStartOffset:Number = 0;
+
+      private var VenworksCanvasGalleryLayer:MovieClip = null;
+
+      private var VenworksCanvasGalleryScrollTrack:MovieClip = null;
+
+      private var VenworksCanvasGalleryScrollThumb:MovieClip = null;
+
+      private var VenworksCanvasGalleryErrorText:TextField = null;
+
+      private var VenworksCanvasGalleryHostLoader:Loader = null;
+
+      private var VenworksCanvasGalleryHostBridge:MovieClip = null;
+
+      private var VenworksCanvasGalleryInputStage:Stage = null;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
+         addEventListener(Event.REMOVED_FROM_STAGE,this.onVenworksCanvasGalleryRemoved,false,0,true);]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         this.UpdateFocus();]]></anchor><content><![CDATA[
+         if(this.VenworksCanvasGalleryActive)
+         {
+            this.applyVenworksCanvasGalleryVisibility();
+         }]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         var _loc3_:Boolean = false;]]></anchor><content><![CDATA[         if(this.VenworksCanvasGalleryActive)
+         {
+            if(param1 == "Cancel")
+            {
+               if(!param2)
+               {
+                  GlobalFunc.PlayMenuSound(GlobalFunc.CANCEL_SOUND);
+                  this.closeVenworksCanvasGallery();
+               }
+               return true;
+            }
+            if(param1 == "Up")
+            {
+               this.VenworksCanvasGalleryUpHeld = param2;
+               return true;
+            }
+            if(param1 == "Down")
+            {
+               this.VenworksCanvasGalleryDownHeld = param2;
+               return true;
+            }
+         }
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         if(this.ActivePanel == this.HelpPanel_mc)]]></anchor><content><![CDATA[         if(this.VenworksCanvasGalleryActive)
+         {
+            if(Math.abs(param2) > 0.1)
+            {
+               this.scrollVenworksCanvasGalleryBy(param2 * this.VENWORKS_CANVAS_GALLERY_STICK_DELTA);
+            }
+            return;
+         }
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         this.MainPanel_mc.PopulateMainList(param1.data.aPauseMenuList);]]></anchor><content><![CDATA[         var venworksCanvasPauseEntries:Array = param1.data.aPauseMenuList is Array ? (param1.data.aPauseMenuList as Array).concat() : [];
+         var venworksCanvasGalleryEntryFound:Boolean = false;
+         var venworksCanvasPauseEntry:Object = null;
+         for each(venworksCanvasPauseEntry in venworksCanvasPauseEntries)
+         {
+            if(venworksCanvasPauseEntry != null && uint(venworksCanvasPauseEntry.uActionType) == this.VENWORKS_CANVAS_GALLERY_ACTION)
+            {
+               venworksCanvasGalleryEntryFound = true;
+               break;
+            }
+         }
+         if(!venworksCanvasGalleryEntryFound)
+         {
+            venworksCanvasPauseEntries.push({
+               "text":"CANVAS COMPONENT GALLERY",
+               "uActionType":this.VENWORKS_CANVAS_GALLERY_ACTION,
+               "sConfirmText":"",
+               "bDisabled":false,
+               "bHasDisabledAction":false
+            });
+         }
+         param1.data.aPauseMenuList = venworksCanvasPauseEntries;
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[         BSUIDataManager.dispatchEvent(new CustomEvent("PauseMenu_StartAction",{"actionType":param1.params.entryAction}));]]></anchor><content><![CDATA[         if(uint(param1.params.entryAction) == this.VENWORKS_CANVAS_GALLERY_ACTION)
+         {
+            this.openVenworksCanvasGallery();
+            return;
+         }
+]]></content></insertion>
+    <insertion position="before"><anchor><![CDATA[      private function onSavePanelConfirmSave(param1:CustomEvent) : void]]></anchor><content><![CDATA[      private function openVenworksCanvasGallery() : void
+      {
+         if(this.VenworksCanvasGalleryActive)
+         {
+            return;
+         }
+         this.VenworksCanvasGalleryActive = true;
+         this.VenworksCanvasGalleryUpHeld = false;
+         this.VenworksCanvasGalleryDownHeld = false;
+         this.createVenworksCanvasGalleryChrome();
+         this.applyVenworksCanvasGalleryVisibility();
+         this.VenworksCanvasGalleryInputStage = stage;
+         if(this.VenworksCanvasGalleryInputStage != null)
+         {
+            this.VenworksCanvasGalleryInputStage.addEventListener(MouseEvent.MOUSE_WHEEL,this.onVenworksCanvasGalleryMouseWheel,false,0,true);
+            this.VenworksCanvasGalleryInputStage.addEventListener(MouseEvent.MOUSE_MOVE,this.onVenworksCanvasGalleryMouseMove,false,0,true);
+            this.VenworksCanvasGalleryInputStage.addEventListener(MouseEvent.MOUSE_UP,this.onVenworksCanvasGalleryMouseUp,false,0,true);
+         }
+         addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasGalleryEnterFrame,false,0,true);
+         this.startVenworksCanvasGalleryHost();
+      }
+
+      private function closeVenworksCanvasGallery(param1:Boolean = true) : void
+      {
+         if(!this.VenworksCanvasGalleryActive && this.VenworksCanvasGalleryHostLoader == null && this.VenworksCanvasGalleryLayer == null)
+         {
+            return;
+         }
+         this.VenworksCanvasGalleryActive = false;
+         this.VenworksCanvasGalleryUpHeld = false;
+         this.VenworksCanvasGalleryDownHeld = false;
+         this.VenworksCanvasGalleryDragging = false;
+         removeEventListener(Event.ENTER_FRAME,this.onVenworksCanvasGalleryEnterFrame);
+         if(this.VenworksCanvasGalleryInputStage != null)
+         {
+            this.VenworksCanvasGalleryInputStage.removeEventListener(MouseEvent.MOUSE_WHEEL,this.onVenworksCanvasGalleryMouseWheel);
+            this.VenworksCanvasGalleryInputStage.removeEventListener(MouseEvent.MOUSE_MOVE,this.onVenworksCanvasGalleryMouseMove);
+            this.VenworksCanvasGalleryInputStage.removeEventListener(MouseEvent.MOUSE_UP,this.onVenworksCanvasGalleryMouseUp);
+         }
+         this.VenworksCanvasGalleryInputStage = null;
+         this.disposeVenworksCanvasGalleryHost();
+         if(this.VenworksCanvasGalleryLayer != null && this.VenworksCanvasGalleryLayer.parent === this)
+         {
+            removeChild(this.VenworksCanvasGalleryLayer);
+         }
+         this.VenworksCanvasGalleryLayer = null;
+         this.VenworksCanvasGalleryScrollTrack = null;
+         this.VenworksCanvasGalleryScrollThumb = null;
+         this.VenworksCanvasGalleryErrorText = null;
+         if(param1 && stage != null)
+         {
+            this.UpdateComponentsVisibility();
+         }
+      }
+
+      private function applyVenworksCanvasGalleryVisibility() : void
+      {
+         this.MainPanel_mc.Close();
+         this.SavePanel_mc.Close();
+         this.LoadPanel_mc.Close();
+         this.HelpPanel_mc.Close();
+         this.SettingsPanel_mc.Close();
+         this.InstalledContentPanel_mc.Close();
+         this.CreationsLibraryPanel_mc.Close();
+         this.Spinner_mc.visible = false;
+         this.BlackLoading_mc.visible = false;
+         this.VersionText_tf.visible = false;
+         this.UpdateGameLogo(false);
+         this.ActivePanel = null;
+         if(stage != null)
+         {
+            stage.focus = null;
+         }
+         if(this.VenworksCanvasGalleryLayer != null && this.VenworksCanvasGalleryLayer.parent === this)
+         {
+            setChildIndex(this.VenworksCanvasGalleryLayer,numChildren - 1);
+         }
+      }
+
+      private function createVenworksCanvasGalleryChrome() : void
+      {
+         var stageWidth:Number = stage != null && stage.stageWidth > 0 ? stage.stageWidth : 1920;
+         var stageHeight:Number = stage != null && stage.stageHeight > 0 ? stage.stageHeight : 1080;
+         var trackHeight:Number = Math.max(200,stageHeight - 80);
+         this.VenworksCanvasGalleryLayer = new MovieClip();
+         this.VenworksCanvasGalleryLayer.name = "VenworksCanvasComponentGalleryLayer";
+         this.VenworksCanvasGalleryLayer.mouseEnabled = false;
+         this.VenworksCanvasGalleryLayer.mouseChildren = true;
+         this.VenworksCanvasGalleryScrollTrack = new MovieClip();
+         this.VenworksCanvasGalleryScrollTrack.name = "VenworksCanvasGalleryScrollTrack";
+         this.VenworksCanvasGalleryScrollTrack.graphics.beginFill(3163735,0.95);
+         this.VenworksCanvasGalleryScrollTrack.graphics.drawRect(0,0,12,trackHeight);
+         this.VenworksCanvasGalleryScrollTrack.graphics.endFill();
+         this.VenworksCanvasGalleryScrollTrack.x = stageWidth - 28;
+         this.VenworksCanvasGalleryScrollTrack.y = 40;
+         this.VenworksCanvasGalleryScrollTrack.addEventListener(MouseEvent.MOUSE_DOWN,this.onVenworksCanvasGalleryTrackDown,false,0,true);
+         this.VenworksCanvasGalleryScrollThumb = new MovieClip();
+         this.VenworksCanvasGalleryScrollThumb.name = "VenworksCanvasGalleryScrollThumb";
+         this.VenworksCanvasGalleryScrollThumb.buttonMode = true;
+         this.VenworksCanvasGalleryScrollThumb.addEventListener(MouseEvent.MOUSE_DOWN,this.onVenworksCanvasGalleryThumbDown,false,0,true);
+         this.VenworksCanvasGalleryLayer.addChild(this.VenworksCanvasGalleryScrollTrack);
+         this.VenworksCanvasGalleryLayer.addChild(this.VenworksCanvasGalleryScrollThumb);
+         addChild(this.VenworksCanvasGalleryLayer);
+         this.updateVenworksCanvasGalleryScrollBar(null);
+      }
+
+      private function startVenworksCanvasGalleryHost() : void
+      {
+         if(this.VenworksCanvasGalleryHostLoader != null)
+         {
+            return;
+         }
+         this.VenworksCanvasGalleryHostLoader = new Loader();
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.addEventListener(Event.INIT,this.onVenworksCanvasGalleryHostInit,false,0,true);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.addEventListener(Event.COMPLETE,this.onVenworksCanvasGalleryHostComplete,false,0,true);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasGalleryHostError,false,0,true);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasGalleryHostError,false,0,true);
+         try
+         {
+            this.VenworksCanvasGalleryHostLoader.load(new URLRequest("venworkscui.swf"));
+         }
+         catch(venworksCanvasGalleryLoadError:*)
+         {
+            this.showVenworksCanvasGalleryError("Canvas host load failed");
+            this.disposeVenworksCanvasGalleryHost();
+         }
+      }
+
+      private function onVenworksCanvasGalleryHostInit(param1:Event) : void
+      {
+         if(!this.VenworksCanvasGalleryActive || this.VenworksCanvasGalleryHostLoader == null)
+         {
+            return;
+         }
+         this.VenworksCanvasGalleryHostBridge = this.VenworksCanvasGalleryHostLoader.content as MovieClip;
+         if(this.VenworksCanvasGalleryHostBridge == null || !("initialize" in this.VenworksCanvasGalleryHostBridge) || !("loadLocalConsumer" in this.VenworksCanvasGalleryHostBridge))
+         {
+            this.showVenworksCanvasGalleryError("Canvas host does not expose the menu contract");
+            this.disposeVenworksCanvasGalleryHost();
+         }
+      }
+
+      private function onVenworksCanvasGalleryHostComplete(param1:Event) : void
+      {
+         if(!this.VenworksCanvasGalleryActive || this.VenworksCanvasGalleryHostLoader == null || this.VenworksCanvasGalleryHostBridge == null)
+         {
+            return;
+         }
+         this.removeVenworksCanvasGalleryHostListeners();
+         if(this.VenworksCanvasGalleryHostBridge.parent !== this)
+         {
+            addChild(this.VenworksCanvasGalleryHostBridge);
+         }
+         if(this.VenworksCanvasGalleryLayer != null && this.VenworksCanvasGalleryLayer.parent === this)
+         {
+            setChildIndex(this.VenworksCanvasGalleryLayer,numChildren - 1);
+         }
+         addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasGalleryDeferredInitialize,false,0,true);
+      }
+
+      private function onVenworksCanvasGalleryDeferredInitialize(param1:Event) : void
+      {
+         removeEventListener(Event.ENTER_FRAME,this.onVenworksCanvasGalleryDeferredInitialize);
+         if(!this.VenworksCanvasGalleryActive || this.VenworksCanvasGalleryHostBridge == null)
+         {
+            return;
+         }
+         try
+         {
+            if(this.VenworksCanvasGalleryHostBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"menu","displayMode":"__VWCANVAS_DISPLAY_MODE__"}) !== true)
+            {
+               throw new Error("Canvas rejected the menu host");
+            }
+            if(this.VenworksCanvasGalleryHostBridge["loadLocalConsumer"]({
+               "consumerId":this.VENWORKS_CANVAS_GALLERY_CONSUMER_ID,
+               "displayName":"Venworks Canvas Component Gallery",
+               "normalPath":"VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf",
+               "largePath":"VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf",
+               "version":1
+            }) !== true)
+            {
+               throw new Error("Canvas rejected the local Gallery descriptor");
+            }
+         }
+         catch(venworksCanvasGalleryInitError:*)
+         {
+            this.showVenworksCanvasGalleryError("Canvas menu initialization failed");
+            this.disposeVenworksCanvasGalleryHost();
+         }
+      }
+
+      private function onVenworksCanvasGalleryHostError(param1:Event) : void
+      {
+         this.showVenworksCanvasGalleryError("Canvas host asset is unavailable");
+         this.disposeVenworksCanvasGalleryHost();
+      }
+
+      private function removeVenworksCanvasGalleryHostListeners() : void
+      {
+         if(this.VenworksCanvasGalleryHostLoader == null)
+         {
+            return;
+         }
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.removeEventListener(Event.INIT,this.onVenworksCanvasGalleryHostInit);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onVenworksCanvasGalleryHostComplete);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onVenworksCanvasGalleryHostError);
+         this.VenworksCanvasGalleryHostLoader.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onVenworksCanvasGalleryHostError);
+      }
+
+      private function disposeVenworksCanvasGalleryHost() : void
+      {
+         removeEventListener(Event.ENTER_FRAME,this.onVenworksCanvasGalleryDeferredInitialize);
+         this.removeVenworksCanvasGalleryHostListeners();
+         if(this.VenworksCanvasGalleryHostBridge != null && "unloadLocalConsumer" in this.VenworksCanvasGalleryHostBridge)
+         {
+            try
+            {
+               this.VenworksCanvasGalleryHostBridge["unloadLocalConsumer"](this.VENWORKS_CANVAS_GALLERY_CONSUMER_ID);
+            }
+            catch(venworksCanvasGalleryUnloadConsumerError:*)
+            {
+            }
+         }
+         if(this.VenworksCanvasGalleryHostBridge != null && "dispose" in this.VenworksCanvasGalleryHostBridge)
+         {
+            try
+            {
+               this.VenworksCanvasGalleryHostBridge["dispose"]();
+            }
+            catch(venworksCanvasGalleryDisposeError:*)
+            {
+            }
+         }
+         if(this.VenworksCanvasGalleryHostBridge != null && this.VenworksCanvasGalleryHostBridge.parent === this)
+         {
+            removeChild(this.VenworksCanvasGalleryHostBridge);
+         }
+         this.VenworksCanvasGalleryHostBridge = null;
+         if(this.VenworksCanvasGalleryHostLoader != null)
+         {
+            try
+            {
+               this.VenworksCanvasGalleryHostLoader.unload();
+            }
+            catch(venworksCanvasGalleryHostUnloadError:*)
+            {
+            }
+         }
+         this.VenworksCanvasGalleryHostLoader = null;
+      }
+
+      private function onVenworksCanvasGalleryEnterFrame(param1:Event) : void
+      {
+         if(this.VenworksCanvasGalleryUpHeld != this.VenworksCanvasGalleryDownHeld)
+         {
+            this.scrollVenworksCanvasGalleryBy(this.VenworksCanvasGalleryUpHeld ? -this.VENWORKS_CANVAS_GALLERY_SCROLL_DELTA : this.VENWORKS_CANVAS_GALLERY_SCROLL_DELTA);
+         }
+         else
+         {
+            this.updateVenworksCanvasGalleryScrollBar(this.getVenworksCanvasGalleryScrollState());
+         }
+      }
+
+      private function onVenworksCanvasGalleryMouseWheel(param1:MouseEvent) : void
+      {
+         if(this.VenworksCanvasGalleryActive && param1.delta != 0)
+         {
+            this.scrollVenworksCanvasGalleryBy(param1.delta > 0 ? -this.VENWORKS_CANVAS_GALLERY_WHEEL_DELTA : this.VENWORKS_CANVAS_GALLERY_WHEEL_DELTA);
+            param1.stopPropagation();
+         }
+      }
+
+      private function onVenworksCanvasGalleryTrackDown(param1:MouseEvent) : void
+      {
+         var state:Object = this.getVenworksCanvasGalleryScrollState();
+         if(state != null && Boolean(state.canScroll) && this.VenworksCanvasGalleryScrollTrack != null)
+         {
+            this.scrollVenworksCanvasGalleryTo(Number(state.maximum) * Math.max(0,Math.min(1,this.VenworksCanvasGalleryScrollTrack.mouseY / this.VenworksCanvasGalleryScrollTrack.height)));
+            param1.stopPropagation();
+         }
+      }
+
+      private function onVenworksCanvasGalleryThumbDown(param1:MouseEvent) : void
+      {
+         var state:Object = this.getVenworksCanvasGalleryScrollState();
+         if(state != null && Boolean(state.canScroll))
+         {
+            this.VenworksCanvasGalleryDragging = true;
+            this.VenworksCanvasGalleryDragStartY = param1.stageY;
+            this.VenworksCanvasGalleryDragStartOffset = Number(state.offset);
+            param1.stopPropagation();
+         }
+      }
+
+      private function onVenworksCanvasGalleryMouseMove(param1:MouseEvent) : void
+      {
+         if(!this.VenworksCanvasGalleryDragging || this.VenworksCanvasGalleryScrollTrack == null || this.VenworksCanvasGalleryScrollThumb == null)
+         {
+            return;
+         }
+         var state:Object = this.getVenworksCanvasGalleryScrollState();
+         if(state == null || !Boolean(state.canScroll))
+         {
+            return;
+         }
+         var travel:Number = this.VenworksCanvasGalleryScrollTrack.height - this.VenworksCanvasGalleryScrollThumb.height;
+         if(travel > 0)
+         {
+            this.scrollVenworksCanvasGalleryTo(this.VenworksCanvasGalleryDragStartOffset + (param1.stageY - this.VenworksCanvasGalleryDragStartY) * Number(state.maximum) / travel);
+            param1.stopPropagation();
+         }
+      }
+
+      private function onVenworksCanvasGalleryMouseUp(param1:MouseEvent) : void
+      {
+         this.VenworksCanvasGalleryDragging = false;
+      }
+
+      private function scrollVenworksCanvasGalleryBy(param1:Number) : void
+      {
+         if(this.VenworksCanvasGalleryHostBridge == null || !("scrollConsumerBy" in this.VenworksCanvasGalleryHostBridge))
+         {
+            return;
+         }
+         try
+         {
+            this.updateVenworksCanvasGalleryScrollBar(this.VenworksCanvasGalleryHostBridge["scrollConsumerBy"](this.VENWORKS_CANVAS_GALLERY_CONSUMER_ID,param1));
+         }
+         catch(venworksCanvasGalleryScrollError:*)
+         {
+            this.showVenworksCanvasGalleryError("Canvas scrolling failed");
+         }
+      }
+
+      private function scrollVenworksCanvasGalleryTo(param1:Number) : void
+      {
+         if(this.VenworksCanvasGalleryHostBridge == null || !("scrollConsumerTo" in this.VenworksCanvasGalleryHostBridge))
+         {
+            return;
+         }
+         try
+         {
+            this.updateVenworksCanvasGalleryScrollBar(this.VenworksCanvasGalleryHostBridge["scrollConsumerTo"](this.VENWORKS_CANVAS_GALLERY_CONSUMER_ID,param1));
+         }
+         catch(venworksCanvasGalleryScrollError:*)
+         {
+            this.showVenworksCanvasGalleryError("Canvas scrollbar failed");
+         }
+      }
+
+      private function getVenworksCanvasGalleryScrollState() : Object
+      {
+         if(this.VenworksCanvasGalleryHostBridge == null || !("getConsumerScrollState" in this.VenworksCanvasGalleryHostBridge))
+         {
+            return null;
+         }
+         try
+         {
+            return this.VenworksCanvasGalleryHostBridge["getConsumerScrollState"](this.VENWORKS_CANVAS_GALLERY_CONSUMER_ID);
+         }
+         catch(venworksCanvasGalleryStateError:*)
+         {
+            this.showVenworksCanvasGalleryError("Canvas scroll state failed");
+         }
+         return null;
+      }
+
+      private function updateVenworksCanvasGalleryScrollBar(param1:Object) : void
+      {
+         if(this.VenworksCanvasGalleryScrollTrack == null || this.VenworksCanvasGalleryScrollThumb == null)
+         {
+            return;
+         }
+         if(param1 == null || !Boolean(param1.canScroll) || Number(param1.documentHeight) <= 0)
+         {
+            this.VenworksCanvasGalleryScrollTrack.visible = false;
+            this.VenworksCanvasGalleryScrollThumb.visible = false;
+            return;
+         }
+         this.VenworksCanvasGalleryScrollTrack.visible = true;
+         this.VenworksCanvasGalleryScrollThumb.visible = true;
+         var thumbHeight:Number = Math.max(28,this.VenworksCanvasGalleryScrollTrack.height * Math.min(1,Number(param1.viewportHeight) / Number(param1.documentHeight)));
+         var travel:Number = this.VenworksCanvasGalleryScrollTrack.height - thumbHeight;
+         var ratio:Number = Number(param1.maximum) <= 0 ? 0 : Number(param1.offset) / Number(param1.maximum);
+         this.VenworksCanvasGalleryScrollThumb.graphics.clear();
+         this.VenworksCanvasGalleryScrollThumb.graphics.beginFill(6750207,1);
+         this.VenworksCanvasGalleryScrollThumb.graphics.drawRect(0,0,12,thumbHeight);
+         this.VenworksCanvasGalleryScrollThumb.graphics.endFill();
+         this.VenworksCanvasGalleryScrollThumb.x = this.VenworksCanvasGalleryScrollTrack.x;
+         this.VenworksCanvasGalleryScrollThumb.y = this.VenworksCanvasGalleryScrollTrack.y + travel * Math.max(0,Math.min(1,ratio));
+      }
+
+      private function showVenworksCanvasGalleryError(param1:String) : void
+      {
+         if(this.VenworksCanvasGalleryLayer == null)
+         {
+            return;
+         }
+         if(this.VenworksCanvasGalleryErrorText == null)
+         {
+            var format:TextFormat = new TextFormat("$MAIN_Font_Bold",24,16777215,false);
+            this.VenworksCanvasGalleryErrorText = new TextField();
+            this.VenworksCanvasGalleryErrorText.name = "VenworksCanvasGalleryError";
+            this.VenworksCanvasGalleryErrorText.x = 48;
+            this.VenworksCanvasGalleryErrorText.y = 48;
+            this.VenworksCanvasGalleryErrorText.width = 1000;
+            this.VenworksCanvasGalleryErrorText.height = 100;
+            this.VenworksCanvasGalleryErrorText.background = true;
+            this.VenworksCanvasGalleryErrorText.backgroundColor = 2097152;
+            this.VenworksCanvasGalleryErrorText.border = true;
+            this.VenworksCanvasGalleryErrorText.borderColor = 16724736;
+            this.VenworksCanvasGalleryErrorText.embedFonts = true;
+            this.VenworksCanvasGalleryErrorText.defaultTextFormat = format;
+            this.VenworksCanvasGalleryErrorText.multiline = true;
+            this.VenworksCanvasGalleryErrorText.mouseEnabled = false;
+            this.VenworksCanvasGalleryLayer.addChild(this.VenworksCanvasGalleryErrorText);
+         }
+         this.VenworksCanvasGalleryErrorText.text = "CANVAS COMPONENT GALLERY ERROR\n" + param1;
+         this.VenworksCanvasGalleryErrorText.setTextFormat(new TextFormat("$MAIN_Font_Bold",24,16777215,false));
+      }
+
+      private function onVenworksCanvasGalleryRemoved(param1:Event) : void
+      {
+         if(param1.target === this)
+         {
+            this.closeVenworksCanvasGallery(false);
+         }
+      }
+
+]]></content></insertion>
+  </insertions>
+</actionScriptPatch>

@@ -48,6 +48,14 @@
     <token>public function setData(param1:Object) : void</token>
     <token>public function setViewport(param1:Number, param2:Number) : void</token>
     <token>public function scrollBy(param1:Number) : void</token>
+    <token>public function scrollTo(param1:Number) : void</token>
+    <token>public function getScrollState() : Object</token>
+    <token>public function loadLocalConsumer(param1:Object) : Boolean</token>
+    <token>public function scrollConsumerBy(param1:String, param2:Number) : Object</token>
+    <token>public function scrollConsumerTo(param1:String, param2:Number) : Object</token>
+    <token>public function getConsumerScrollState(param1:String) : Object</token>
+    <token>MENU LOCAL TRANSPORT READY</token>
+    <token>hostKinds</token>
     <token>public function dispatch(param1:String) : void</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
@@ -77,6 +85,8 @@
     <token>PROVIDER CALLBACK #</token>
     <token>PROVIDER ALERT #</token>
     <token>PROVIDER PAYLOAD REJECTED</token>
+    <token>this.diagnostics.visible = false</token>
+    <token>isFailureDiagnostic</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>FileReference</token>

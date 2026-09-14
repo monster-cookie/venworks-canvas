@@ -115,12 +115,16 @@ if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string
 }
 if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredExample.Archives[0].ScaleformOwnership -cne 'Consumer' -or
-    [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
+    [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 3) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
+$galleryPauseMenuAssets = @($configuredGallery.Archives[0].Assets | Where-Object { $_ -is [Collections.IDictionary] -and $_.Contains('HostMenu') -and [string]$_['HostMenu'] -ceq 'pausemenu' })
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch targets'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.DisplayMode) -Expected @('normal', 'large') -Description 'Component Gallery Pause Menu display modes'
 $galleryRepositoryAssets = @($configuredGallery.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
 $galleryTextAssets = @($galleryRepositoryAssets | Where-Object { [string]$_.Source -ceq 'Scaleform/component-gallery/resources' })
 if ($galleryRepositoryAssets.Count -ne 1 -or

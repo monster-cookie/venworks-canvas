@@ -1,11 +1,7 @@
 package
 {
    import flash.display.MovieClip;
-   import flash.display.Stage;
    import flash.events.Event;
-   import flash.events.KeyboardEvent;
-   import flash.events.MouseEvent;
-   import flash.ui.Keyboard;
 
    public final class CanvasComponentGallery extends MovieClip
    {
@@ -13,21 +9,16 @@ package
 
       private static const DEFAULT_VIEWPORT_HEIGHT:Number = 1080;
 
-      private static const LINE_SCROLL:Number = 64;
-
-      private static const PAGE_SCROLL:Number = 720;
-
       private var htmlBridge:Object;
 
-      private var inputStage:Stage;
-
       private var playerDataUpdates:int;
+
+      private var hostKind:String = "";
 
       public function CanvasComponentGallery()
       {
          super();
          this.addEventListener(Event.ADDED_TO_STAGE,this.onAddedToStage,false,0,true);
-         this.addEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage,false,0,true);
       }
 
       public function getCanvasRegistration() : Object
@@ -39,8 +30,9 @@ package
             "version":1,
             "minimumContractVersion":2,
             "maximumContractVersion":2,
-            "uiChannels":["PlayerData"],
-            "eventTopics":["venworks.canvas.example.ping"],
+            "hostKinds":["menu"],
+            "uiChannels":[],
+            "eventTopics":[],
             "marker":"COMPONENT-GALLERY"
          };
       }
@@ -83,16 +75,17 @@ package
          {
             this.clearHtmlBridge();
             this.playerDataUpdates = 0;
+            this.hostKind = param2 != null && "hostKind" in param2 ? String(param2["hostKind"]) : "";
             this.htmlBridge = this.resolveHtmlBridge(param2);
             if(this.htmlBridge != null)
             {
                this.updateViewport();
                this.submitSampleData();
-               this.attachInputListeners();
             }
          }
          else if(param1 == "unload")
          {
+            this.hostKind = "";
             this.clearHtmlBridge();
          }
       }
@@ -101,7 +94,6 @@ package
       {
          this.clearHtmlBridge();
          this.removeEventListener(Event.ADDED_TO_STAGE,this.onAddedToStage);
-         this.removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
       }
 
       private function resolveHtmlBridge(param1:Object) : Object
@@ -116,7 +108,7 @@ package
          {
             return null;
          }
-         if(!("setData" in bridge) || typeof bridge["setData"] != "function" || !("setViewport" in bridge) || typeof bridge["setViewport"] != "function" || !("scrollBy" in bridge) || typeof bridge["scrollBy"] != "function" || !("dispatch" in bridge) || typeof bridge["dispatch"] != "function")
+         if(!("setData" in bridge) || typeof bridge["setData"] != "function" || !("setViewport" in bridge) || typeof bridge["setViewport"] != "function" || !("dispatch" in bridge) || typeof bridge["dispatch"] != "function")
          {
             return null;
          }
@@ -131,7 +123,7 @@ package
             "samplevisible":true,
             "sampleitems":["Alpha item","Beta item","Gamma item"],
             "samplemeter":72,
-            "sampleupdates":"PlayerData snapshots received: " + this.playerDataUpdates
+            "sampleupdates":this.hostKind == "menu" ? "Menu-local sample data" : "PlayerData snapshots received: " + this.playerDataUpdates
          };
       }
 
@@ -140,6 +132,10 @@ package
          if(this.htmlBridge != null)
          {
             this.htmlBridge["setData"](this.createSampleData());
+            if(this.hostKind == "menu")
+            {
+               this.htmlBridge["dispatch"]("venworks.canvas.example.ping");
+            }
          }
       }
 
@@ -165,51 +161,9 @@ package
          this.htmlBridge["setViewport"](viewportWidth,viewportHeight);
       }
 
-      private function attachInputListeners() : void
-      {
-         if(this.htmlBridge == null || stage == null || this.inputStage === stage)
-         {
-            return;
-         }
-         this.detachInputListeners();
-         this.inputStage = stage;
-         this.inputStage.addEventListener(MouseEvent.MOUSE_WHEEL,this.onMouseWheel,false,0,true);
-         this.inputStage.addEventListener(KeyboardEvent.KEY_DOWN,this.onKeyDown,false,0,true);
-         this.inputStage.addEventListener(Event.RESIZE,this.onStageResize,false,0,true);
-      }
-
-      private function detachInputListeners() : void
-      {
-         if(this.inputStage == null)
-         {
-            return;
-         }
-         this.inputStage.removeEventListener(MouseEvent.MOUSE_WHEEL,this.onMouseWheel);
-         this.inputStage.removeEventListener(KeyboardEvent.KEY_DOWN,this.onKeyDown);
-         this.inputStage.removeEventListener(Event.RESIZE,this.onStageResize);
-         this.inputStage = null;
-      }
-
       private function clearHtmlBridge() : void
       {
-         this.detachInputListeners();
          this.htmlBridge = null;
-      }
-
-      private function scrollHtml(param1:Number) : void
-      {
-         if(this.htmlBridge == null)
-         {
-            return;
-         }
-         try
-         {
-            this.htmlBridge["scrollBy"](param1);
-         }
-         catch(scrollError:*)
-         {
-            this.clearHtmlBridge();
-         }
       }
 
       private function onAddedToStage(param1:Event) : void
@@ -219,7 +173,6 @@ package
             try
             {
                this.updateViewport();
-               this.attachInputListeners();
             }
             catch(viewportError:*)
             {
@@ -228,55 +181,5 @@ package
          }
       }
 
-      private function onRemovedFromStage(param1:Event) : void
-      {
-         this.detachInputListeners();
-      }
-
-      private function onStageResize(param1:Event) : void
-      {
-         try
-         {
-            this.updateViewport();
-         }
-         catch(viewportError:*)
-         {
-            this.clearHtmlBridge();
-         }
-      }
-
-      private function onMouseWheel(param1:MouseEvent) : void
-      {
-         var delta:Number = param1.delta;
-         if(delta > 3)
-         {
-            delta = 3;
-         }
-         else if(delta < -3)
-         {
-            delta = -3;
-         }
-         this.scrollHtml(-delta * LINE_SCROLL);
-      }
-
-      private function onKeyDown(param1:KeyboardEvent) : void
-      {
-         if(param1.keyCode == Keyboard.UP)
-         {
-            this.scrollHtml(-LINE_SCROLL);
-         }
-         else if(param1.keyCode == Keyboard.DOWN)
-         {
-            this.scrollHtml(LINE_SCROLL);
-         }
-         else if(param1.keyCode == Keyboard.PAGE_UP)
-         {
-            this.scrollHtml(-PAGE_SCROLL);
-         }
-         else if(param1.keyCode == Keyboard.PAGE_DOWN)
-         {
-            this.scrollHtml(PAGE_SCROLL);
-         }
-      }
    }
 }

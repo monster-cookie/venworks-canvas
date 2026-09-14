@@ -195,18 +195,16 @@ function Assert-BuildScaleformArchiveOwnership {
   foreach ($archive in @($Variant.Archives)) {
     $ownership = [string](Get-BuildPackagePropertyValue -InputObject $archive -Name 'ScaleformOwnership')
     if ([string]::IsNullOrWhiteSpace($ownership)) { continue }
-    if ($ownership -cnotin @('Host', 'Consumer')) {
-      throw "$($Variant.VariantKey) archive has unsupported ScaleformOwnership '$ownership'. Expected 'Host' or 'Consumer'."
+    if ($ownership -cnotin @('Host', 'Consumer', 'ConsumerExtension')) {
+      throw "$($Variant.VariantKey) archive has unsupported ScaleformOwnership '$ownership'. Expected 'Host', 'Consumer', or 'ConsumerExtension'."
     }
 
     $assets = @((Get-BuildPackagePropertyValue -InputObject $archive -Name 'Assets' -DefaultValue @()))
     $scaleformAssets = @($assets | Where-Object { [string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'Root') -ieq 'Scaleform' })
-    $classifiedAssets = @($assets | Where-Object {
-      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'ConsumerNamespace')) -or
-      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'DisplayMode'))
-    })
+    $consumerAssets = @($scaleformAssets | Where-Object { ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'ConsumerNamespace')) })
+    $extensionAssets = @($scaleformAssets | Where-Object { ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'HostMenu')) })
     if ($ownership -ceq 'Host') {
-      if ($classifiedAssets.Count -ne 0) {
+      if ($consumerAssets.Count -ne 0 -or $extensionAssets.Count -ne 0 -or @($scaleformAssets | Where-Object { ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'DisplayMode')) }).Count -ne 0) {
         throw "$($Variant.VariantKey) host archive cannot declare consumer Scaleform asset metadata."
       }
       continue
@@ -214,12 +212,21 @@ function Assert-BuildScaleformArchiveOwnership {
     if ($scaleformAssets.Count -eq 0) {
       throw "$($Variant.VariantKey) consumer archive must declare at least one Scaleform asset pair."
     }
-    if ($classifiedAssets.Count -ne $scaleformAssets.Count) {
+    if ($consumerAssets.Count -eq 0) {
       throw "$($Variant.VariantKey) consumer archive must classify every Scaleform asset with ConsumerNamespace and DisplayMode."
+    }
+    if ($ownership -ceq 'Consumer' -and ($extensionAssets.Count -ne 0 -or $consumerAssets.Count -ne $scaleformAssets.Count)) {
+      throw "$($Variant.VariantKey) consumer archive must classify every Scaleform asset with ConsumerNamespace and DisplayMode."
+    }
+    if ($ownership -ceq 'ConsumerExtension' -and ($extensionAssets.Count -eq 0 -or $consumerAssets.Count + $extensionAssets.Count -ne $scaleformAssets.Count -or @($scaleformAssets | Where-Object {
+      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'ConsumerNamespace')) -and
+      ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'HostMenu'))
+    }).Count -ne 0)) {
+      throw "$($Variant.VariantKey) consumer extension archive must classify every Scaleform asset as exactly one consumer movie or host-menu patch."
     }
 
     $pairs = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
-    foreach ($asset in $scaleformAssets) {
+    foreach ($asset in $consumerAssets) {
       $consumerNamespace = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'ConsumerNamespace')
       $displayMode = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'DisplayMode')
       $source = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')).Replace('\', '/')
@@ -257,6 +264,40 @@ function Assert-BuildScaleformArchiveOwnership {
         throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare one normal and one large Scaleform asset from the same source."
       }
     }
+    if ($ownership -ceq 'ConsumerExtension') {
+      $hostMenus = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+      foreach ($asset in $extensionAssets) {
+        $hostMenu = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'HostMenu')
+        $displayMode = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'DisplayMode')
+        $source = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')).Replace('\', '/')
+        $target = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target')).Replace('\', '/')
+        if (![regex]::IsMatch($hostMenu, '\A[a-z][a-z0-9]*\z', [Text.RegularExpressions.RegexOptions]::CultureInvariant)) {
+          throw "$($Variant.VariantKey) consumer extension archive has invalid HostMenu '$hostMenu'."
+        }
+        if ($displayMode -cnotin @('normal', 'large')) {
+          throw "$($Variant.VariantKey) consumer extension archive has unsupported DisplayMode '$displayMode'. Expected 'normal' or 'large'."
+        }
+        if ([string]::IsNullOrWhiteSpace($source)) {
+          throw "$($Variant.VariantKey) consumer extension archive has an empty Scaleform Source."
+        }
+        $expectedTarget = if ($displayMode -ceq 'large') { "Interface/$($hostMenu)_lrg.swf" } else { "Interface/$hostMenu.swf" }
+        if ($target -cne $expectedTarget) {
+          throw "$($Variant.VariantKey) consumer extension target '$target' must be '$expectedTarget'."
+        }
+        if (!$hostMenus.ContainsKey($hostMenu)) {
+          $hostMenus.Add($hostMenu, [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal))
+        }
+        if (!$hostMenus[$hostMenu].Add($displayMode)) {
+          throw "$($Variant.VariantKey) consumer extension '$hostMenu' declares DisplayMode '$displayMode' more than once."
+        }
+      }
+      foreach ($hostMenu in $hostMenus.Keys) {
+        $modes = $hostMenus[$hostMenu]
+        if ($modes.Count -ne 2 -or !$modes.Contains('normal') -or !$modes.Contains('large')) {
+          throw "$($Variant.VariantKey) consumer extension '$hostMenu' must declare one normal and one large host-menu patch."
+        }
+      }
+    }
   }
 }
 
@@ -268,7 +309,7 @@ function Assert-BuildConsumerScaleformPayloadOwnership {
   )
 
   $ownership = [string](Get-BuildPackagePropertyValue -InputObject $Archive -Name 'ScaleformOwnership')
-  if ($ownership -cne 'Consumer') { return }
+  if ($ownership -cnotin @('Consumer', 'ConsumerExtension')) { return }
   $allowedTargets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
   foreach ($asset in @((Get-BuildPackagePropertyValue -InputObject $Archive -Name 'Assets' -DefaultValue @()))) {
     if ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Root') -ine 'Scaleform') { continue }

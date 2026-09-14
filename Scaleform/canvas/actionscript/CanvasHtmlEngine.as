@@ -118,6 +118,37 @@ package
          return this.disposed || entry == null ? null : entry.bridge;
       }
 
+      public function scrollBy(param1:String, param2:Number) : Object
+      {
+         var entry:Object = this.consumers[param1];
+         var session:CanvasHtmlSession = this.disposed || entry == null ? null : entry.session as CanvasHtmlSession;
+         if(session == null)
+         {
+            return null;
+         }
+         session.scrollBy(param2);
+         return session.getScrollState();
+      }
+
+      public function scrollTo(param1:String, param2:Number) : Object
+      {
+         var entry:Object = this.consumers[param1];
+         var session:CanvasHtmlSession = this.disposed || entry == null ? null : entry.session as CanvasHtmlSession;
+         if(session == null)
+         {
+            return null;
+         }
+         session.scrollTo(param2);
+         return session.getScrollState();
+      }
+
+      public function getScrollState(param1:String) : Object
+      {
+         var entry:Object = this.consumers[param1];
+         var session:CanvasHtmlSession = this.disposed || entry == null ? null : entry.session as CanvasHtmlSession;
+         return session == null ? null : session.getScrollState();
+      }
+
       private function validateRegistration(param1:String, param2:Object) : Object
       {
          if(!CanvasHtmlPath.isValidNamespace(param1))
