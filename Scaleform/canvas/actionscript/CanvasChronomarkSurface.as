@@ -2,7 +2,7 @@ package
 {
    import flash.display.MovieClip;
    import flash.display.Sprite;
-   import flash.geom.Matrix3D;
+   import flash.geom.Matrix;
    import flash.geom.Point;
    import flash.geom.Rectangle;
 
@@ -99,16 +99,10 @@ package
          }
          var profile:Object = CanvasChronomarkStyle.profile(this.displayMode);
          var values:Array = profile.matrix as Array;
-         var vector:Vector.<Number> = new Vector.<Number>(16,true);
-         var index:int = 0;
-         while(index < vector.length)
-         {
-            vector[index] = Number(values[index]);
-            index++;
-         }
-         transform.matrix3D = new Matrix3D(vector);
+         var placement:Matrix = new Matrix(Number(values[0]),Number(values[1]),Number(values[4]),Number(values[5]),0,0);
          if(param1 == null || typeof param1 != "object")
          {
+            transform.matrix = placement;
             return;
          }
          this.ownerAppliesOpacity = !("ownerAppliesOpacity" in param1) || param1.ownerAppliesOpacity === true;
@@ -120,10 +114,11 @@ package
          var safeY:Number = this.layoutNumber(param1,"safeY",0);
          if(this.parent != null && visibleWidth > 0 && visibleHeight > 0)
          {
-            var bounds:Rectangle = this.getMeasuredFaceBounds();
-            this.x += visibleX + safeX - bounds.x;
-            this.y += visibleY + visibleHeight - safeY - (bounds.y + bounds.height);
+            var bounds:Rectangle = this.getMeasuredFaceBounds(placement);
+            placement.tx = visibleX + safeX - bounds.x;
+            placement.ty = visibleY + visibleHeight - safeY - (bounds.y + bounds.height);
          }
+         transform.matrix = placement;
       }
 
       public function setHudModeVisibility(param1:Boolean) : void
@@ -317,7 +312,7 @@ package
          return isFinite(value) ? value : param3;
       }
 
-      private function getMeasuredFaceBounds() : Rectangle
+      private function getMeasuredFaceBounds(param1:Matrix) : Rectangle
       {
          var corners:Array = [new Point(0,0),new Point(CanvasChronomarkStyle.FACE_SIZE,0),new Point(0,CanvasChronomarkStyle.FACE_SIZE),new Point(CanvasChronomarkStyle.FACE_SIZE,CanvasChronomarkStyle.FACE_SIZE)];
          var minimumX:Number = Number.POSITIVE_INFINITY;
@@ -327,7 +322,7 @@ package
          var index:int = 0;
          while(index < corners.length)
          {
-            var point:Point = this.parent.globalToLocal(localToGlobal(corners[index] as Point));
+            var point:Point = param1.transformPoint(corners[index] as Point);
             minimumX = Math.min(minimumX,point.x);
             minimumY = Math.min(minimumY,point.y);
             maximumX = Math.max(maximumX,point.x);
