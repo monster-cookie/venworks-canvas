@@ -10,6 +10,6 @@
 - Updates the Example panel to display received player-data and example-event markers.
 - Adds an explicit Example ping command and a visible `pong` response that remains until the Example movie unloads.
 - Tightens panel loading so stale or duplicate notifications do not activate the wrong panel. Current-build gameplay acceptance is still pending.
-- Adds Canvas rendering for packaged HTML/CSS interfaces, including styled text, lists, buttons, images, reusable content, and sample-data displays in the Component Gallery. This is a supported subset of HTML/CSS, not full web-browser compatibility; current-build PC and PS5 gameplay acceptance remains pending.
+- Adds Canvas rendering for packaged HTML/CSS interfaces, including styled text, lists, buttons, SVG images, reusable content, and sample-data displays in the Component Gallery. This is a supported subset of HTML/CSS, not full web-browser compatibility; current-build PC and PS5 gameplay acceptance remains pending.
 - Adds mouse-wheel, Up/Down arrow-key, and Page Up/Page Down navigation through the Component Gallery examples.
 - Disables Watch display and alert animations while keeping its underlying data available. This avoids the lag and animation glitches caused when Canvas and Watch presentation use the same event path simultaneously.

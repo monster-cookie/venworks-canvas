@@ -67,8 +67,8 @@ package
       {
          var format:TextFormat = new TextFormat("$MAIN_Font_Bold",18,param2,true);
          var field:TextField = new TextField();
-         field.x = 500;
-         field.y = 720;
+         field.x = 32;
+         field.y = 1012;
          field.width = 620;
          field.height = 36;
          field.background = true;

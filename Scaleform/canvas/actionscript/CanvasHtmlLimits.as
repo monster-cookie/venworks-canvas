@@ -4,8 +4,6 @@ package
    {
       public static const MAX_SOURCE_BYTES:int = 65536;
 
-      public static const MAX_RASTER_BYTES:int = 524288;
-
       public static const MAX_AGGREGATE_BYTES:int = 786432;
 
       public static const MAX_HTML_TOKENS:int = 32768;
@@ -75,12 +73,6 @@ package
       public static const MAX_GRAPHICS_COORDINATE:Number = 16384;
 
       public static const MAX_SVG_STROKE_WIDTH:Number = 256;
-
-      public static const MAX_RASTER_DIMENSION:int = 4096;
-
-      public static const MAX_RASTER_PIXELS:Number = 4194304;
-
-      public static const MAX_AGGREGATE_RASTER_PIXELS:Number = 8388608;
 
       public static const MAX_SVG_WORK:int = 65536;
 

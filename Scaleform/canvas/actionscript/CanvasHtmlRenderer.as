@@ -1,6 +1,5 @@
 package
 {
-   import flash.display.Bitmap;
    import flash.display.Shape;
    import flash.display.Sprite;
    import flash.geom.Rectangle;
@@ -421,53 +420,18 @@ package
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean
       {
-         if(param2.name == "img")
+         if(param2.name == "img" && this.resolveImageResource(param2) == null)
          {
-            var resource:CanvasHtmlResource = this.resolveImageResource(param2);
-            if(resource == null)
-            {
-               return this.reject("invalid-image",param2.resource,"asset");
-            }
-            if(resource.kind == "png")
-            {
-               return this.measureRaster(param1,param2,resource);
-            }
+            return this.reject("invalid-image",param2.resource,"asset");
          }
          return this.measureSvg(param1,param2);
-      }
-
-      private function measureRaster(param1:Object, param2:CanvasHtmlNode, param3:CanvasHtmlResource) : Boolean
-      {
-         if(param3.bitmapData == null || param3.bitmapData.width <= 0 || param3.bitmapData.height <= 0 || param3.bitmapData.width > CanvasHtmlLimits.MAX_RASTER_DIMENSION || param3.bitmapData.height > CanvasHtmlLimits.MAX_RASTER_DIMENSION || Number(param3.bitmapData.width) * Number(param3.bitmapData.height) > CanvasHtmlLimits.MAX_RASTER_PIXELS)
-         {
-            return this.reject("invalid-raster",param2.resource,"asset");
-         }
-         var width:Number = Math.max(1,Number(param1.innerWidth));
-         var height:Number = width * Number(param3.bitmapData.height) / Number(param3.bitmapData.width);
-         if(param1.style["height"] != "auto")
-         {
-            height = Math.max(1,CanvasCssValue.resolveLength(String(param1.style["height"]),this.viewportHeight,height) - Number(param1.paddingTop) - Number(param1.paddingBottom) - Number(param1.border) * 2);
-         }
-         if(!this.isBoundedCoordinate(width) || !this.isBoundedCoordinate(height))
-         {
-            return this.reject("invalid-raster-size",param2.resource,"asset");
-         }
-         var bitmap:Bitmap = new Bitmap(param3.bitmapData);
-         bitmap.smoothing = true;
-         bitmap.width = width;
-         bitmap.height = height;
-         bitmap.x = Number(param1.border) + Number(param1.paddingLeft);
-         bitmap.y = Number(param1.border) + Number(param1.paddingTop);
-         Sprite(param1.sprite).addChild(bitmap);
-         param1.contentHeight = height;
-         return true;
       }
 
       private function resolveImageResource(param1:CanvasHtmlNode) : CanvasHtmlResource
       {
          var resolved:String = CanvasHtmlPath.resolve(param1.resource,param1.getAttribute("src"));
          var resource:CanvasHtmlResource = resolved == null ? null : this.resources[resolved] as CanvasHtmlResource;
-         return resource != null && (resource.kind == "svg" || resource.kind == "png") ? resource : null;
+         return resource != null && resource.kind == "svg" ? resource : null;
       }
 
       private function measureSvg(param1:Object, param2:CanvasHtmlNode) : Boolean

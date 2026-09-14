@@ -61,7 +61,7 @@ package
             }
          }
          var extension:String = getExtension(param1);
-         if(extension != ".html" && extension != ".css" && extension != ".svg" && extension != ".png")
+         if(extension != ".html" && extension != ".css" && extension != ".svg")
          {
             return false;
          }

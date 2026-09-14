@@ -118,18 +118,15 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 4) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 3) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 $galleryRepositoryAssets = @($configuredGallery.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
 $galleryTextAssets = @($galleryRepositoryAssets | Where-Object { [string]$_.Source -ceq 'Scaleform/component-gallery/resources' })
-$galleryLogoAssets = @($galleryRepositoryAssets | Where-Object { [string]$_.Source -ceq 'assets/Venworks-Logo.png' })
-if ($galleryRepositoryAssets.Count -ne 2 -or
+if ($galleryRepositoryAssets.Count -ne 1 -or
     $galleryTextAssets.Count -ne 1 -or
     [string]$galleryTextAssets[0].Source -cne 'Scaleform/component-gallery/resources' -or
-    [string]$galleryTextAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' -or
-    $galleryLogoAssets.Count -ne 1 -or
-    [string]$galleryLogoAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-logo.png') {
+    [string]$galleryTextAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery') {
   throw 'Component Gallery repository resource mapping changed.'
 }
 $galleryResourceRoot = Join-Path $PSScriptRoot '..\Scaleform\component-gallery\resources'
@@ -145,12 +142,11 @@ Assert-TestNames -Actual $galleryResourceFiles -Expected @(
 ) -Description 'Component Gallery packaged text resource inventory'
 $galleryPackagedResourceTargets = @($galleryResourceFiles | ForEach-Object {
   Join-Path ([string]$galleryTextAssets[0].Target) $_
-}) + @([string]$galleryLogoAssets[0].Target)
+})
 Assert-TestNames -Actual $galleryPackagedResourceTargets -Expected @(
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-icon.svg'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-theme.css'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery.css'
-  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-logo.png'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/include-example.html'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/index.html'
 ) -Description 'Component Gallery complete packaged resource target inventory'

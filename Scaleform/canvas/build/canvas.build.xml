@@ -30,9 +30,6 @@
     <token>CanvasHtmlRenderer</token>
     <token>CanvasHtmlBridge</token>
     <token>URLLoaderDataFormat.BINARY</token>
-    <token>loadBytes</token>
-    <token>MAX_RASTER_BYTES</token>
-    <token>MAX_AGGREGATE_RASTER_PIXELS</token>
     <token>MAX_SVG_WORK</token>
     <token>MAX_CSS_MATCH_WORK</token>
     <token>MAX_COMPOSITION_WORK</token>
@@ -42,8 +39,6 @@
     <token>composition-work</token>
     <token>data-vw-format</token>
     <token>z-index</token>
-    <token>invalid-raster</token>
-    <token>aggregate-raster-pixels</token>
     <token>svg-work</token>
     <token>HTML PARSED</token>
     <token>HTML RENDERED</token>
@@ -92,10 +87,15 @@
     <token>StyleSheet</token>
     <token>parseCSS</token>
     <token>URLLoaderDataFormat.TEXT</token>
+    <token>loadBytes</token>
+    <token>Bitmap</token>
+    <token>BitmapData</token>
     <token>http://</token>
     <token>https://</token>
     <token>url(</token>
     <token>.jpg</token>
     <token>.jpeg</token>
+    <token>.png</token>
+    <token>.dds</token>
   </forbiddenTokens>
 </movieBuild>
