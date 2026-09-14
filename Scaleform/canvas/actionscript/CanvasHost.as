@@ -85,6 +85,8 @@ package
 
       private var consumerSubscriptions:CanvasSubscriptions;
 
+      private var htmlEngine:CanvasHtmlEngine;
+
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
@@ -186,12 +188,18 @@ package
             this.hostKind = context.hostKind;
             this.displayMode = context.displayMode;
             this.createDiagnostics();
+            this.htmlEngine = new CanvasHtmlEngine();
             this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
             this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
             this.appendDiagnostic("OWNER " + this.ownerLabel);
             if(this.hostKind == "player")
             {
                this.subscribe();
+            }
+            else if(this.hostKind == "menu")
+            {
+               this.connectMenuDataManager();
+               this.appendDiagnostic("MENU LOCAL TRANSPORT READY");
             }
             else
             {
@@ -227,6 +235,69 @@ package
       {
       }
 
+      public function loadLocalConsumer(param1:Object) : Boolean
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZED || this.hostKind != "menu" || param1 == null || param1 is Array || typeof param1 != "object")
+         {
+            return false;
+         }
+         try
+         {
+            var descriptor:Object = {
+               "consumerId":this.normalizeUuid(String(param1.consumerId)),
+               "displayName":String(param1.displayName),
+               "normalPath":String(param1.normalPath),
+               "largePath":String(param1.largePath),
+               "version":this.strictContractInteger(param1.version,"version")
+            };
+            this.validateDescriptor(descriptor);
+            var desired:Object = {};
+            desired[descriptor.consumerId] = descriptor;
+            this.reconcile(desired,false);
+            return true;
+         }
+         catch(descriptorError:*)
+         {
+            this.appendDiagnostic("LOCAL LOAD REJECTED | " + this.sanitizeText(descriptorError,100));
+         }
+         return false;
+      }
+
+      public function unloadLocalConsumer(param1:String) : void
+      {
+         if(!this.disposed && this.initializationState == HOST_STATE_INITIALIZED && this.hostKind == "menu")
+         {
+            this.unloadConsumer(param1);
+         }
+      }
+
+      public function scrollConsumerBy(param1:String, param2:Number) : Object
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZED || this.hostKind != "menu" || this.htmlEngine == null)
+         {
+            return null;
+         }
+         return this.htmlEngine.scrollBy(this.normalizeUuid(param1),param2);
+      }
+
+      public function scrollConsumerTo(param1:String, param2:Number) : Object
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZED || this.hostKind != "menu" || this.htmlEngine == null)
+         {
+            return null;
+         }
+         return this.htmlEngine.scrollTo(this.normalizeUuid(param1),param2);
+      }
+
+      public function getConsumerScrollState(param1:String) : Object
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZED || this.hostKind != "menu" || this.htmlEngine == null)
+         {
+            return null;
+         }
+         return this.htmlEngine.getScrollState(this.normalizeUuid(param1));
+      }
+
       public function dispose() : void
       {
          var consumerId:String = null;
@@ -254,6 +325,11 @@ package
          {
             this.unloadConsumer(consumerId);
          }
+         if(this.htmlEngine != null)
+         {
+            this.htmlEngine.dispose();
+         }
+         this.htmlEngine = null;
          if(this.consumerSubscriptions != null)
          {
             this.consumerSubscriptions.dispose();
@@ -960,6 +1036,7 @@ package
                "protocol":protocol,
                "contractVersion":1,
                "bridge":param3,
+               "hostKinds":["player","ship","menu"],
                "uiChannels":[],
                "eventTopics":[]
             };
@@ -986,17 +1063,80 @@ package
          }
          var uiChannels:Array = this.validateStringList(param1.uiChannels,MAX_UI_CHANNELS,true);
          var eventTopics:Array = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+         var hostKinds:Array = this.validateHostKinds("hostKinds" in param1 ? param1.hostKinds : null);
          if(!("handleUIData" in param3) || typeof param3["handleUIData"] != "function" || !("handleCanvasEvent" in param3) || typeof param3["handleCanvasEvent"] != "function" || !("handleLifecycle" in param3) || typeof param3["handleLifecycle"] != "function")
          {
             throw new Error("consumer is missing fixed v2 callbacks");
+         }
+         var htmlRegistration:Object = null;
+         if("getCanvasHtmlRegistration" in param3)
+         {
+            if(typeof param3["getCanvasHtmlRegistration"] != "function")
+            {
+               throw new Error("consumer HTML registration must be a function");
+            }
+            htmlRegistration = param3["getCanvasHtmlRegistration"]();
+            if(htmlRegistration == null)
+            {
+               throw new Error("consumer HTML registration returned null");
+            }
          }
          return {
             "protocol":String(protocol),
             "contractVersion":HOST_CONTRACT_VERSION,
             "bridge":param3,
+            "assetNamespace":expectedNamespace,
+            "htmlRegistration":htmlRegistration,
+            "htmlResult":null,
+            "htmlBridge":null,
+            "hostKinds":hostKinds,
             "uiChannels":uiChannels,
             "eventTopics":eventTopics
          };
+      }
+
+      private function connectMenuDataManager() : void
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING || this.consumerSubscriptions != null)
+         {
+            throw new Error("menu UI data ownership unavailable");
+         }
+         if(this.owner == null || !("getVenworksCanvasMenuDataManager" in this.owner) || typeof this.owner["getVenworksCanvasMenuDataManager"] != "function")
+         {
+            throw new Error("MENU DATA BRIDGE MISSING");
+         }
+         this.dataManager = this.owner["getVenworksCanvasMenuDataManager"]();
+         if(this.dataManager == null || !("GetDataFromClient" in this.dataManager) || !("Subscribe" in this.dataManager) || !("Unsubscribe" in this.dataManager))
+         {
+            throw new Error("MENU DATA MANAGER UNAVAILABLE");
+         }
+         this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
+         this.appendDiagnostic("MENU UI DATA READY");
+      }
+
+      private function validateHostKinds(param1:Object) : Array
+      {
+         if(param1 == null)
+         {
+            return ["player","ship","menu"];
+         }
+         if(!(param1 is Array) || (param1 as Array).length < 1 || (param1 as Array).length > 3)
+         {
+            throw new Error("hostKinds must contain one to three host kinds");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         var value:String = null;
+         for each(value in param1 as Array)
+         {
+            if(value != "player" && value != "ship" && value != "menu" || seen.hasOwnProperty(value))
+            {
+               throw new Error("hostKinds contains an invalid or duplicate host kind");
+            }
+            seen[value] = true;
+            result.push(value);
+         }
+         return result;
       }
 
       private function strictContractInteger(param1:Object, param2:String) : int
@@ -1067,12 +1207,25 @@ package
 
       private function createLifecycleContext(param1:Object) : Object
       {
-         return {
+         var features:Array = ["uiData","canvasEvents","lifecycle"];
+         if(param1.htmlRegistration != null)
+         {
+            features.push("htmlDocuments");
+            features.push("htmlRendering");
+         }
+         var context:Object = {
             "contractVersion":int(param1.contractVersion),
-            "features":["uiData","canvasEvents","lifecycle"],
+            "features":features,
+            "hostKind":this.hostKind,
+            "displayMode":this.displayMode,
             "uiChannels":param1.uiChannels.concat(),
             "eventTopics":param1.eventTopics.concat()
          };
+         if(param1.htmlBridge != null)
+         {
+            context.html = param1.htmlBridge;
+         }
+         return context;
       }
 
       private function isConsumerCurrent(param1:String, param2:Object, param3:int) : Boolean
@@ -1200,13 +1353,22 @@ package
             {
                return;
             }
+            if(contract.hostKinds.indexOf(this.hostKind) < 0)
+            {
+               this.appendDiagnostic("SKIP " + consumerId + " | HOST " + this.resolveHostKind());
+               this.unloadConsumer(consumerId);
+               return;
+            }
             if(contract.contractVersion == HOST_CONTRACT_VERSION)
             {
-               if(this.consumerSubscriptions == null)
+               if((contract.uiChannels.length > 0 || contract.eventTopics.length > 0) && this.consumerSubscriptions == null)
                {
                   throw new Error("consumer subscriptions unavailable");
                }
-               this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics);
+               if(this.consumerSubscriptions != null)
+               {
+                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics);
+               }
                if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
                {
                   return;
@@ -1255,17 +1417,85 @@ package
             }
             return;
          }
+         if(contract.contractVersion == HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
+         {
+            if(this.htmlEngine == null)
+            {
+               this.appendDiagnostic("INVALID " + consumerId + " | HTML ENGINE UNAVAILABLE");
+               this.unloadConsumer(consumerId);
+               return;
+            }
+            this.loaderStates[consumerId] = "html-loading";
+            try
+            {
+               this.htmlEngine.load(consumerId,String(contract.assetNamespace),contract.htmlRegistration,loader.content as DisplayObjectContainer,this.onConsumerHtmlComplete);
+            }
+            catch(htmlLoadError:*)
+            {
+               if(this.isConsumerCurrent(consumerId,loader,generation))
+               {
+                  this.appendDiagnostic("INVALID " + consumerId + " | HTML REGISTRATION | " + this.sanitizeText(htmlLoadError,80));
+                  this.unloadConsumer(consumerId);
+               }
+            }
+            return;
+         }
+         this.completeConsumerReady(consumerId,loader,generation,contract);
+      }
+
+      private function onConsumerHtmlComplete(param1:String, param2:CanvasHtmlLoadResult) : void
+      {
+         var loader:Loader = this.loaders[param1] as Loader;
+         var contract:Object = this.consumerContracts[param1];
+         var generation:int = int(this.loaderGenerations[param1]);
+         if(loader == null || contract == null || !this.isConsumerCurrent(param1,loader,generation) || this.loaderStates[param1] != "html-loading")
+         {
+            return;
+         }
+         if(param2 == null || !param2.success)
+         {
+            var detail:String = param2 == null || param2.diagnostic == null ? "missing terminal result" : param2.diagnostic.toString();
+            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,100));
+            this.unloadConsumer(param1);
+            return;
+         }
+         contract.htmlResult = param2;
+         contract.htmlBridge = this.htmlEngine == null ? null : this.htmlEngine.getBridge(param1);
+         if(contract.htmlBridge == null)
+         {
+            this.appendDiagnostic("INVALID " + param1 + " | HTML RENDER BRIDGE UNAVAILABLE");
+            this.unloadConsumer(param1);
+            return;
+         }
+         this.appendDiagnostic("HTML PARSED " + param1 + " | RESOURCES " + param2.resources.length);
+         this.appendDiagnostic("HTML RENDERED " + param1 + " | V1");
+         this.completeConsumerReady(param1,loader,generation,contract);
+      }
+
+      private function completeConsumerReady(param1:String, param2:Loader, param3:int, param4:Object) : void
+      {
+         var consumerId:String = param1;
+         var loader:Loader = param2;
+         var generation:int = param3;
+         var contract:Object = param4;
+         if(!this.isConsumerCurrent(consumerId,loader,generation) || this.consumerContracts[consumerId] !== contract)
+         {
+            return;
+         }
          this.loaderStates[consumerId] = "completing";
          if(contract.contractVersion == HOST_CONTRACT_VERSION)
          {
             try
             {
                contract.bridge["handleLifecycle"]("ready",this.createLifecycleContext(contract));
-               if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "completing" || this.consumerContracts[consumerId] !== contract || this.consumerSubscriptions == null)
+               if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "completing" || this.consumerContracts[consumerId] !== contract)
                {
                   return;
                }
-               this.consumerSubscriptions.markReady(consumerId);
+               if(this.consumerSubscriptions != null)
+               {
+                  this.consumerSubscriptions.markReady(consumerId);
+               }
                if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "completing" || this.consumerContracts[consumerId] !== contract)
                {
                   return;
@@ -1288,6 +1518,10 @@ package
          if(loader.parent !== this)
          {
             addChild(loader);
+         }
+         if(this.diagnostics != null && this.diagnostics.parent === this)
+         {
+            setChildIndex(this.diagnostics,numChildren - 1);
          }
          if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "ready")
          {
@@ -1314,6 +1548,10 @@ package
          var loader:Loader = this.loaders[param1] as Loader;
          var contract:Object = this.consumerContracts[param1];
          var content:Object = loader == null ? null : loader.content;
+         if(this.htmlEngine != null)
+         {
+            this.htmlEngine.remove(param1);
+         }
          delete this.loaders[param1];
          delete this.paths[param1];
          delete this.versions[param1];
@@ -1394,6 +1632,7 @@ package
          this.diagnostics.wordWrap = true;
          this.diagnostics.selectable = false;
          this.diagnostics.mouseEnabled = false;
+         this.diagnostics.visible = false;
          addChild(this.diagnostics);
          this.reapplyVanillaPlacements();
       }
@@ -1401,11 +1640,13 @@ package
       private function appendDiagnostic(param1:String) : void
       {
          var format:TextFormat = null;
+         var message:String = null;
          if(this.disposed || this.diagnostics == null)
          {
             return;
          }
-         this.diagnosticLines.push(this.sanitizeText(param1,220));
+         message = this.sanitizeText(param1,220);
+         this.diagnosticLines.push(message);
          while(this.diagnosticLines.length > 16)
          {
             this.diagnosticLines.shift();
@@ -1413,16 +1654,25 @@ package
          this.diagnostics.text = this.diagnosticLines.join("\n");
          format = new TextFormat("$MAIN_Font_Bold",18,16777215,false);
          this.diagnostics.setTextFormat(format);
+         if(this.isFailureDiagnostic(message))
+         {
+            this.diagnostics.visible = true;
+         }
+      }
+
+      private function isFailureDiagnostic(param1:String) : Boolean
+      {
+         return param1.indexOf("ERROR") >= 0 || param1.indexOf("FAILED") >= 0 || param1.indexOf("INVALID") >= 0 || param1.indexOf("MISSING") >= 0 || param1.indexOf("REJECTED") >= 0 || param1.indexOf("UNAVAILABLE") >= 0;
       }
 
       private function resolveHostKind() : String
       {
-         return this.hostKind == "ship" ? "SHIP HUD" : "PLAYER HUD";
+         return this.hostKind == "ship" ? "SHIP HUD" : this.hostKind == "menu" ? "MENU" : "PLAYER HUD";
       }
 
       private function validateHostContext(param1:DisplayObjectContainer, param2:Object) : Object
       {
-         if(param1 == null || param2 == null || typeof param2 != "object" || typeof param2.protocol != "string" || param2.protocol != HOST_PROTOCOL || typeof param2.hostKind != "string" || (param2.hostKind != "player" && param2.hostKind != "ship") || typeof param2.displayMode != "string" || (param2.displayMode != "normal" && param2.displayMode != "large"))
+         if(param1 == null || param2 == null || typeof param2 != "object" || typeof param2.protocol != "string" || param2.protocol != HOST_PROTOCOL || typeof param2.hostKind != "string" || (param2.hostKind != "player" && param2.hostKind != "ship" && param2.hostKind != "menu") || typeof param2.displayMode != "string" || (param2.displayMode != "normal" && param2.displayMode != "large"))
          {
             throw new Error("unsupported host context");
          }

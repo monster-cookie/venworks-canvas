@@ -17,6 +17,50 @@
     <token>readFrame</token>
     <token>parseUnsignedInt</token>
     <token>getCanvasRegistration</token>
+    <token>getCanvasHtmlRegistration</token>
+    <token>VWCANVAS_HTML/2</token>
+    <token>CanvasHtmlEngine</token>
+    <token>CanvasHtmlDocumentLoader</token>
+    <token>CanvasHtmlTokenizer</token>
+    <token>CanvasHtmlParser</token>
+    <token>CanvasUtf8Decoder</token>
+    <token>CanvasCssParser</token>
+    <token>CanvasCssImportScanner</token>
+    <token>CanvasHtmlComposer</token>
+    <token>CanvasHtmlRenderer</token>
+    <token>CanvasSvgTextParser</token>
+    <token>CanvasHtmlBridge</token>
+    <token>URLLoaderDataFormat.BINARY</token>
+    <token>MAX_SVG_WORK</token>
+    <token>MAX_SVG_ELEMENTS</token>
+    <token>MAX_CSS_MATCH_WORK</token>
+    <token>MAX_COMPOSITION_WORK</token>
+    <token>MAX_CLASSES_PER_ELEMENT</token>
+    <token>MAX_EVENT_TOPIC_CODE_UNITS</token>
+    <token>css-import-depth</token>
+    <token>composition-work</token>
+    <token>data-vw-format</token>
+    <token>data-vw-template</token>
+    <token>MAX_TEMPLATE_VARIABLES</token>
+    <token>z-index</token>
+    <token>svg-work</token>
+    <token>HTML PARSED</token>
+    <token>HTML RENDERED</token>
+    <token>htmlRendering</token>
+    <token>public function setData(param1:Object) : void</token>
+    <token>public function setViewport(param1:Number, param2:Number) : void</token>
+    <token>public function scrollBy(param1:Number) : void</token>
+    <token>public function scrollTo(param1:Number) : void</token>
+    <token>public function getScrollState() : Object</token>
+    <token>public function loadLocalConsumer(param1:Object) : Boolean</token>
+    <token>public function scrollConsumerBy(param1:String, param2:Number) : Object</token>
+    <token>public function scrollConsumerTo(param1:String, param2:Number) : Object</token>
+    <token>public function getConsumerScrollState(param1:String) : Object</token>
+    <token>MENU LOCAL TRANSPORT READY</token>
+    <token>MENU UI DATA READY</token>
+    <token>getVenworksCanvasMenuDataManager</token>
+    <token>hostKinds</token>
+    <token>public function dispatch(param1:String) : void</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -45,11 +89,29 @@
     <token>PROVIDER CALLBACK #</token>
     <token>PROVIDER ALERT #</token>
     <token>PROVIDER PAYLOAD REJECTED</token>
+    <token>this.diagnostics.visible = false</token>
+    <token>isFailureDiagnostic</token>
   </requiredTokens>
   <forbiddenTokens>
-    <token>URLLoader</token>
     <token>FileReference</token>
     <token>ExternalInterface</token>
     <token>navigateToURL</token>
+    <token>XMLList</token>
+    <token>XMLDocument</token>
+    <token>parseXML</token>
+    <token>htmlText</token>
+    <token>StyleSheet</token>
+    <token>parseCSS</token>
+    <token>URLLoaderDataFormat.TEXT</token>
+    <token>loadBytes</token>
+    <token>Bitmap</token>
+    <token>BitmapData</token>
+    <token>http://</token>
+    <token>https://</token>
+    <token>url(</token>
+    <token>.jpg</token>
+    <token>.jpeg</token>
+    <token>.png</token>
+    <token>.dds</token>
   </forbiddenTokens>
 </movieBuild>

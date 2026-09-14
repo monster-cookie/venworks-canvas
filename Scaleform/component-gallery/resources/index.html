@@ -1,0 +1,307 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Venworks Canvas Component Gallery</title>
+    <meta charset="utf-8"></meta>
+    <link rel="stylesheet" href="gallery.css"></link>
+  </head>
+  <body>
+    <main id="component-gallery" class="gallery">
+      <header class="gallery-header">
+        <h1>Venworks Canvas HTML and CSS Cheatsheet</h1>
+        <p class="gallery-intro">Each row shows a supported tag, the exact declarative syntax, and the native result Canvas renders from that syntax.</p>
+        <p class="gallery-help">Open this Gallery from the Pause Menu. Use Up/Down, the right stick, the mouse wheel, or the scrollbar; Cancel returns to the Pause Menu.</p>
+      </header>
+      <div class="gallery-table">
+        <div class="gallery-row gallery-column-header">
+          <div class="gallery-tag"><span>Tag</span></div>
+          <div class="gallery-syntax"><span>Syntax</span></div>
+          <div class="gallery-result"><span>Rendered Result</span></div>
+        </div>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Text and document flow</h2>
+          <div id="heading-one-row" class="gallery-row">
+            <div class="gallery-tag"><span>h1</span></div>
+            <div class="gallery-syntax"><p>&lt;h1 class=&quot;demo-h1&quot;&gt;My First Heading&lt;/h1&gt;</p></div>
+            <div class="gallery-result"><h1 class="demo-h1">My First Heading</h1></div>
+          </div>
+          <div id="heading-two-row" class="gallery-row">
+            <div class="gallery-tag"><span>h2</span></div>
+            <div class="gallery-syntax"><p>&lt;h2 class=&quot;demo-h2&quot;&gt;Section Heading&lt;/h2&gt;</p></div>
+            <div class="gallery-result"><h2 class="demo-h2">Section Heading</h2></div>
+          </div>
+          <div id="heading-three-row" class="gallery-row">
+            <div class="gallery-tag"><span>h3</span></div>
+            <div class="gallery-syntax"><p>&lt;h3 class=&quot;demo-h3&quot;&gt;Topic Heading&lt;/h3&gt;</p></div>
+            <div class="gallery-result"><h3 class="demo-h3">Topic Heading</h3></div>
+          </div>
+          <div id="heading-four-row" class="gallery-row">
+            <div class="gallery-tag"><span>h4</span></div>
+            <div class="gallery-syntax"><p>&lt;h4 class=&quot;demo-h4&quot;&gt;Detail Heading&lt;/h4&gt;</p></div>
+            <div class="gallery-result"><h4 class="demo-h4">Detail Heading</h4></div>
+          </div>
+          <div id="heading-five-row" class="gallery-row">
+            <div class="gallery-tag"><span>h5</span></div>
+            <div class="gallery-syntax"><p>&lt;h5 class=&quot;demo-h5&quot;&gt;Minor Heading&lt;/h5&gt;</p></div>
+            <div class="gallery-result"><h5 class="demo-h5">Minor Heading</h5></div>
+          </div>
+          <div id="heading-six-row" class="gallery-row">
+            <div class="gallery-tag"><span>h6</span></div>
+            <div class="gallery-syntax"><p>&lt;h6 class=&quot;demo-h6&quot;&gt;Small Heading&lt;/h6&gt;</p></div>
+            <div class="gallery-result"><h6 class="demo-h6">Small Heading</h6></div>
+          </div>
+          <div id="paragraph-row" class="gallery-row">
+            <div class="gallery-tag"><span>p</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;Canvas renders paragraph text.&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>Canvas renders paragraph text.</p></div>
+          </div>
+          <div id="span-row" class="gallery-row">
+            <div class="gallery-tag"><span>span</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;Text with a &lt;span class=&quot;demo-accent&quot;&gt;highlight&lt;/span&gt;.&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>Text with a <span class="demo-accent">highlight</span>.</p></div>
+          </div>
+          <div id="line-break-row" class="gallery-row">
+            <div class="gallery-tag"><span>br</span></div>
+            <div class="gallery-syntax"><p>&lt;p&gt;First line&lt;br&gt;&lt;/br&gt;Second line&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p>First line<br></br>Second line</p></div>
+          </div>
+          <div id="rule-row" class="gallery-row">
+            <div class="gallery-tag"><span>hr</span></div>
+            <div class="gallery-syntax"><p>&lt;hr&gt;&lt;/hr&gt;</p></div>
+            <div class="gallery-result"><hr></hr></div>
+          </div>
+          <div id="container-row" class="gallery-row">
+            <div class="gallery-tag"><span>div</span></div>
+            <div class="gallery-syntax"><p>&lt;div class=&quot;demo-panel&quot;&gt;&lt;p&gt;Grouped content&lt;/p&gt;&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div class="demo-panel"><p>Grouped content</p></div></div>
+          </div>
+          <div id="unordered-list-row" class="gallery-row">
+            <div class="gallery-tag"><span>ul / li</span></div>
+            <div class="gallery-syntax"><p>&lt;ul&gt;&lt;li&gt;Alpha&lt;/li&gt;&lt;li&gt;Beta&lt;/li&gt;&lt;/ul&gt;</p></div>
+            <div class="gallery-result"><ul><li>Alpha</li><li>Beta</li></ul></div>
+          </div>
+          <div id="ordered-list-row" class="gallery-row">
+            <div class="gallery-tag"><span>ol / li</span></div>
+            <div class="gallery-syntax"><p>&lt;ol&gt;&lt;li&gt;First&lt;/li&gt;&lt;li&gt;Second&lt;/li&gt;&lt;/ol&gt;</p></div>
+            <div class="gallery-result"><ol><li>First</li><li>Second</li></ol></div>
+          </div>
+          <div id="button-row" class="gallery-row">
+            <div class="gallery-tag"><span>button</span></div>
+            <div class="gallery-syntax"><p>&lt;button class=&quot;demo-button&quot;&gt;Continue&lt;/button&gt;</p></div>
+            <div class="gallery-result"><button class="demo-button">Continue</button></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Structure, assets and reusable components</h2>
+          <div id="section-row" class="gallery-row">
+            <div class="gallery-tag"><span>section</span></div>
+            <div class="gallery-syntax"><p>&lt;section class=&quot;demo-panel&quot;&gt;&lt;p&gt;Section content&lt;/p&gt;&lt;/section&gt;</p></div>
+            <div class="gallery-result"><section class="demo-panel"><p>Section content</p></section></div>
+          </div>
+          <div id="svg-image-row" class="gallery-row">
+            <div class="gallery-tag"><span>img (svg)</span></div>
+            <div class="gallery-syntax"><p>&lt;img class=&quot;demo-image&quot; src=&quot;gallery-icon.svg&quot; alt=&quot;Canvas gallery icon&quot;&gt;&lt;/img&gt;</p></div>
+            <div class="gallery-result"><img class="demo-image" src="gallery-icon.svg" alt="Canvas gallery icon"></img></div>
+          </div>
+          <div id="svg-row" class="gallery-row">
+            <div class="gallery-tag"><span>svg / path</span></div>
+            <div class="gallery-syntax"><p>&lt;svg class=&quot;demo-svg&quot; viewbox=&quot;0 0 16 16&quot;&gt;&lt;path d=&quot;M 1 1 L 15 1 L 15 15 L 1 15 Z&quot; fill=&quot;#66ffff&quot;&gt;&lt;/path&gt;&lt;/svg&gt;</p></div>
+            <div class="gallery-result"><svg class="demo-svg" viewbox="0 0 16 16"><path d="M 1 1 L 15 1 L 15 15 L 1 15 Z" fill="#66ffff"></path></svg></div>
+          </div>
+          <div id="template-row" class="gallery-row">
+            <div class="gallery-tag"><span>template / vw-use</span></div>
+            <div class="gallery-syntax"><p>&lt;template id=&quot;sampletemplate&quot;&gt;&lt;p&gt;Reusable content&lt;/p&gt;&lt;/template&gt;&lt;vw-use template=&quot;#sampletemplate&quot;&gt;&lt;/vw-use&gt;</p></div>
+            <div class="gallery-result"><template id="sampletemplate"><p>Reusable content</p></template><vw-use template="#sampletemplate"></vw-use></div>
+          </div>
+          <div id="include-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-include</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-include src=&quot;include-example.html&quot;&gt;&lt;/vw-include&gt;</p></div>
+            <div class="gallery-result"><vw-include src="include-example.html"></vw-include></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Position and stacking</h2>
+          <div id="position-row" class="gallery-row">
+            <div class="gallery-tag"><span>position / z-index</span></div>
+            <div class="gallery-syntax">
+              <p>&lt;div class=&quot;demo-position-stage&quot;&gt;&lt;div class=&quot;demo-position-back&quot;&gt;Back layer&lt;/div&gt;&lt;div class=&quot;demo-position-front&quot;&gt;Front layer&lt;/div&gt;&lt;/div&gt;</p>
+              <p>.demo-position-stage { position: relative; width: 420px; height: 110px; }</p>
+              <p>.demo-position-back { position: absolute; left: 20px; top: 20px; z-index: 1; }</p>
+              <p>.demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; }</p>
+            </div>
+            <div class="gallery-result"><div class="demo-position-stage"><div class="demo-position-back">Back layer</div><div class="demo-position-front">Front layer</div></div></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Canvas data layer</h2>
+          <div id="text-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-text</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampletext&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampletext"></p></div>
+          </div>
+          <div id="format-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-format</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleformat&quot; data-vw-format=&quot;Score: {value}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampleformat" data-vw-format="Score: {value}"></p></div>
+          </div>
+          <div id="template-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;Score: {sampleformat:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="Score: {sampleformat:integer}"></p></div>
+          </div>
+          <div id="data-update-row" class="gallery-row">
+            <div class="gallery-tag"><span>setData</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleupdates&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="sampleupdates"></p></div>
+          </div>
+          <div id="visibility-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-visible</span></div>
+            <div class="gallery-syntax"><p>&lt;div data-vw-visible=&quot;samplevisible&quot;&gt;Visible when true&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div data-vw-visible="samplevisible">Visible when true</div></div>
+          </div>
+          <div id="state-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-state</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-state when=&quot;samplevisible&quot;&gt;&lt;p&gt;Active state&lt;/p&gt;&lt;/vw-state&gt;</p></div>
+            <div class="gallery-result"><vw-state when="samplevisible"><p>Active state</p></vw-state></div>
+          </div>
+          <div id="event-state-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-state event</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-state name=&quot;pingstate&quot; event=&quot;venworks.canvas.example.ping&quot;&gt;&lt;p&gt;Ping event activated this state&lt;/p&gt;&lt;/vw-state&gt;</p></div>
+            <div class="gallery-result"><vw-state name="pingstate" event="venworks.canvas.example.ping"><p>Ping event activated this state</p></vw-state></div>
+          </div>
+          <div id="repeat-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-repeat</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-repeat items=&quot;sampleitems&quot;&gt;&lt;p&gt;Repeated item&lt;/p&gt;&lt;/vw-repeat&gt;</p></div>
+            <div class="gallery-result"><vw-repeat items="sampleitems"><p>Repeated item</p></vw-repeat></div>
+          </div>
+          <div id="meter-row" class="gallery-row">
+            <div class="gallery-tag"><span>vw-meter</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-meter class=&quot;demo-meter&quot; value=&quot;samplemeter&quot;&gt;&lt;/vw-meter&gt;</p></div>
+            <div class="gallery-result"><vw-meter class="demo-meter" value="samplemeter"></vw-meter></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Live VWHUD player placeholders</h2>
+          <div id="player-name-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.name</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.name&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.name"></p></div>
+          </div>
+          <div id="player-level-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.level</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.level&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.level"></p></div>
+          </div>
+          <div id="player-level-xp-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.levelxp</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.levelxp&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.levelxp"></p></div>
+          </div>
+          <div id="player-next-level-xp-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.nextlevelxp</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.nextlevelxp&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.nextlevelxp"></p></div>
+          </div>
+          <div id="player-xp-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.xppercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.xppercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.xppercentage"></p></div>
+          </div>
+          <div id="player-health-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.health</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.health&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.health"></p></div>
+          </div>
+          <div id="player-max-health-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.maxhealth</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.maxhealth&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.maxhealth"></p></div>
+          </div>
+          <div id="player-health-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.healthpercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.healthpercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.healthpercentage"></p></div>
+          </div>
+          <div id="player-oxygen-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.oxygen</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.oxygen&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.oxygen"></p></div>
+          </div>
+          <div id="player-max-oxygen-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.maxoxygen</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.maxoxygen&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.maxoxygen"></p></div>
+          </div>
+          <div id="player-oxygen-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.oxygenpercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.oxygenpercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.oxygenpercentage"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.carbondioxide</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.carbondioxide&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.carbondioxide"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.carbondioxidepercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.carbondioxidepercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.carbondioxidepercentage"></p></div>
+          </div>
+          <div id="power-current-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.current</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.current&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.current"></p></div>
+          </div>
+          <div id="power-maximum-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.maximum</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.maximum&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.maximum"></p></div>
+          </div>
+          <div id="power-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.percentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.percentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.percentage"></p></div>
+          </div>
+          <div id="player-identity-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>identity template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;{player.name} | LEVEL {player.level:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="{player.name} | LEVEL {player.level:integer}"></p></div>
+          </div>
+          <div id="player-xp-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>XP template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;XP {player.levelxp:integer}/{player.nextlevelxp:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="XP {player.levelxp:integer}/{player.nextlevelxp:integer}"></p></div>
+          </div>
+          <div id="player-health-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>health template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;HEALTH {player.health:integer}/{player.maxhealth:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="HEALTH {player.health:integer}/{player.maxhealth:integer}"></p></div>
+          </div>
+          <div id="player-oxygen-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>O2 template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;O2 {player.oxygen:integer}/{player.maxoxygen:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="O2 {player.oxygen:integer}/{player.maxoxygen:integer}"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>CO2 template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;CO2 {player.carbondioxide:integer} ({player.carbondioxidepercentage:percent})&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="CO2 {player.carbondioxide:integer} ({player.carbondioxidepercentage:percent})"></p></div>
+          </div>
+          <div id="power-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;POWER {power.current:integer}/{power.maximum:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="POWER {power.current:integer}/{power.maximum:integer}"></p></div>
+          </div>
+        </section>
+      </div>
+      <footer class="gallery-footer">
+        <p>The syntax and the result in every row come from this Gallery document; Canvas owns parsing, binding, layout, and rendering.</p>
+      </footer>
+    </main>
+  </body>
+</html>

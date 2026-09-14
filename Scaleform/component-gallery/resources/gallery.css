@@ -1,0 +1,38 @@
+@import "gallery-theme.css";
+
+.gallery { display: flex; flex-direction: column; width: 1808px; height: auto; margin: 32px; padding: 24px; gap: 20px; overflow: hidden; color: #ffffff; background-color: #0b1118f2; font-family: $MAIN_Font_Bold; font-size: 18px; line-height: 24px; }
+.gallery-header { display: flex; flex-direction: column; gap: 8px; padding: 16px; color: #ffffff; background-color: #132433; border-width: 1px; border-style: solid; border-color: #66ffff; }
+.gallery-header h1 { margin: 0px; color: #66ffff; font-size: 34px; line-height: 40px; }
+.gallery-intro { margin: 0px; font-size: 18px; line-height: 24px; }
+.gallery-help { margin: 0px; color: #a9bccb; font-size: 15px; line-height: 20px; }
+.gallery-table { display: flex; flex-direction: column; width: 1760px; gap: 12px; }
+.gallery-group { display: flex; flex-direction: column; width: 1760px; gap: 4px; }
+.gallery-group-title { margin: 12px 0px 4px 0px; padding: 10px 12px 10px 12px; color: #66ffff; background-color: #162b3d; font-size: 24px; line-height: 30px; }
+.gallery-row { display: flex; flex-direction: row; width: 1760px; background-color: #101923; border-width: 1px; border-style: solid; border-color: #304657; }
+.gallery-column-header { color: #071015; background-color: #66ffff; font-size: 18px; font-weight: bold; text-align: left; }
+.gallery-tag { width: 180px; padding: 12px; color: #66ffff; font-weight: bold; }
+.gallery-placeholder-key { font-size: 13px; line-height: 17px; }
+.gallery-column-header .gallery-tag { color: #071015; }
+.gallery-syntax { width: 940px; padding: 12px; color: #bac7d2; background-color: #0d151e; font-size: 15px; line-height: 20px; }
+.gallery-column-header .gallery-syntax { color: #071015; background-color: #66ffff; }
+.gallery-syntax p { margin: 0px; }
+.gallery-result { width: 560px; padding: 12px; color: #ffffff; }
+.gallery-column-header .gallery-result { color: #071015; }
+.gallery-result p { margin: 0px; }
+.demo-h1 { margin: 0px; font-size: 32px; line-height: 38px; }
+.demo-h2 { margin: 0px; font-size: 28px; line-height: 34px; }
+.demo-h3 { margin: 0px; font-size: 24px; line-height: 30px; }
+.demo-h4 { margin: 0px; font-size: 21px; line-height: 27px; }
+.demo-h5 { margin: 0px; font-size: 18px; line-height: 24px; }
+.demo-h6 { margin: 0px; font-size: 15px; line-height: 21px; }
+.demo-accent { color: #ffcc33; font-weight: bold; }
+.demo-panel { padding: 10px; color: #ffffff; background-color: #1b2d3b; border-width: 1px; border-style: solid; border-color: #60839b; }
+.demo-button { padding: 10px 18px 10px 18px; color: #071015; background-color: #66ffff; border-width: 1px; border-style: solid; border-color: #ffffff; font-weight: bold; text-align: center; }
+.demo-image { width: 48px; height: 48px; }
+.demo-svg { width: 48px; height: 48px; }
+.demo-meter { width: 420px; height: 22px; }
+.demo-position-stage { position: relative; width: 420px; height: 110px; background-color: #0d151e; border-width: 1px; border-style: solid; border-color: #60839b; overflow: hidden; }
+.demo-position-back { position: absolute; left: 20px; top: 20px; z-index: 1; width: 220px; padding: 12px; color: #ffffff; background-color: #35546b; }
+.demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; width: 220px; padding: 12px; color: #071015; background-color: #66ffff; font-weight: bold; }
+.gallery-footer { padding: 12px; color: #a9bccb; background-color: #101923; font-size: 15px; line-height: 20px; opacity: 0.9; }
+.gallery-footer p { margin: 0px; }

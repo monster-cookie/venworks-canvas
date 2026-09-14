@@ -485,7 +485,7 @@ package
   }
 
   $configuredJobs = @(ConvertTo-BuildScaleformJobs -Variants @(Get-ModuleVariants) -RepositoryRoot $repositoryRoot)
-  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'player-loader', 'ship-loader', 'canvas-example', 'subscriptions-probe', 'canvas-component-gallery') -Description 'Configured Scaleform jobs'
+  Assert-BuildExactNames -Actual @($configuredJobs.Name) -Expected @('canvas-host', 'player-watch', 'player-loader', 'ship-loader', 'canvas-example', 'subscriptions-probe', 'canvas-component-gallery', 'component-gallery-pause-menu') -Description 'Configured Scaleform jobs'
   if (@($configuredJobs | Where-Object { $_.OutputSet -ceq 'movies' }).Count -ne 3) {
     throw 'Configured Scaleform ownership validation did not preserve the shared Flex movie output set.'
   }
@@ -493,6 +493,9 @@ package
   if ($subscriptionsProbeJob.OutputSet -cne 'diagnostics' -or $subscriptionsProbeJob.Outputs[0].OutputFile -cne 'CanvasSubscriptionsProbe.swf') {
     throw 'Configured subscriptions probe output identity changed.'
   }
+  $galleryPauseMenuJob = @($configuredJobs | Where-Object { $_.Name -ceq 'component-gallery-pause-menu' })[0]
+  Assert-BuildExactNames -Actual @($galleryPauseMenuJob.Outputs.InputFile) -Expected @('pausemenu.swf', 'pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu input configuration'
+  Assert-BuildExactNames -Actual @($galleryPauseMenuJob.Outputs | ForEach-Object { "$($_.OutputFile)=$($_.DisplayMode)" }) -Expected @('pausemenu.swf=normal', 'pausemenu_lrg.swf=large') -Description 'Component Gallery Pause Menu output/display-mode configuration'
   $playerJob = @($configuredJobs | Where-Object { $_.Name -ceq 'player-watch' })[0]
   $playerNames = @('playerhudcomponents.swf', 'playerhudcomponents.gfx', 'playerhudcomponents_lrg.swf', 'playerhudcomponents_lrg.gfx')
   Assert-BuildExactNames -Actual @($playerJob.Outputs.InputFile) -Expected $playerNames -Description 'Player HUD input configuration'

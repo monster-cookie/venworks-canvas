@@ -21,7 +21,7 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
   WorkRoot = Join-Path $repositoryRoot '.work/canvas'
   PapyrusSourceRoot = Join-Path $repositoryRoot 'Papyrus'
-  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform/canvas'
+  ScaleformSourceRoot = Join-Path $repositoryRoot 'Scaleform'
 }
 
 $Global:ModuleVariants = @(
@@ -160,9 +160,19 @@ $Global:ModuleVariants = @(
         Name = 'canvas-component-gallery'
         Kind = 'Flex'
         OutputSet = 'movies'
-        ManifestPath = 'Scaleform/canvas/build/component-gallery.build.xml'
+        ManifestPath = 'Scaleform/component-gallery/build/component-gallery.build.xml'
         Outputs = @(
           @{ OutputFile = 'CanvasComponentGallery.swf' }
+        )
+      }
+      @{
+        Name = 'component-gallery-pause-menu'
+        Kind = 'Patch'
+        OutputSet = 'pause-menu'
+        PatchPath = 'Scaleform/component-gallery/patches/pause-menu-component-gallery.xml'
+        Outputs = @(
+          @{ InputFile = 'pausemenu.swf'; OutputFile = 'pausemenu.swf'; DisplayMode = 'normal' }
+          @{ InputFile = 'pausemenu_lrg.swf'; OutputFile = 'pausemenu_lrg.swf'; DisplayMode = 'large' }
         )
       }
     ),
@@ -173,10 +183,13 @@ $Global:ModuleVariants = @(
         Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $true
-        ScaleformOwnership = 'Consumer'
+        ScaleformOwnership = 'ConsumerExtension'
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+          @{ Root = 'Repository'; Source = 'Scaleform/component-gallery/resources'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' }
         )
       }
     )

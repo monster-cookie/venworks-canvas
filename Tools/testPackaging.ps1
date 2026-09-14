@@ -115,12 +115,45 @@ if ([string]$configuredCanvas.EsmFileName -cne 'Venworks-Canvas.esm' -or [string
 }
 if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredExample.Archives[0].ScaleformOwnership -cne 'Consumer' -or
-    [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'Consumer') {
+    [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 2) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
+$galleryPauseMenuAssets = @($configuredGallery.Archives[0].Assets | Where-Object { $_ -is [Collections.IDictionary] -and $_.Contains('HostMenu') -and [string]$_['HostMenu'] -ceq 'pausemenu' })
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch targets'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.DisplayMode) -Expected @('normal', 'large') -Description 'Component Gallery Pause Menu display modes'
+$galleryRepositoryAssets = @($configuredGallery.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
+$galleryTextAssets = @($galleryRepositoryAssets | Where-Object { [string]$_.Source -ceq 'Scaleform/component-gallery/resources' })
+if ($galleryRepositoryAssets.Count -ne 1 -or
+    $galleryTextAssets.Count -ne 1 -or
+    [string]$galleryTextAssets[0].Source -cne 'Scaleform/component-gallery/resources' -or
+    [string]$galleryTextAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery') {
+  throw 'Component Gallery repository resource mapping changed.'
+}
+$galleryResourceRoot = Join-Path $PSScriptRoot '..\Scaleform\component-gallery\resources'
+$galleryResourceFiles = @(Get-ChildItem -LiteralPath $galleryResourceRoot -Recurse -File | ForEach-Object {
+  [IO.Path]::GetRelativePath($galleryResourceRoot, $_.FullName)
+})
+Assert-TestNames -Actual $galleryResourceFiles -Expected @(
+  'gallery-icon.svg'
+  'gallery-theme.css'
+  'gallery.css'
+  'include-example.html'
+  'index.html'
+) -Description 'Component Gallery packaged text resource inventory'
+$galleryPackagedResourceTargets = @($galleryResourceFiles | ForEach-Object {
+  Join-Path ([string]$galleryTextAssets[0].Target) $_
+})
+Assert-TestNames -Actual $galleryPackagedResourceTargets -Expected @(
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-icon.svg'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery-theme.css'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/gallery.css'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/include-example.html'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/index.html'
+) -Description 'Component Gallery complete packaged resource target inventory'
 if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
   throw 'Each Canvas variant must own one Papyrus-bearing archive.'
 }
@@ -131,7 +164,9 @@ $configuredConsumerMappings = @(
 )
 foreach ($mapping in $configuredConsumerMappings) {
   Assert-BuildScaleformArchiveOwnership -Variant $mapping.Variant
-  $assets = @($mapping.Variant.Archives[0].Assets | Where-Object { [string]$_.ConsumerNamespace -ceq $mapping.Namespace })
+  $assets = @($mapping.Variant.Archives[0].Assets | Where-Object {
+    $_ -is [Collections.IDictionary] -and $_.Contains('ConsumerNamespace') -and [string]$_['ConsumerNamespace'] -ceq $mapping.Namespace
+  })
   Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
   Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
   Assert-TestNames -Actual @($assets.Target) -Expected @(

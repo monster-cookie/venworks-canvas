@@ -13,11 +13,11 @@ Per the user's direction for this repository, apply these tool and identity sele
 | Service | github |
 | Roles | all |
 | Requirement | preferred |
-| Tool | GitHub MCP integration (`mcp__github__*`) using the Codex AI service account. Use the exact GitHub host and repository from Target and verify the actual consuming session's identity before the operation. |
+| Tool | The configured local GitHub MCP integration (`mcp__github__*`), running `github-mcp-server` over stdio with the `github-automation` GitHub App installation. Use the exact GitHub host and repository from Target and verify the actual consuming session's App installation and repository access before the operation. |
 | Identity | github-automation |
 | Target | The exact GitHub repository resolved from this checkout's configured origin and existing `AGENT-REPO-CONTEXT.md`. Require host=github.com and API endpoint=https://api.github.com; resolve owner and canonical repository at runtime. Require agreement with the repository context and current task. A changed origin does not authorize a different target. Stop if context, origin, or task target disagree. |
 | Operations | task-scoped; repository inspection and GitHub operations only when authorized by the current task and applicable repository instructions. Pull requests must be ready for review. This entry grants no standing permission to publish, change repository settings, manage credentials, merge, approve, deploy, or release. Prohibited: draft pull requests, force updates, and commits or pushes directly to a protected branch. |
-| Fallbacks | Installed GitHub CLI (`gh`) when the MCP service-account context is unavailable and the CLI context independently verifies as the same Codex AI account. The same target, identity, and operation limits apply. Existing CLI browser authentication is permitted; an API token stored in Proton Pass is not mandatory for that authentication method. No personal-account fallback. |
+| Fallbacks | The installed `Invoke-GitHubAppGh.ps1` wrapper with GitHub CLI (`gh`) when the MCP context is unavailable. The wrapper must mint a fresh installation token from the configured GitHub App environment, supply it only as child-process `GH_TOKEN`, isolate `GH_CONFIG_DIR`, and discard and revoke the token after the command. Invoke `gh` only through that wrapper for Codex GitHub operations; direct or ambient CLI authentication is not a permitted fallback. The same target, identity, and operation limits apply. No personal-account fallback. |
 
 ## Tool: plane
 
@@ -81,16 +81,36 @@ Check the intended audience and the complete staged content before committing, a
 | Operations | task-scoped; add or update diagrams when they clarify structure, dependencies, data flow, or lifecycle. Creating a diagram does not authorize publishing it. |
 | Fallbacks | none |
 
-## Codex and personal application separation
+## Codex-created commit identity
 
-The Codex AI account is required only for Codex's GitHub MCP connection and Codex-initiated GitHub CLI operations. Preserve the user's personal browser sessions, GitKraken connection, and ordinary GitHub CLI login.
+Every commit created by Codex must use `MonsterCookieAI <venworksai@venworkscreations.com>` as both its Git author and committer. Apply this identity only to the individual commit command:
 
-For Codex-initiated `gh` calls, prefer a service-account token injected only into the child process as `GH_TOKEN`, with a dedicated `GH_CONFIG_DIR`. These process settings must not be persisted as Windows User or Machine environment variables. Do not run `gh auth switch`, `gh auth logout`, or `gh auth setup-git` against the user's ordinary configuration, and do not change shared Git credential helpers, signing settings, or commit authorship as part of service-account API setup.
+```powershell
+git -c user.name="MonsterCookieAI" -c user.email="venworksai@venworkscreations.com" commit ...
+```
 
-Supply the MCP credential only to Codex's configured GitHub connection. A username/password in the Proton Pass item can support separately authorized service-account sign-in, but it is not the API bearer token. If browser authentication is needed for setup, use a separate service-account browser profile or private session so the user's regular browser stays signed in personally. Reverify the service account through the actual MCP and CLI contexts independently.
+Do not set or change this identity through `git config --global`, `git config --system`, `git config --local`, worktree configuration, direct configuration-file edits, or other persistent configuration. Preserve the human user's normal Git identity for the user's own commits. Do not combine the per-command override with `--author`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`, or another override that changes either required identity.
+
+Git commit authorship and GitHub authentication are separate identity layers. The dedicated Git commit name and email above are attribution metadata, not authentication credentials. They do not replace the `github-automation` GitHub App, which remains required for Codex GitHub MCP and API operations, wrapped GitHub CLI and pull-request operations, and explicitly authorized Git transport including pushes. Do not obtain or use `monstercookieai` login credentials merely to obtain commit attribution, and never silently fall back to the human user's personal GitHub credentials. Never expose or commit GitHub App private keys, installation tokens, access tokens, or other credentials.
+
+Before pushing a Codex-created commit, verify its committed author and committer identities with:
+
+```powershell
+git show --no-patch --format=fuller HEAD
+```
+
+Require both identities to be `MonsterCookieAI <venworksai@venworkscreations.com>`. If either identity differs, stop and report the mismatch. Do not amend, reset, rebase, or otherwise rewrite the commit unless that operation is separately and explicitly approved. Do not rewrite existing commit history merely to change cosmetic attribution.
+
+## GitHub App and personal application separation
+
+The `github-automation` GitHub App installation is required only for Codex's local GitHub MCP connection, Codex-initiated GitHub CLI operations, and explicitly authorized Codex Git transport. Preserve the user's personal browser sessions, GitKraken connection, and ordinary GitHub CLI login.
+
+The local MCP server reads `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PRIVATE_KEY_PATH` and mints installation tokens internally. Codex-initiated `gh` calls must use the installed `Invoke-GitHubAppGh.ps1` wrapper, which injects a freshly minted installation token only into the child process as `GH_TOKEN` and uses a dedicated `GH_CONFIG_DIR`. Explicitly authorized Codex Git transport must use the same wrapper with `-Git`; that mode supplies `gh auth git-credential` through process-only Git configuration and disables interactive prompting without changing any persisted credential helper. Do not persist App credentials or installation tokens as Windows User or Machine `GH_TOKEN` or `GITHUB_TOKEN` values. Do not run `gh auth switch`, `gh auth login`, `gh auth logout`, or `gh auth setup-git` against the user's ordinary configuration, and do not change shared Git credential helpers, signing settings, or commit authorship as part of App API or Git transport setup.
+
+Do not use Proton Pass, a PAT, a login password, interactive browser authentication, or the hosted GitHub MCP bearer-token endpoint for this GitHub App workflow. Verify the App installation and exact repository through each actual MCP or wrapped CLI context independently. Installation tokens do not represent a GitHub user, so `get_me` and `gh api user` are not valid App-installation identity checks.
 
 ## Git transport and credential boundaries
 
-GitHub identity verification establishes only the MCP session or GitHub CLI context that was checked. It does not establish the identity used by another tool, a Git CLI transport, GitKraken, an SSH key, or an HTTPS credential helper. For a fetch, push, or other authenticated Git operation authorized by the user, verify the actual transport's account and destination. Use the same Codex AI account without changing the user's personal application authentication. No additional transport-policy document or execution-review record is required.
+GitHub App installation verification establishes only the MCP session or wrapped GitHub CLI context that was checked. It does not establish the identity used by another tool, GitKraken, an SSH key, or an independently configured HTTPS credential helper. For a fetch, push, or other authenticated Git operation authorized by the user, invoke the installed wrapper with `-Git` so the Git child receives the same App installation token and a process-only `gh auth git-credential` helper. Verify the actual transport and destination with a read-only Git operation through that mode before mutation. Do not run authenticated Git transport directly or change the user's persisted Git or GitHub authentication. No additional transport-policy document or execution-review record is required.
 
 Do not substitute an ambient account or switch a shared login when the required integration or identity is unavailable. Continue independent credential-free work within the task's authorization and report the affected operation.
