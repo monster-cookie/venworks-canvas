@@ -203,7 +203,7 @@ try {
     }
     $script:watchTestNativeCalls++
     if ($Arguments[0] -ceq '-swf2xml') {
-      if ($script:watchTestTransformedXml -eq $null) {
+      if ($null -eq $script:watchTestTransformedXml) {
         Write-WatchTestXml -Path $Arguments[2]
       }
       else {

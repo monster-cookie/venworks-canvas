@@ -27,6 +27,7 @@ function Get-TestFixedFacePlacement {
     [Parameter(Mandatory = $true)][hashtable]$Layout,
     [Parameter(Mandatory = $true)][hashtable]$DisplayState
   )
+  [void]$DisplayState
   $matrix = if ($Mode -ceq 'large') {
     @(1.134053, -0.073151, -0.160659, 0, -0.040079, 1.131038, 0.203869, 0, 0.127329, -0.171576, 0.976908, 0, 41.096493, 795.546082, -4.567053, 1)
   } else {
