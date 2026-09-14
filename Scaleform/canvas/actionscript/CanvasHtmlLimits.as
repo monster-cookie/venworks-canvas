@@ -68,6 +68,8 @@ package
 
       public static const MAX_SVG_PATH_TOKENS:int = 2048;
 
+      public static const MAX_SVG_ELEMENTS:int = 256;
+
       public static const MAX_SVG_COORDINATE:Number = 8192;
 
       public static const MAX_GRAPHICS_COORDINATE:Number = 16384;

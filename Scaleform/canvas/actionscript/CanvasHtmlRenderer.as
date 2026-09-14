@@ -422,7 +422,7 @@ package
       {
          if(param2.name == "img" && this.resolveImageResource(param2) == null)
          {
-            return this.reject("invalid-image",param2.resource,"asset");
+            return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
          }
          return this.measureSvg(param1,param2);
       }
@@ -436,16 +436,16 @@ package
 
       private function measureSvg(param1:Object, param2:CanvasHtmlNode) : Boolean
       {
-         this.currentSvgResource = param2.resource;
+         this.currentSvgResource = this.resolveSvgResourcePath(param2);
          var svg:CanvasHtmlNode = this.resolveSvg(param2);
          if(svg == null)
          {
-            return this.reject("invalid-svg",param2.resource,"asset");
+            return this.failure == null ? this.reject("invalid-svg",this.currentSvgResource,"asset") : false;
          }
          var viewbox:Array = this.parseViewbox(svg.getAttribute("viewbox"));
          if(viewbox == null || Number(viewbox[2]) <= 0 || Number(viewbox[3]) <= 0 || Math.abs(Number(viewbox[0]) + Number(viewbox[2])) > CanvasHtmlLimits.MAX_SVG_COORDINATE || Math.abs(Number(viewbox[1]) + Number(viewbox[3])) > CanvasHtmlLimits.MAX_SVG_COORDINATE)
          {
-            return this.reject("invalid-svg",param2.resource,"asset");
+            return this.reject("invalid-svg-viewbox",this.currentSvgResource,"asset");
          }
          var width:Number = Math.max(1,Number(param1.innerWidth));
          var height:Number = width * Number(viewbox[3]) / Number(viewbox[2]);
@@ -455,7 +455,7 @@ package
          }
          if(!this.isBoundedCoordinate(width) || !this.isBoundedCoordinate(height))
          {
-            return this.reject("invalid-svg-size",param2.resource,"asset");
+            return this.reject("invalid-svg-size",this.currentSvgResource,"asset");
          }
          var shape:Shape = new Shape();
          var color:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
@@ -463,13 +463,13 @@ package
          var path:CanvasHtmlNode = null;
          if(paths.length == 0)
          {
-            return this.reject("invalid-svg",param2.resource,"asset");
+            return this.reject("empty-svg",this.currentSvgResource,"asset");
          }
          for each(path in paths)
          {
             if(path.type != CanvasHtmlNode.ELEMENT || path.name != "path" || !CanvasSvgPathRenderer.render(path,shape.graphics,viewbox,width / Number(viewbox[2]),height / Number(viewbox[3]),color,this.consumeSvgWork))
             {
-               return this.reject("unsupported-svg-path",param2.resource,"asset");
+               return this.reject("unsupported-svg-path",this.currentSvgResource,"asset");
             }
          }
          shape.x = Number(param1.border) + Number(param1.paddingLeft);
@@ -486,13 +486,12 @@ package
          {
             return param1;
          }
-         var resolved:String = CanvasHtmlPath.resolve(param1.resource,param1.getAttribute("src"));
-         var resource:CanvasHtmlResource = resolved == null ? null : this.resources[resolved] as CanvasHtmlResource;
-         if(resource == null || resource.kind != "svg" || resource.text == null || resource.text.length + 80 > CanvasHtmlLimits.MAX_STRING_CODE_UNITS * 16)
+         var resource:CanvasHtmlResource = this.resolveImageResource(param1);
+         if(resource == null || resource.kind != "svg" || resource.text == null || resource.text.length > CanvasHtmlLimits.MAX_SOURCE_BYTES)
          {
             return null;
          }
-         var cacheKey:String = "$" + resolved;
+         var cacheKey:String = "$" + resource.path;
          if(this.svgCache.hasOwnProperty(cacheKey))
          {
             return this.svgCache[cacheKey] as CanvasHtmlNode;
@@ -501,26 +500,26 @@ package
          {
             return null;
          }
-         var wrapped:String = "<!doctype html><html><head><title>svg</title></head><body>" + resource.text + "</body></html>";
-         var parsed:CanvasHtmlParseResult = new CanvasHtmlParser().parse(wrapped,resource.path);
-         if(!parsed.success)
+         var parser:CanvasSvgTextParser = new CanvasSvgTextParser();
+         var result:CanvasHtmlNode = parser.parse(resource.text,resource.path);
+         if(result == null)
          {
             this.svgCache[cacheKey] = null;
+            this.failure = parser.diagnostic == null ? new CanvasHtmlDiagnostic("asset","invalid-svg",resource.path) : parser.diagnostic;
             return null;
          }
-         var rootChild:CanvasHtmlNode = null;
-         var body:CanvasHtmlNode = null;
-         for each(rootChild in parsed.document.root.children)
-         {
-            if(rootChild.name == "body")
-            {
-               body = rootChild;
-               break;
-            }
-         }
-         var result:CanvasHtmlNode = body == null || body.children.length != 1 || CanvasHtmlNode(body.children[0]).name != "svg" ? null : body.children[0] as CanvasHtmlNode;
          this.svgCache[cacheKey] = result;
          return result;
+      }
+
+      private function resolveSvgResourcePath(param1:CanvasHtmlNode) : String
+      {
+         if(param1 == null || param1.name == "svg")
+         {
+            return param1 == null ? null : param1.resource;
+         }
+         var resolved:String = CanvasHtmlPath.resolve(param1.resource,param1.getAttribute("src"));
+         return resolved == null ? param1.resource : resolved;
       }
 
       private function parseViewbox(param1:String) : Array

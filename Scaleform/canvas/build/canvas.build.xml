@@ -28,9 +28,11 @@
     <token>CanvasCssImportScanner</token>
     <token>CanvasHtmlComposer</token>
     <token>CanvasHtmlRenderer</token>
+    <token>CanvasSvgTextParser</token>
     <token>CanvasHtmlBridge</token>
     <token>URLLoaderDataFormat.BINARY</token>
     <token>MAX_SVG_WORK</token>
+    <token>MAX_SVG_ELEMENTS</token>
     <token>MAX_CSS_MATCH_WORK</token>
     <token>MAX_COMPOSITION_WORK</token>
     <token>MAX_CLASSES_PER_ELEMENT</token>
