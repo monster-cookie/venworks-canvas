@@ -81,6 +81,26 @@ Check the intended audience and the complete staged content before committing, a
 | Operations | task-scoped; add or update diagrams when they clarify structure, dependencies, data flow, or lifecycle. Creating a diagram does not authorize publishing it. |
 | Fallbacks | none |
 
+## Codex-created commit identity
+
+Every commit created by Codex must use `MonsterCookieAI <venworksai@venworkscreations.com>` as both its Git author and committer. Apply this identity only to the individual commit command:
+
+```powershell
+git -c user.name="MonsterCookieAI" -c user.email="venworksai@venworkscreations.com" commit ...
+```
+
+Do not set or change this identity through `git config --global`, `git config --system`, `git config --local`, worktree configuration, direct configuration-file edits, or other persistent configuration. Preserve the human user's normal Git identity for the user's own commits. Do not combine the per-command override with `--author`, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`, or another override that changes either required identity.
+
+Git commit authorship and GitHub authentication are separate identity layers. The dedicated Git commit name and email above are attribution metadata, not authentication credentials. They do not replace the `github-automation` GitHub App, which remains required for Codex GitHub MCP and API operations, wrapped GitHub CLI and pull-request operations, and explicitly authorized Git transport including pushes. Do not obtain or use `monstercookieai` login credentials merely to obtain commit attribution, and never silently fall back to the human user's personal GitHub credentials. Never expose or commit GitHub App private keys, installation tokens, access tokens, or other credentials.
+
+Before pushing a Codex-created commit, verify its committed author and committer identities with:
+
+```powershell
+git show --no-patch --format=fuller HEAD
+```
+
+Require both identities to be `MonsterCookieAI <venworksai@venworkscreations.com>`. If either identity differs, stop and report the mismatch. Do not amend, reset, rebase, or otherwise rewrite the commit unless that operation is separately and explicitly approved. Do not rewrite existing commit history merely to change cosmetic attribution.
+
 ## GitHub App and personal application separation
 
 The `github-automation` GitHub App installation is required only for Codex's local GitHub MCP connection, Codex-initiated GitHub CLI operations, and explicitly authorized Codex Git transport. Preserve the user's personal browser sessions, GitKraken connection, and ordinary GitHub CLI login.
