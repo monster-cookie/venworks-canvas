@@ -3,6 +3,7 @@
   <validation>
     <requiredSourceTokens>
       <token><![CDATA[CANVAS COMPONENT GALLERY]]></token>
+      <token><![CDATA[sActionText]]></token>
       <token><![CDATA[openVenworksCanvasGallery]]></token>
       <token><![CDATA[closeVenworksCanvasGallery]]></token>
       <token><![CDATA[loadLocalConsumer]]></token>
@@ -20,6 +21,7 @@
     </requiredSourceTokens>
     <requiredInspectionTokens>
       <token><![CDATA[CANVAS COMPONENT GALLERY]]></token>
+      <token><![CDATA[sActionText]]></token>
       <token><![CDATA[venworkscui.swf]]></token>
       <token><![CDATA[loadLocalConsumer]]></token>
       <token><![CDATA[scrollConsumerBy]]></token>
@@ -128,7 +130,7 @@
          if(!venworksCanvasGalleryEntryFound)
          {
             venworksCanvasPauseEntries.push({
-               "sText":"CANVAS COMPONENT GALLERY",
+               "sActionText":"CANVAS COMPONENT GALLERY",
                "uActionType":this.VENWORKS_CANVAS_GALLERY_ACTION,
                "sConfirmText":"",
                "bDisabled":false,
