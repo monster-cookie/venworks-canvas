@@ -47,35 +47,31 @@ $Global:ModuleVariants = @(
         Name = 'player-watch'
         Kind = 'Patch'
         OutputSet = 'player-hud'
-        PatchPath = 'Scaleform/canvas/patches/player-hud-watch-removed.xml'
-        Outputs = @(
-          @{ InputFile = 'playerhudcomponents.swf'; OutputFile = 'playerhudcomponents.swf' }
-          @{ InputFile = 'playerhudcomponents.gfx'; OutputFile = 'playerhudcomponents.gfx' }
-          @{ InputFile = 'playerhudcomponents_lrg.swf'; OutputFile = 'playerhudcomponents_lrg.swf' }
-          @{ InputFile = 'playerhudcomponents_lrg.gfx'; OutputFile = 'playerhudcomponents_lrg.gfx' }
+        ManifestPaths = @(
+          'Scaleform/canvas/build/playerhudcomponents-swf.build.xml'
+          'Scaleform/canvas/build/playerhudcomponents-gfx.build.xml'
+          'Scaleform/canvas/build/playerhudcomponents-lrg-swf.build.xml'
+          'Scaleform/canvas/build/playerhudcomponents-lrg-gfx.build.xml'
         )
       }
       @{
         Name = 'player-loader'
         Kind = 'Patch'
         OutputSet = 'player-hud-loader'
-        PatchPath = 'Scaleform/canvas/patches/player-hud-auxiliary-loader.xml'
-        SourceRewritePath = 'Scaleform/canvas/build/player-hud-watch-references-removed.xml'
-        Outputs = @(
-          @{ InputFile = 'hudmenu.swf'; OutputFile = 'hudmenu.swf'; DisplayMode = 'normal' }
-          @{ InputFile = 'hudmenu.gfx'; OutputFile = 'hudmenu.gfx'; DisplayMode = 'normal' }
-          @{ InputFile = 'hudmenu_lrg.swf'; OutputFile = 'hudmenu_lrg.swf'; DisplayMode = 'large' }
-          @{ InputFile = 'hudmenu_lrg.gfx'; OutputFile = 'hudmenu_lrg.gfx'; DisplayMode = 'large' }
+        ManifestPaths = @(
+          'Scaleform/canvas/build/hudmenu-swf.build.xml'
+          'Scaleform/canvas/build/hudmenu-gfx.build.xml'
+          'Scaleform/canvas/build/hudmenu-lrg-swf.build.xml'
+          'Scaleform/canvas/build/hudmenu-lrg-gfx.build.xml'
         )
       }
       @{
         Name = 'ship-loader'
         Kind = 'Patch'
         OutputSet = 'ship-hud'
-        PatchPath = 'Scaleform/canvas/patches/spaceship-hud-auxiliary-loader.xml'
-        Outputs = @(
-          @{ InputFile = 'spaceshiphudmenu.swf'; OutputFile = 'spaceshiphudmenu.swf'; DisplayMode = 'normal' }
-          @{ InputFile = 'spaceshiphudmenu_lrg.swf'; OutputFile = 'spaceshiphudmenu_lrg.swf'; DisplayMode = 'large' }
+        ManifestPaths = @(
+          'Scaleform/canvas/build/spaceshiphudmenu.build.xml'
+          'Scaleform/canvas/build/spaceshiphudmenu-lrg.build.xml'
         )
       }
     ),

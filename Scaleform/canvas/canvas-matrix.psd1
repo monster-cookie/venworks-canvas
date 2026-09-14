@@ -1,7 +1,6 @@
 @{
   Version = 1
   WatchPresentation = 'CanvasOwnedChronomarkWithNativeWatchStructurallyAbsent'
-  WatchBuild = 'build/player-hud-watch.build.psd1'
   Chronomark = @{
     Ownership = 'CanvasProceduralVectorAndText'
     Providers = @('LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'HudCompassData', 'PersonalEffectsData', 'PersonalAlertsData', 'EnvironmentEffectsData', 'EnvironmentAlertsData', 'HudModeData', 'HUDOpacityData')

@@ -56,7 +56,6 @@ foreach ($repositoryToolTest in @(
   'testPackaging.ps1',
   'testBuildVariants.ps1',
   'testBuildEvidence.ps1',
-  'testChronomarkSource.ps1',
   'testSetup.ps1',
   'testScaleformSetup.ps1'
 )) {

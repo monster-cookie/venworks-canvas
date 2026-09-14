@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scaleformBuild name="vwcanvas-playerhudcomponents-lrg-gfx"
+                inputFile="playerhudcomponents_lrg.gfx"
+                outputFile="playerhudcomponents_lrg.gfx">
+  <structuralRemovals>
+    <removal construction="character" instanceName="WatchFaceComponent_mc" className="BottomLeftGroup" placeTagType="PlaceObject2Tag" rootDepth="46" />
+  </structuralRemovals>
+</scaleformBuild>

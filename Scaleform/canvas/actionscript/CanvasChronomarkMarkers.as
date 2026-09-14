@@ -149,6 +149,37 @@ package
          {
             param1.rotation = 0;
          }
+         this.renderRelativeHeight(param1,int(param2.relativeHeight),param3);
+      }
+
+      private function renderRelativeHeight(param1:Sprite, param2:int, param3:String) : void
+      {
+         var cue:Shape = param1.getChildAt(1) as Shape;
+         cue.graphics.clear();
+         cue.rotation = -param1.rotation;
+         if(param2 < 1 || param2 > 3)
+         {
+            return;
+         }
+         var color:uint = param3 == "mission" ? 16771919 : param3 == "enemy" ? CanvasChronomarkStyle.ALERT_COLOR : CanvasChronomarkStyle.TEXT_COLOR;
+         cue.graphics.lineStyle(1,color,1,true);
+         if(param2 == 1)
+         {
+            cue.graphics.moveTo(-3,-2);
+            cue.graphics.lineTo(0,1);
+            cue.graphics.lineTo(3,-2);
+         }
+         else if(param2 == 2)
+         {
+            cue.graphics.moveTo(-3,0);
+            cue.graphics.lineTo(3,0);
+         }
+         else
+         {
+            cue.graphics.moveTo(-3,2);
+            cue.graphics.lineTo(0,-1);
+            cue.graphics.lineTo(3,2);
+         }
       }
 
       private function createPool(param1:int, param2:uint, param3:String) : Array
@@ -184,6 +215,9 @@ package
                shape.graphics.lineTo(0,-3.5);
             }
             marker.addChild(shape);
+            var relativeHeightCue:Shape = new Shape();
+            relativeHeightCue.y = 9;
+            marker.addChild(relativeHeightCue);
             marker.visible = false;
             addChild(marker);
             pool.push(marker);
