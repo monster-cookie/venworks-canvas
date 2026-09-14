@@ -5,6 +5,7 @@
       <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
       <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
       <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
       <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
       <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
       <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
@@ -17,6 +18,7 @@
       <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
       <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
       <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
       <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
       <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
       <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
@@ -32,6 +34,9 @@
       <token><![CDATA[public function getVenworksCanvasHudLayout() : Object]]></token>
       <token><![CDATA[public function playVenworksCanvasSound(param1:String) : Boolean]]></token>
       <token><![CDATA[GlobalFunc.PlayMenuSound(param1)]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
+      <token><![CDATA[VenworksCanvasBottomLeftVisible = Boolean(param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](this.VenworksCanvasBottomLeftVisible);]]></token>
       <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
@@ -53,6 +58,8 @@
       <token><![CDATA[getVenworksCanvasHudLayout]]></token>
       <token><![CDATA[playVenworksCanvasSound]]></token>
       <token><![CDATA[VOC_Player_O2_Min]]></token>
+      <token><![CDATA[VenworksCanvasBottomLeftVisible]]></token>
+      <token><![CDATA[updateVanillaHudModeVisibility]]></token>
       <token><![CDATA[VenworksCanvasHudOpacity]]></token>
     </requiredInspectionTokens>
     <forbiddenInspectionTokens>
@@ -93,6 +100,8 @@
       private var VenworksCanvasRegistryBridge:MovieClip = null;
 
       private var VenworksCanvasRegistryDisposed:Boolean = false;
+
+      private var VenworksCanvasBottomLeftVisible:Boolean = false;
 
       private var VenworksCanvasHudOpacity:Number = 1;]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
@@ -242,6 +251,11 @@
             {
                throw new Error("Canvas registry auxiliary rejected host initialization");
             }
+            if(!("updateVanillaHudModeVisibility" in this.VenworksCanvasRegistryBridge))
+            {
+               throw new Error("Canvas registry auxiliary does not expose HUD mode visibility");
+            }
+            this.VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](this.VenworksCanvasBottomLeftVisible);
          }
          catch(venworksCanvasInitError:*)
          {
@@ -315,6 +329,18 @@
       }
 
 ]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[               TopCenterGroup_mc.visible = param1.data.ModeVisibilityA[HUDUtils.TOP_CENTER_GROUP].bVisible;]]></anchor><content><![CDATA[
+               VenworksCanvasBottomLeftVisible = Boolean(param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible);
+               if(VenworksCanvasRegistryBridge != null && "updateVanillaHudModeVisibility" in VenworksCanvasRegistryBridge)
+               {
+                  try
+                  {
+                     VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](VenworksCanvasBottomLeftVisible);
+                  }
+                  catch(venworksCanvasHudModeError:*)
+                  {
+                  }
+               }]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[            var _loc3_:MovieClip = null;]]></anchor><content><![CDATA[
             var venworksCanvasOpacity:Number = Number(param1.data.fHUDOpacity);
             VenworksCanvasHudOpacity = isFinite(venworksCanvasOpacity) ? Math.max(0,Math.min(1,venworksCanvasOpacity)) : 1;]]></content></insertion>

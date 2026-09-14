@@ -68,6 +68,7 @@
     <token>public function initialize(param1:DisplayObjectContainer, param2:Object) : Boolean</token>
     <token>public function reapplyVanillaPlacements</token>
     <token>public function updateVanillaHudModeVisibility</token>
+    <token>public function setHudModeVisibility</token>
     <token>public function dispose</token>
     <token>VWCANVAS_HOST/1</token>
     <token>HOST_STATE_INITIALIZED</token>
@@ -99,7 +100,6 @@
     <token>PersonalAlertsData</token>
     <token>EnvironmentEffectsData</token>
     <token>EnvironmentAlertsData</token>
-    <token>HudModeData</token>
     <token>HUDOpacityData</token>
     <token>GENERAL_MARKER_CAPACITY</token>
     <token>ALERT_QUEUE_CAPACITY</token>

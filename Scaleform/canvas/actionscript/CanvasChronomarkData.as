@@ -2,7 +2,7 @@ package
 {
    internal final class CanvasChronomarkData
    {
-      private static const CHANNELS:Array = ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","PersonalAlertsData","EnvironmentEffectsData","EnvironmentAlertsData","HudModeData","HUDOpacityData"];
+      private static const CHANNELS:Array = ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","PersonalAlertsData","EnvironmentEffectsData","EnvironmentAlertsData","HUDOpacityData"];
 
       private static const MAX_ALERTS:int = CanvasChronomarkStyle.ALERT_QUEUE_CAPACITY;
 
@@ -173,8 +173,6 @@ package
                };
             case "EnvironmentAlertsData":
                return {"alerts":this.normalizeAlerts(this.member(param2,"aEnvironmentAlerts"),true)};
-            case "HudModeData":
-               return {"visible":this.normalizeHudMode(this.member(param2,"ModeVisibilityA"))};
             case "HUDOpacityData":
                return {"opacity":this.numberValue(param2,"fHUDOpacity",1,0,1)};
          }
@@ -318,16 +316,6 @@ package
             index++;
          }
          return result;
-      }
-
-      private function normalizeHudMode(param1:Object) : Boolean
-      {
-         var length:int = this.collectionLength(param1,32);
-         if(length <= CanvasChronomarkStyle.HUD_BOTTOM_LEFT_GROUP_INDEX)
-         {
-            return true;
-         }
-         return this.booleanValue(param1[CanvasChronomarkStyle.HUD_BOTTOM_LEFT_GROUP_INDEX],"bVisible",true);
       }
 
       private function unwrap(param1:Object) : Object

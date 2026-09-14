@@ -57,6 +57,7 @@ package
       public function CanvasChronomarkSurface()
       {
          super();
+         visible = false;
          mouseEnabled = false;
          mouseChildren = false;
          this.view = new CanvasChronomarkView();
@@ -122,6 +123,14 @@ package
             var bounds:Rectangle = this.getMeasuredFaceBounds();
             this.x += visibleX + safeX - bounds.x;
             this.y += visibleY + visibleHeight - safeY - (bounds.y + bounds.height);
+         }
+      }
+
+      public function setHudModeVisibility(param1:Boolean) : void
+      {
+         if(!this.disposed)
+         {
+            visible = param1;
          }
       }
 
@@ -209,9 +218,6 @@ package
                break;
             case "EnvironmentAlertsData":
                this.animation.enqueueEnvironmentAlerts(param2.alerts as Array,this.environmentAlertTimeMs);
-               break;
-            case "HudModeData":
-               visible = param2.visible === true;
                break;
             case "HUDOpacityData":
                if(!this.ownerAppliesOpacity)

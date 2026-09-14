@@ -3,7 +3,8 @@
   WatchPresentation = 'CanvasOwnedChronomarkWithNativeWatchStructurallyAbsent'
   Chronomark = @{
     Ownership = 'CanvasProceduralVectorAndText'
-    Providers = @('LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'HudCompassData', 'PersonalEffectsData', 'PersonalAlertsData', 'EnvironmentEffectsData', 'EnvironmentAlertsData', 'HudModeData', 'HUDOpacityData')
+    Providers = @('LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'HudCompassData', 'PersonalEffectsData', 'PersonalAlertsData', 'EnvironmentEffectsData', 'EnvironmentAlertsData', 'HUDOpacityData')
+    VisibilitySource = 'HUDMenu.HudModeData.BottomLeftGroup'
     CustomAlerts = 'DataLayerOnlyNotRendered'
     Capacities = @{ GeneralAndHazardMarkers = 48; MissionMarkers = 16; EnemyMarkers = 16; PersonalEffects = 5; EnvironmentEffects = 4; AlertTransactions = 16 }
   }

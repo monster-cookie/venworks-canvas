@@ -253,8 +253,12 @@ package
          }
       }
 
-      public function updateVanillaHudModeVisibility(param1:Array) : void
+      public function updateVanillaHudModeVisibility(param1:Boolean) : void
       {
+         if(!this.disposed && this.hostKind == "player" && this.chronomarkSurface != null)
+         {
+            this.chronomarkSurface.setHudModeVisibility(param1);
+         }
       }
 
       public function loadLocalConsumer(param1:Object) : Boolean

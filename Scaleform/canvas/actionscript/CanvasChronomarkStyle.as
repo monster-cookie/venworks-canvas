@@ -66,8 +66,6 @@ package
 
       public static const OXYGEN_THRESHOLD_TOLERANCE:Number = 0.001;
 
-      public static const HUD_BOTTOM_LEFT_GROUP_INDEX:int = 6;
-
       public static const LOCATION_MARKER_TYPE:int = 7;
 
       public static function profile(param1:String) : Object
