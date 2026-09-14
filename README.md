@@ -31,7 +31,7 @@ Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gall
 ## Current compatibility
 
 - Current work targets the Player HUD. Ship HUD and pilot-seat delivery are not accepted yet.
-- The vanilla Watch presentation is disabled while Canvas uses its underlying data path.
+- Canvas renders its own procedural Chronomark surface from ordinary HUD providers; patched Player HUD outputs structurally exclude the native Watch UI. Custom Watch alerts remain reserved for Canvas data-layer transport and are not rendered by the Chronomark surface.
 - PS5 acceptance remains pending a player-visible Canvas build and hardware testing.
 - Event submission is not proof that a consumer displayed an event. Player-visible behavior must be confirmed in game.
 

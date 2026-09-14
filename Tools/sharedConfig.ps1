@@ -47,7 +47,7 @@ $Global:ModuleVariants = @(
         Name = 'player-watch'
         Kind = 'Patch'
         OutputSet = 'player-hud'
-        PatchPath = 'Scaleform/canvas/patches/player-hud-watch-disabled.xml'
+        PatchPath = 'Scaleform/canvas/patches/player-hud-watch-removed.xml'
         Outputs = @(
           @{ InputFile = 'playerhudcomponents.swf'; OutputFile = 'playerhudcomponents.swf' }
           @{ InputFile = 'playerhudcomponents.gfx'; OutputFile = 'playerhudcomponents.gfx' }
@@ -60,6 +60,7 @@ $Global:ModuleVariants = @(
         Kind = 'Patch'
         OutputSet = 'player-hud-loader'
         PatchPath = 'Scaleform/canvas/patches/player-hud-auxiliary-loader.xml'
+        SourceRewritePath = 'Scaleform/canvas/build/player-hud-watch-references-removed.xml'
         Outputs = @(
           @{ InputFile = 'hudmenu.swf'; OutputFile = 'hudmenu.swf'; DisplayMode = 'normal' }
           @{ InputFile = 'hudmenu.gfx'; OutputFile = 'hudmenu.gfx'; DisplayMode = 'normal' }

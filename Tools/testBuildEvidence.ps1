@@ -14,6 +14,7 @@ if ($null -eq $sharedConfiguration -or ![bool]$sharedConfiguration.Value) {
 }
 . (Join-Path $PSScriptRoot 'sharedScaleform.ps1')
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
+& (Join-Path $PSScriptRoot 'testWatchRemoval.ps1')
 
 function Assert-TestRejected {
   param(
@@ -110,6 +111,13 @@ try {
   Assert-TestRejected -Description 'Duplicate ActionScript anchor' -ExpectedMessage 'found 2' -Action {
     Apply-BuildActionScriptPatch -SourcePath $duplicateAnchorPath -Patch $patch
   }
+  Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token second-token' -Tokens @('first-token', 'second-token') -Description 'Exact inspection-token fixture'
+  Assert-TestRejected -Description 'Missing exact inspection token' -ExpectedMessage 'found 0' -Action {
+    Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token' -Tokens @('second-token') -Description 'Missing exact inspection-token fixture'
+  }
+  Assert-TestRejected -Description 'Duplicate exact inspection token' -ExpectedMessage 'found 2' -Action {
+    Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token first-token' -Tokens @('first-token') -Description 'Duplicate exact inspection-token fixture'
+  }
 
   $displayPatchPath = Join-Path $fixtureRoot 'display-mode-patch.xml'
   Write-BuildUtf8WithoutBom -Path $displayPatchPath -Text @'
@@ -164,12 +172,17 @@ package
 
       override protected function onSetSafeRect() : void
       {
+         CENTER_GROUP_POINT.y = this.CenterGroup_mc.y;
       }
 
       override public function onAddedToStage() : void
       {
          super.onAddedToStage();
          BSUIDataManager.Subscribe("HudModeData",function(param1:Object):* {});
+         BSUIDataManager.Subscribe("HUDOpacityData",function(param1:FromClientDataEvent):*
+         {
+            var _loc3_:MovieClip = null;
+         });
       }
    }
 }
@@ -180,7 +193,7 @@ package
   $hudSubscriptionIndex = $playerLoaderSource.IndexOf('BSUIDataManager.Subscribe("HudModeData"', [System.StringComparison]::Ordinal)
   $directAttachIndex = $playerLoaderSource.IndexOf('addChild(this.VenworksCanvasRegistryBridge);', [System.StringComparison]::Ordinal)
   $deferredIndex = $playerLoaderSource.IndexOf('addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize', [System.StringComparison]::Ordinal)
-  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"normal"})', [System.StringComparison]::Ordinal)
+  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"normal","layout":this.getVenworksCanvasHudLayout()})', [System.StringComparison]::Ordinal)
   if ($startIndex -lt 0 -or $hudSubscriptionIndex -le $startIndex) {
     throw 'Player HUD auxiliary loader does not start from HUDMenu onAddedToStage before the vanilla HUD subscriptions.'
   }
@@ -510,6 +523,13 @@ package
     'hudmenu_lrg.swf=large'
     'hudmenu_lrg.gfx=large'
   ) -Description 'Player HUD loader output/display-mode configuration'
+  $playerLoaderRewrite = Get-BuildWatchReferenceRewrite -RewritePath $playerLoaderJob.SourceRewritePath
+  if ($playerLoaderRewrite.Script -cne 'HUDMenu' -or
+      @($playerLoaderRewrite.ForbiddenInspectionTokens) -cnotcontains 'BottomLeftGroup_mc' -or
+      $playerLoaderRewrite.StructuralRemoval.InstanceName -cne 'BottomLeftGroup_mc' -or
+      $playerLoaderRewrite.StructuralRemoval.ClassName -cne 'BottomLeftGroup') {
+    throw 'Player HUD loader does not enforce native Watch reference removal.'
+  }
   $canvasVariant = @(Get-ModuleVariants -VariantKeys CANVAS)[0]
   $playerLoaderAssets = @($canvasVariant.Archives | ForEach-Object { @($_.Assets) } | Where-Object { [string]$_.Root -ceq 'Scaleform' -and [string]$_.Source -clike 'player-hud-loader/*' })
   Assert-BuildExactNames -Actual @($playerLoaderAssets.Source) -Expected @($playerLoaderNames | ForEach-Object { "player-hud-loader/$_" }) -Description 'Player HUD loader archive sources'

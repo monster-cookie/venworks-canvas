@@ -1,7 +1,13 @@
 @{
   Version = 1
-  WatchPresentation = 'DisabledAfterSubscriptionsRestored'
+  WatchPresentation = 'CanvasOwnedChronomarkWithNativeWatchStructurallyAbsent'
   WatchBuild = 'build/player-hud-watch.build.psd1'
+  Chronomark = @{
+    Ownership = 'CanvasProceduralVectorAndText'
+    Providers = @('LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'HudCompassData', 'PersonalEffectsData', 'PersonalAlertsData', 'EnvironmentEffectsData', 'EnvironmentAlertsData', 'HudModeData', 'HUDOpacityData')
+    CustomAlerts = 'DataLayerOnlyNotRendered'
+    Capacities = @{ GeneralAndHazardMarkers = 48; MissionMarkers = 16; EnemyMarkers = 16; PersonalEffects = 5; EnvironmentEffects = 4; AlertTransactions = 16 }
+  }
   Protocol = 'VWCANVAS_REGISTRY/1'
   TestMode = 'ExplicitConsumerUiLoad'
   UiLoadResult = 'UI_LOAD_QUEUED'
@@ -44,7 +50,7 @@
     @{ Id = 'pc-example-ping-pong-reload'; Packages = @('Canvas', 'Example'); Expected = 'After a received ping displays pong, unload/reopen the HUD. The newly loaded Example has no pong until another ping is received. A new explicit ConsolePing invocation restores pong after delivery; there is no automatic event replay or retry.' }
     @{ Id = 'pc-console-resolution'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'ComponentGalleryRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
     @{ Id = 'pc-console-host-recovery'; Packages = @('Canvas'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
-    @{ Id = 'pc-registration-host-only'; Packages = @('Canvas'); Expected = 'Host logs zero consumers and submits no load packets; all vanilla Watch subscriptions are restored before its presentation is detached and gameplay remains responsive.' }
+    @{ Id = 'pc-registration-host-only'; Packages = @('Canvas'); Expected = 'Host logs zero consumers and submits no load packets; the native Watch symbol is absent while the Canvas-owned Chronomark receives ordinary HUD providers, and gameplay remains responsive.' }
     @{ Id = 'pc-registration-example'; Packages = @('Canvas', 'Example'); Expected = 'Example logs REGISTRATION_ACK then a separate UI_LOAD_QUEUED/UI_LOAD_SUBMITTED; readiness requires the visible panel.' }
     @{ Id = 'pc-registration-two-consumers'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Example and Component Gallery each acknowledge registration and validate RequestUiLoad ownership; registry count is two.' }
     @{ Id = 'pc-component-gallery-cheatsheet-rendering'; Packages = @('Canvas', 'ComponentGallery'); Expected = 'Selecting CANVAS COMPONENT GALLERY in the Pause Menu loads index.html without linking Canvas HTML, CSS, or rendering classes into the Gallery. CanvasHost reports HTML PARSED with exactly six resources, then HTML RENDERED and READY. The visible Gallery shows grouped rows with Tag, Syntax, and Rendered Result columns; each syntax cell shows literal markup while each result cell is a separate Canvas-rendered display tree. Local PNG, local SVG, and inline SVG path examples render distinctly.' }
@@ -62,7 +68,7 @@
   )
   # Player HUD cases are the current PC gate; ship/pilot and package-removal cases remain later controlled acceptance.
   RuntimeCases = @(
-    @{ Id = 'pc-archive-host-only'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST, WATCH SUBSCRIPTIONS RESTORED and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
+    @{ Id = 'pc-archive-host-only'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST and CANVAS CHRONOMARK READY, submits no consumer load command, contains no native Watch instance, and remains responsive. Provider subscription is not callback or delivery proof.' }
     @{ Id = 'pc-archive-example'; Packages = @('Canvas', 'Example'); Expected = 'Player HUD visibly reports Example READY from its namespaced normal movie.' }
     @{ Id = 'pc-archive-two-consumers'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Player HUD visibly reports both independently registered consumers READY with no static slot.' }
     @{ Id = 'pc-archive-reversed-consumer-order'; Packages = @('Canvas', 'ComponentGallery', 'Example'); Expected = 'Both consumers register regardless of consumer load order; Host remains their explicit master.' }

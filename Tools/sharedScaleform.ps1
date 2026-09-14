@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'sharedScaleformWatch.ps1')
 
 function Get-BuildScaleformValue {
   param(
@@ -136,6 +137,7 @@ function ConvertTo-BuildScaleformJobs {
 
       $manifestPath = $null
       $patchPath = $null
+      $sourceRewritePath = $null
       if ($kind -ceq 'Flex') {
         $manifestPath = Resolve-BuildScaleformConfigurationFile `
           -Path ([string](Get-BuildScaleformValue -InputObject $configuredJob -Name 'ManifestPath' -Required -Description $description)) `
@@ -152,7 +154,7 @@ function ConvertTo-BuildScaleformJobs {
           -RepositoryRoot $resolvedRepositoryRoot `
           -Description "ActionScript patch for job '$name'"
         foreach ($output in @($outputs)) {
-          [void](Get-BuildActionScriptPatch -PatchPath $patchPath -DisplayMode ([string]$output.DisplayMode))
+          [void](Get-BuildScaleformPatchDefinition -PatchPath $patchPath -DisplayMode ([string]$output.DisplayMode))
           if (![string]::IsNullOrWhiteSpace([string]$output.DisplayMode)) {
             $inputIsLarge = [regex]::IsMatch([string]$output.InputFile, '_lrg\.(swf|gfx)\z', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
             $outputIsLarge = [regex]::IsMatch([string]$output.OutputFile, '_lrg\.(swf|gfx)\z', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
@@ -165,6 +167,18 @@ function ConvertTo-BuildScaleformJobs {
             }
           }
         }
+        $configuredSourceRewritePath = [string](Get-BuildScaleformValue -InputObject $configuredJob -Name 'SourceRewritePath' -Description $description)
+        if (![string]::IsNullOrWhiteSpace($configuredSourceRewritePath)) {
+          $sourceRewritePath = Resolve-BuildScaleformConfigurationFile `
+            -Path $configuredSourceRewritePath `
+            -RepositoryRoot $resolvedRepositoryRoot `
+            -Description "Scaleform source rewrite for job '$name'"
+          $rewrite = Get-BuildWatchReferenceRewrite -RewritePath $sourceRewritePath
+          $patchDefinition = Get-BuildScaleformPatchDefinition -PatchPath $patchPath -DisplayMode ([string]$outputs[0].DisplayMode)
+          if ([string]$patchDefinition.Kind -cne 'ActionScript' -or [string]$rewrite.Script -cne [string]$patchDefinition.Script) {
+            throw "Scaleform source rewrite for job '$name' must target its ActionScript patch '$($patchDefinition.Script)'."
+          }
+        }
       }
 
       $jobs.Add([pscustomobject]@{
@@ -173,6 +187,7 @@ function ConvertTo-BuildScaleformJobs {
         OutputSet = $outputSet
         ManifestPath = $manifestPath
         PatchPath = $patchPath
+        SourceRewritePath = $sourceRewritePath
         Outputs = @($outputs)
         VariantKey = $variantKey
       })
@@ -260,13 +275,23 @@ function Get-BuildActionScriptPatch {
   })
   $requiredSourceTokens = @($patch.SelectNodes('validation/requiredSourceTokens/token') | ForEach-Object { [string]$_.InnerText })
   $requiredInspectionTokens = @($patch.SelectNodes('validation/requiredInspectionTokens/token') | ForEach-Object { [string]$_.InnerText })
+  $idempotenceTokens = @($patch.SelectNodes('validation/idempotenceTokens/token') | ForEach-Object { [string]$_.InnerText })
+  $exactInspectionTokens = @($patch.SelectNodes('validation/exactInspectionTokens/token') | ForEach-Object { [string]$_.InnerText })
+  if (@($idempotenceTokens | Where-Object { [string]::IsNullOrEmpty($_) }).Count -ne 0 -or @($idempotenceTokens | Select-Object -Unique).Count -ne $idempotenceTokens.Count) {
+    throw "ActionScript patch '$resolvedPatchPath' contains invalid or duplicate idempotence tokens."
+  }
+  if (@($exactInspectionTokens | Where-Object { [string]::IsNullOrEmpty($_) }).Count -ne 0 -or @($exactInspectionTokens | Select-Object -Unique).Count -ne $exactInspectionTokens.Count) {
+    throw "ActionScript patch '$resolvedPatchPath' contains invalid or duplicate exact inspection tokens."
+  }
   if (([string]$patch.script).Contains($displayModeMarker) -or @($parsedInsertions | Where-Object { $_.Anchor.Contains($displayModeMarker) }).Count -ne 0) {
     throw "ActionScript patch '$resolvedPatchPath' uses the display-mode marker outside replaceable content."
   }
   $contentUsesDisplayMode = @($parsedInsertions | Where-Object { $_.Content.Contains($displayModeMarker) }).Count -ne 0
   $sourceValidationUsesDisplayMode = @($requiredSourceTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
   $inspectionUsesDisplayMode = @($requiredInspectionTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
-  $usesDisplayMode = $contentUsesDisplayMode -or $sourceValidationUsesDisplayMode -or $inspectionUsesDisplayMode
+  $idempotenceUsesDisplayMode = @($idempotenceTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
+  $exactInspectionUsesDisplayMode = @($exactInspectionTokens | Where-Object { $_.Contains($displayModeMarker) }).Count -ne 0
+  $usesDisplayMode = $contentUsesDisplayMode -or $sourceValidationUsesDisplayMode -or $inspectionUsesDisplayMode -or $idempotenceUsesDisplayMode -or $exactInspectionUsesDisplayMode
   if ($usesDisplayMode) {
     if (!$contentUsesDisplayMode -or !$sourceValidationUsesDisplayMode -or !$inspectionUsesDisplayMode) {
       throw "ActionScript patch '$resolvedPatchPath' must use the display-mode marker in insertion content and required source and inspection tokens."
@@ -282,18 +307,52 @@ function Get-BuildActionScriptPatch {
     }
     $requiredSourceTokens = @($requiredSourceTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
     $requiredInspectionTokens = @($requiredInspectionTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
+    $idempotenceTokens = @($idempotenceTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
+    $exactInspectionTokens = @($exactInspectionTokens | ForEach-Object { $_.Replace($displayModeMarker, $DisplayMode) })
   }
   elseif (![string]::IsNullOrWhiteSpace($DisplayMode)) {
     throw "ActionScript patch '$resolvedPatchPath' does not support DisplayMode configuration."
   }
   return [pscustomobject]@{
+    Kind = 'ActionScript'
     Path = $resolvedPatchPath
     Script = [string]$patch.script
     Insertions = $parsedInsertions
     RequiredSourceTokens = $requiredSourceTokens
     RequiredInspectionTokens = $requiredInspectionTokens
+    IdempotenceTokens = $idempotenceTokens
+    ExactInspectionTokens = $exactInspectionTokens
     DisplayMode = if ($usesDisplayMode) { $DisplayMode } else { $null }
   }
+}
+
+function Assert-BuildScaleformSourceTokensExactlyOnce {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Tokens,
+    [Parameter(Mandatory = $true)][string]$Description
+  )
+
+  foreach ($token in @($Tokens)) {
+    $count = Get-BuildOrdinalOccurrenceCount -Source $Source -Value $token
+    if ($count -ne 1) {
+      throw "$Description expected exactly one token '$token' but found $count."
+    }
+  }
+}
+
+function Get-BuildScaleformPatchDefinition {
+  param(
+    [Parameter(Mandatory = $true)][string]$PatchPath,
+    [AllowEmptyString()][string]$DisplayMode
+  )
+
+  $resolvedPatchPath = Resolve-BuildRequiredFile -Path $PatchPath -Description 'Scaleform patch'
+  [xml]$document = Get-Content -LiteralPath $resolvedPatchPath -Raw
+  if ([string]$document.DocumentElement.LocalName -ceq 'watchRemoval') {
+    return Get-BuildWatchRemovalPatch -PatchPath $resolvedPatchPath -DisplayMode $DisplayMode
+  }
+  return Get-BuildActionScriptPatch -PatchPath $resolvedPatchPath -DisplayMode $DisplayMode
 }
 
 function Get-BuildOrdinalOccurrenceCount {
@@ -321,6 +380,22 @@ function Apply-BuildActionScriptPatch {
 
   $resolvedSourcePath = Resolve-BuildRequiredFile -Path $SourcePath -Description "Exported ActionScript '$($Patch.Script)'"
   $source = [System.IO.File]::ReadAllText($resolvedSourcePath)
+  $idempotenceTokens = @()
+  if ($null -ne $Patch.PSObject.Properties['IdempotenceTokens']) {
+    $idempotenceTokens = @($Patch.IdempotenceTokens)
+  }
+  if ($idempotenceTokens.Count -ne 0) {
+    $idempotenceCounts = @($idempotenceTokens | ForEach-Object { Get-BuildOrdinalOccurrenceCount -Source $source -Value $_ })
+    if (@($idempotenceCounts | Where-Object { $_ -gt 0 }).Count -ne 0) {
+      for ($index = 0; $index -lt $idempotenceTokens.Count; $index++) {
+        if ($idempotenceCounts[$index] -ne 1) {
+          throw "ActionScript patch '$($Patch.Path)' has an incomplete or duplicate applied state for '$($Patch.Script)' token '$($idempotenceTokens[$index])': expected 1, found $($idempotenceCounts[$index])."
+        }
+      }
+      Assert-BuildScaleformSourceTokens -Source $source -RequiredTokens @($Patch.RequiredSourceTokens) -Description "Already-patched ActionScript '$($Patch.Script)'"
+      return
+    }
+  }
   foreach ($insertion in @($Patch.Insertions)) {
     $position = [string]$insertion.Position
     $anchor = [string]$insertion.Anchor
@@ -337,6 +412,12 @@ function Apply-BuildActionScriptPatch {
     $source = $source.Insert($insertionIndex, $content)
   }
   Assert-BuildScaleformSourceTokens -Source $source -RequiredTokens @($Patch.RequiredSourceTokens) -Description "Patched ActionScript '$($Patch.Script)'"
+  for ($index = 0; $index -lt $idempotenceTokens.Count; $index++) {
+    $idempotenceCount = Get-BuildOrdinalOccurrenceCount -Source $source -Value $idempotenceTokens[$index]
+    if ($idempotenceCount -ne 1) {
+      throw "ActionScript patch '$($Patch.Path)' did not create exactly one '$($Patch.Script)' idempotence token '$($idempotenceTokens[$index])': found $idempotenceCount."
+    }
+  }
   Write-BuildUtf8WithoutBom -Path $resolvedSourcePath -Text $source
 }
 
@@ -613,6 +694,7 @@ function Invoke-BuildPatchedScaleformMovie {
     [Parameter(Mandatory = $true)][string]$JpexsJarPath,
     [Parameter(Mandatory = $true)][string]$FlexSdkPath,
     [Parameter(Mandatory = $true)][string]$WorkDirectory,
+    [string]$SourceRewritePath,
     [AllowEmptyString()][string]$DisplayMode,
     [switch]$KeepWork
   )
@@ -620,8 +702,15 @@ function Invoke-BuildPatchedScaleformMovie {
   $resolvedInputPath = Assert-BuildScaleformFile -Path $InputPath -Description 'Scaleform patch input'
   $resolvedJavaPath = Resolve-BuildRequiredFile -Path $JavaPath -Description 'Java executable'
   $resolvedJpexsJarPath = Resolve-BuildRequiredFile -Path $JpexsJarPath -Description 'JPEXS JAR'
+  $patch = Get-BuildScaleformPatchDefinition -PatchPath $PatchPath -DisplayMode $DisplayMode
+  if ([string]$patch.Kind -ceq 'WatchRemoval') {
+    return Invoke-BuildWatchRemovalScaleformMovie -InputPath $resolvedInputPath -OutputPath $OutputPath -JavaPath $resolvedJavaPath -JpexsJarPath $resolvedJpexsJarPath -WorkDirectory $WorkDirectory -Patch $patch -KeepWork:$KeepWork
+  }
   $resolvedFlexSdkPath = Resolve-BuildRequiredDirectory -Path $FlexSdkPath -Description 'Apache Flex SDK'
-  $patch = Get-BuildActionScriptPatch -PatchPath $PatchPath -DisplayMode $DisplayMode
+  $sourceRewrite = if ([string]::IsNullOrWhiteSpace($SourceRewritePath)) { $null } else { Get-BuildWatchReferenceRewrite -RewritePath $SourceRewritePath }
+  if ($null -ne $sourceRewrite -and [string]$sourceRewrite.Script -cne [string]$patch.Script) {
+    throw "Scaleform source rewrite '$($sourceRewrite.Path)' targets '$($sourceRewrite.Script)' instead of '$($patch.Script)'."
+  }
   $resolvedOutputPath = [System.IO.Path]::GetFullPath($OutputPath)
   if (Test-Path -LiteralPath $resolvedOutputPath) {
     throw "Patched Scaleform output path is not fresh: $resolvedOutputPath"
@@ -631,17 +720,41 @@ function Invoke-BuildPatchedScaleformMovie {
   $buildWorkDirectory = Join-Path $resolvedWorkDirectory ([guid]::NewGuid().ToString('N'))
   $exportDirectory = Join-Path $buildWorkDirectory 'exported'
   $inspectionDirectory = Join-Path $buildWorkDirectory 'inspection'
+  $actionScriptOutputPath = if ($null -eq $sourceRewrite) { $resolvedOutputPath } else { Join-Path $buildWorkDirectory ('actionscript-patched' + [System.IO.Path]::GetExtension($resolvedOutputPath)) }
+  $structuralSourceXmlPath = Join-Path $buildWorkDirectory 'hudmenu-structural-source.xml'
+  $structuralRemovedXmlPath = Join-Path $buildWorkDirectory 'hudmenu-structural-removed.xml'
+  $structuralInspectionXmlPath = Join-Path $buildWorkDirectory 'hudmenu-structural-inspection.xml'
   New-Item -ItemType Directory -Path $exportDirectory, $inspectionDirectory | Out-Null
   try {
     Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-format', 'script:as', '-selectclass', $patch.Script, '-onerror', 'abort', '-export', 'script', $exportDirectory, $resolvedInputPath) -Description "JPEXS $($patch.Script) ActionScript export"
     $sourcePath = Find-BuildExportedActionScript -ScriptsDirectory $exportDirectory -ScriptName $patch.Script
     Apply-BuildActionScriptPatch -SourcePath $sourcePath -Patch $patch
+    if ($null -ne $sourceRewrite) {
+      Apply-BuildWatchReferenceRewrite -SourcePath $sourcePath -Rewrite $sourceRewrite
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedOutputPath) | Out-Null
-    Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-config', "flexSdkLocation=$resolvedFlexSdkPath", '-onerror', 'abort', '-importScript', $resolvedInputPath, $resolvedOutputPath, $exportDirectory) -Description "JPEXS $($patch.Script) ActionScript import"
+    Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-config', "flexSdkLocation=$resolvedFlexSdkPath", '-onerror', 'abort', '-importScript', $resolvedInputPath, $actionScriptOutputPath, $exportDirectory) -Description "JPEXS $($patch.Script) ActionScript import"
+    [void](Assert-BuildScaleformFile -Path $actionScriptOutputPath -Description "Patched $($patch.Script) Scaleform movie")
+    if ($null -ne $sourceRewrite) {
+      Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-swf2xml', $actionScriptOutputPath, $structuralSourceXmlPath) -Description 'JPEXS HUDMenu structural-removal XML export'
+      Remove-BuildWatchClassPlacementFromScaleformXml -InputPath $structuralSourceXmlPath -OutputPath $structuralRemovedXmlPath -Removal $sourceRewrite.StructuralRemoval
+      Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-xml2swf', $structuralRemovedXmlPath, $resolvedOutputPath) -Description 'JPEXS HUDMenu Watch-removed movie rebuild'
+      [void](Assert-BuildScaleformFile -Path $resolvedOutputPath -Description 'Structurally Watch-removed HUDMenu movie')
+      Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-swf2xml', $resolvedOutputPath, $structuralInspectionXmlPath) -Description 'JPEXS HUDMenu structural-removal XML inspection'
+      [xml]$structuralInspection = Get-Content -LiteralPath (Resolve-BuildRequiredFile -Path $structuralInspectionXmlPath -Description 'JPEXS HUDMenu structural-removal XML inspection') -Raw
+      Assert-BuildWatchClassPlacementAbsent -Movie $structuralInspection -Removal $sourceRewrite.StructuralRemoval -Description 'Rebuilt HUDMenu movie'
+    }
     [void](Assert-BuildScaleformFile -Path $resolvedOutputPath -Description "Patched $($patch.Script) Scaleform movie")
     Invoke-BuildJavaJar -JavaPath $resolvedJavaPath -JarPath $resolvedJpexsJarPath -Arguments @('-format', 'script:as', '-onerror', 'abort', '-export', 'script', $inspectionDirectory, $resolvedOutputPath) -Description "JPEXS patched $($patch.Script) inspection export"
     $inspectionPath = Find-BuildExportedActionScript -ScriptsDirectory $inspectionDirectory -ScriptName $patch.Script
-    Assert-BuildScaleformSourceTokens -Source ([System.IO.File]::ReadAllText($inspectionPath)) -RequiredTokens @($patch.RequiredInspectionTokens) -Description "Patched $($patch.Script) inspection"
+    $inspectionSource = [System.IO.File]::ReadAllText($inspectionPath)
+    Assert-BuildScaleformSourceTokens -Source $inspectionSource -RequiredTokens @($patch.RequiredInspectionTokens) -Description "Patched $($patch.Script) inspection"
+    if (@($patch.ExactInspectionTokens).Count -ne 0) {
+      Assert-BuildScaleformSourceTokensExactlyOnce -Source $inspectionSource -Tokens @($patch.ExactInspectionTokens) -Description "Patched $($patch.Script) inspection"
+    }
+    if ($null -ne $sourceRewrite) {
+      Assert-BuildWatchReferenceTokensAbsent -Source $inspectionSource -Rewrite $sourceRewrite -Description "Patched $($patch.Script) inspection"
+    }
     return $resolvedOutputPath
   }
   finally {
@@ -867,6 +980,10 @@ function Invoke-BuildScaleformJobs {
         $displayMode = [string](Get-BuildScaleformValue -InputObject $output -Name 'DisplayMode' -Description "Scaleform job '$($job.Name)' output '$($output.OutputFile)'")
         if (![string]::IsNullOrWhiteSpace($displayMode)) {
           $patchBuildParameters.DisplayMode = $displayMode
+        }
+        $sourceRewritePath = [string](Get-BuildScaleformValue -InputObject $job -Name 'SourceRewritePath' -Description "Scaleform job '$($job.Name)'")
+        if (![string]::IsNullOrWhiteSpace($sourceRewritePath)) {
+          $patchBuildParameters.SourceRewritePath = $sourceRewritePath
         }
         [void](Invoke-BuildPatchedScaleformMovie @patchBuildParameters)
         $results.Add([pscustomobject]@{ JobName = $job.Name; OutputSet = $job.OutputSet; OutputFile = $output.OutputFile; Path = (Join-Path (Join-Path $resolvedOutputDirectory $job.OutputSet) $output.OutputFile); VariantKey = $job.VariantKey })

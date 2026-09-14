@@ -1,9 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <actionScriptPatch name="vwcanvas-player-hud-auxiliary-loader" version="1" script="HUDMenu">
   <validation>
+    <idempotenceTokens>
+      <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
+      <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()})]]></token>
+      <token><![CDATA[private function disposeVenworksCanvasRegistry() : void]]></token>
+    </idempotenceTokens>
+    <exactInspectionTokens>
+      <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
+      <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{]]></token>
+      <token><![CDATA[private function disposeVenworksCanvasRegistry() : void]]></token>
+    </exactInspectionTokens>
     <requiredSourceTokens>
       <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
-      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__"})]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()})]]></token>
+      <token><![CDATA[public function getVenworksCanvasDataManager() : Object]]></token>
+      <token><![CDATA[public function getVenworksCanvasHudLayout() : Object]]></token>
+      <token><![CDATA[public function playVenworksCanvasSound(param1:String) : Boolean]]></token>
+      <token><![CDATA[GlobalFunc.PlayMenuSound(param1)]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
       <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge)]]></token>
       <token><![CDATA[removeChild(this.VenworksCanvasRegistryBridge)]]></token>
@@ -19,6 +49,11 @@
       <token><![CDATA[initialize]]></token>
       <token><![CDATA[dispose]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
+      <token><![CDATA[getVenworksCanvasDataManager]]></token>
+      <token><![CDATA[getVenworksCanvasHudLayout]]></token>
+      <token><![CDATA[playVenworksCanvasSound]]></token>
+      <token><![CDATA[VOC_Player_O2_Min]]></token>
+      <token><![CDATA[VenworksCanvasHudOpacity]]></token>
     </requiredInspectionTokens>
   </validation>
   <insertions>
@@ -31,10 +66,71 @@
 
       private var VenworksCanvasRegistryBridge:MovieClip = null;
 
-      private var VenworksCanvasRegistryDisposed:Boolean = false;]]></content></insertion>
+      private var VenworksCanvasRegistryDisposed:Boolean = false;
+
+      private var VenworksCanvasHudOpacity:Number = 1;]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
          this.startVenworksCanvasRegistry();]]></content></insertion>
-    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      private function startVenworksCanvasRegistry() : void
+    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      public function getVenworksCanvasDataManager() : Object
+      {
+         return BSUIDataManager;
+      }
+
+      public function getVenworksCanvasHudLayout() : Object
+      {
+         var visibleRect:Object = Extensions.visibleRect;
+         return {
+            "visibleX":Number(visibleRect.x),
+            "visibleY":Number(visibleRect.y),
+            "visibleWidth":Number(visibleRect.width),
+            "visibleHeight":Number(visibleRect.height),
+            "safeX":Number(SafeX),
+            "safeY":Number(SafeY),
+            "ownerAppliesOpacity":true
+         };
+      }
+
+      public function playVenworksCanvasSound(param1:String) : Boolean
+      {
+         switch(param1)
+         {
+            case "VOC_Player_O2_Min":
+            case "VOC_Player_CO2_Cleared":
+            case "VOC_Player_CO2_Max":
+            case "UIAfflictionPainWarningScreenOn":
+            case "UIAfflictionPainWarningScreenOff":
+            case "UIHazardRadiationWarningScreen":
+            case "UIHazardThermalWarningScreen":
+            case "UIHazardAirborneWarningScreen":
+            case "UIHazardCorrosiveWarningScreen":
+            case "UIHazardSuitSoakRestore_WarningScreen":
+            case "UIHazardDamagePermanent":
+            case "UIHazardRadiationWarningIcon":
+            case "UIHazardThermalWarningIcon":
+            case "UIHazardAirborneWarningIcon":
+            case "UIHazardCorrosiveWarningIcon":
+            case "UIHazardSuitSoakRestore_Icon":
+               GlobalFunc.PlayMenuSound(param1);
+               return true;
+         }
+         return false;
+      }
+
+      private function refreshVenworksCanvasLayout() : void
+      {
+         if(!this.VenworksCanvasRegistryDisposed && this.VenworksCanvasRegistryBridge != null && "reapplyVanillaPlacements" in this.VenworksCanvasRegistryBridge)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryBridge["reapplyVanillaPlacements"](this.getVenworksCanvasHudLayout());
+            }
+            catch(venworksCanvasLayoutError:*)
+            {
+            }
+         }
+      }
+
+      private function startVenworksCanvasRegistry() : void
       {
          if(this.VenworksCanvasRegistryLoader != null || this.VenworksCanvasRegistryDisposed)
          {
@@ -97,6 +193,7 @@
             {
                addChild(this.VenworksCanvasRegistryBridge);
             }
+            this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;
             addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize,false,0,true);
          }
          catch(venworksCanvasCompleteError:Error)
@@ -115,7 +212,7 @@
          }
          try
          {
-            if(this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__"}) !== true)
+            if(this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()}) !== true)
             {
                throw new Error("Canvas registry auxiliary rejected host initialization");
             }
@@ -192,5 +289,10 @@
       }
 
 ]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[            var _loc3_:MovieClip = null;]]></anchor><content><![CDATA[
+            var venworksCanvasOpacity:Number = Number(param1.data.fHUDOpacity);
+            VenworksCanvasHudOpacity = isFinite(venworksCanvasOpacity) ? Math.max(0,Math.min(1,venworksCanvasOpacity)) : 1;]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         CENTER_GROUP_POINT.y = this.CenterGroup_mc.y;]]></anchor><content><![CDATA[
+         this.refreshVenworksCanvasLayout();]]></content></insertion>
   </insertions>
 </actionScriptPatch>

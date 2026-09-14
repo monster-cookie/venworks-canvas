@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<watchReferenceRewrite name="vwcanvas-player-hud-watch-references-removed" schema="VWCANVAS_WATCH_REFERENCE_REWRITE/1" script="HUDMenu">
+  <validation>
+    <forbiddenInspectionTokens>
+      <token>BottomLeftGroup_mc</token>
+    </forbiddenInspectionTokens>
+  </validation>
+  <structuralRemoval instanceName="BottomLeftGroup_mc" className="BottomLeftGroup" placeTagType="PlaceObject3Tag" rootDepth="2" />
+  <exactRemovals>
+    <removal><![CDATA[      public var __animFactory_BottomLeftGroup_mcaf1:AnimatorFactory3D;]]></removal>
+    <removal><![CDATA[      public var __animArray_BottomLeftGroup_mcaf1:Array;]]></removal>
+    <removal><![CDATA[      public var ____motion_BottomLeftGroup_mcaf1_mat3DVec__:Vector.<Number>;]]></removal>
+    <removal><![CDATA[      public var ____motion_BottomLeftGroup_mcaf1_matArray__:Array;]]></removal>
+    <removal><![CDATA[      public var __motion_BottomLeftGroup_mcaf1:MotionBase;]]></removal>
+    <removal><![CDATA[      public var BottomLeftGroup_mc:MovieClip;]]></removal>
+    <removal><![CDATA[         GlobalFunc.LockToSafeRect(this.BottomLeftGroup_mc,"BL",SafeX,SafeY,true);]]></removal>
+    <removal><![CDATA[               BottomLeftGroup_mc.visible = param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible;]]></removal>
+  </exactRemovals>
+  <rangeReplacements>
+    <replacement>
+      <startAnchor><![CDATA[         if(this.__animFactory_BottomLeftGroup_mcaf1 == null)]]></startAnchor>
+      <endAnchor><![CDATA[      public function __setPerspectiveProjection_(param1:Event) : void]]></endAnchor>
+      <expectedSpanSha256>
+        <hash>211BFDC5E748A9671968A588A650ADEFB90B54E69A6E8AA3B3D8AD3B55D5832F</hash>
+        <hash>67EBEB089CF483EBC54D43DCBCDBD2235B7EB637B506D2C533F10668BC0DD1F2</hash>
+      </expectedSpanSha256>
+      <content><![CDATA[      }
+
+]]></content>
+    </replacement>
+  </rangeReplacements>
+</watchReferenceRewrite>
