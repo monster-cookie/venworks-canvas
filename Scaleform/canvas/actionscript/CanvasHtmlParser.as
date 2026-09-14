@@ -295,11 +295,11 @@ package
 
       private function isAllowedAttribute(param1:String, param2:String) : Boolean
       {
-         if(param1 == "body" && (param2 == "data-vw-text" || param2 == "data-vw-format" || param2 == "data-vw-visible"))
+         if(param1 == "body" && (param2 == "data-vw-text" || param2 == "data-vw-format" || param2 == "data-vw-template" || param2 == "data-vw-visible"))
          {
             return false;
          }
-         if((param2 == "data-vw-text" || param2 == "data-vw-format") && !this.allowsTextBinding(param1))
+         if((param2 == "data-vw-text" || param2 == "data-vw-format" || param2 == "data-vw-template") && !this.allowsTextBinding(param1))
          {
             return false;
          }
@@ -358,9 +358,13 @@ package
       {
          var name:String = param2.name;
          var value:String = param2.value;
-         if(name == "id" || name == "data-vw-text" || name == "data-vw-visible" || name == "items" || name == "when" || name == "value" || name == "name")
+         if(name == "id" || name == "name")
          {
             return this.isIdentifier(value);
+         }
+         if(name == "data-vw-text" || name == "data-vw-visible" || name == "items" || name == "when" || name == "value")
+         {
+            return CanvasHtmlData.isDataIdentifier(value);
          }
          if(name == "event")
          {
@@ -369,6 +373,17 @@ package
          if(name == "data-vw-format")
          {
             return this.isFormat(value);
+         }
+         if(name == "data-vw-template")
+         {
+            try
+            {
+               return CanvasHtmlData.validateTemplate(value);
+            }
+            catch(templateError:*)
+            {
+               return false;
+            }
          }
          if(name == "class")
          {
@@ -449,12 +464,17 @@ package
       private function validateClosedElement(param1:CanvasHtmlNode, param2:int) : Boolean
       {
          var child:CanvasHtmlNode = null;
-         if(param1.getAttribute("data-vw-text") != null && param1.children.length != 0)
+         if((param1.getAttribute("data-vw-text") != null || param1.getAttribute("data-vw-template") != null) && param1.children.length != 0)
          {
             this.reject("invalid-value",param1.offset);
             return false;
          }
          if(param1.getAttribute("data-vw-format") != null && param1.getAttribute("data-vw-text") == null)
+         {
+            this.reject("invalid-value",param1.offset);
+            return false;
+         }
+         if(param1.getAttribute("data-vw-text") != null && param1.getAttribute("data-vw-template") != null)
          {
             this.reject("invalid-value",param1.offset);
             return false;
@@ -566,7 +586,7 @@ package
 
       private function isGlobalAttribute(param1:String) : Boolean
       {
-         return param1 == "id" || param1 == "class" || param1 == "data-vw-text" || param1 == "data-vw-visible" || param1 == "data-vw-format";
+         return param1 == "id" || param1 == "class" || param1 == "data-vw-text" || param1 == "data-vw-visible" || param1 == "data-vw-format" || param1 == "data-vw-template";
       }
 
       private function allowsTextBinding(param1:String) : Boolean
@@ -643,6 +663,10 @@ package
          if(param1 == "event")
          {
             return param2.length > CanvasHtmlLimits.MAX_EVENT_TOPIC_CODE_UNITS;
+         }
+         if(param1 == "data-vw-template")
+         {
+            return param2.length > CanvasHtmlLimits.MAX_FORMAT_CODE_UNITS;
          }
          if(param1 == "template")
          {

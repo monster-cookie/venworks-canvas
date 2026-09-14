@@ -11,6 +11,7 @@
 .gallery-row { display: flex; flex-direction: row; width: 1760px; background-color: #101923; border-width: 1px; border-style: solid; border-color: #304657; }
 .gallery-column-header { color: #071015; background-color: #66ffff; font-size: 18px; font-weight: bold; text-align: left; }
 .gallery-tag { width: 180px; padding: 12px; color: #66ffff; font-weight: bold; }
+.gallery-placeholder-key { font-size: 13px; line-height: 17px; }
 .gallery-column-header .gallery-tag { color: #071015; }
 .gallery-syntax { width: 940px; padding: 12px; color: #bac7d2; background-color: #0d151e; font-size: 15px; line-height: 20px; }
 .gallery-column-header .gallery-syntax { color: #071015; background-color: #66ffff; }

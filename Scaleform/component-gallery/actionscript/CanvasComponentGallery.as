@@ -13,6 +13,8 @@ package
 
       private var playerDataUpdates:int;
 
+      private var playerValues:Object = {};
+
       private var hostKind:String = "";
 
       public function CanvasComponentGallery()
@@ -31,7 +33,7 @@ package
             "minimumContractVersion":2,
             "maximumContractVersion":2,
             "hostKinds":["menu"],
-            "uiChannels":[],
+            "uiChannels":["PlayerData","PlayerFrequentData"],
             "eventTopics":[],
             "marker":"COMPONENT-GALLERY"
          };
@@ -49,9 +51,18 @@ package
       {
          if(param1 == "PlayerData")
          {
-            this.playerDataUpdates = this.playerDataUpdates >= 9999 ? 0 : this.playerDataUpdates + 1;
-            this.submitSampleData();
+            this.capturePlayerData(param2);
          }
+         else if(param1 == "PlayerFrequentData")
+         {
+            this.capturePlayerFrequentData(param2);
+         }
+         else
+         {
+            return;
+         }
+         this.playerDataUpdates = this.playerDataUpdates >= 9999 ? 0 : this.playerDataUpdates + 1;
+         this.submitSampleData();
       }
 
       public function handleCanvasEvent(param1:String, param2:String) : void
@@ -75,6 +86,7 @@ package
          {
             this.clearHtmlBridge();
             this.playerDataUpdates = 0;
+            this.playerValues = {};
             this.hostKind = param2 != null && "hostKind" in param2 ? String(param2["hostKind"]) : "";
             this.htmlBridge = this.resolveHtmlBridge(param2);
             if(this.htmlBridge != null)
@@ -86,6 +98,7 @@ package
          else if(param1 == "unload")
          {
             this.hostKind = "";
+            this.playerValues = {};
             this.clearHtmlBridge();
          }
       }
@@ -117,7 +130,7 @@ package
 
       private function createSampleData() : Object
       {
-         return {
+         var result:Object = {
             "sampletext":"Bound through Canvas data",
             "sampleformat":42,
             "samplevisible":true,
@@ -125,6 +138,82 @@ package
             "samplemeter":72,
             "sampleupdates":this.hostKind == "menu" ? "Menu-local sample data" : "PlayerData snapshots received: " + this.playerDataUpdates
          };
+         var key:String = null;
+         for(key in this.playerValues)
+         {
+            if(this.playerValues.hasOwnProperty(key))
+            {
+               result[key] = this.playerValues[key];
+            }
+         }
+         return result;
+      }
+
+      private function capturePlayerData(param1:Object) : void
+      {
+         this.captureText("player.name",param1,"sName");
+         this.captureFinite("player.level",param1,"uLevel");
+         this.captureFinite("player.levelxp",param1,"fLevelXP");
+         this.captureFinite("player.nextlevelxp",param1,"fNextLevelXP");
+         this.captureRatio("player.xppercentage",param1,"fLevelXP","fNextLevelXP");
+      }
+
+      private function capturePlayerFrequentData(param1:Object) : void
+      {
+         this.captureFinite("player.health",param1,"fHealth");
+         this.captureFinite("player.maxhealth",param1,"fMaxHealth");
+         this.captureRatio("player.healthpercentage",param1,"fHealth","fMaxHealth");
+         this.captureFinite("player.oxygen",param1,"fOxygen");
+         this.captureFinite("player.maxoxygen",param1,"fMaxO2CO2");
+         this.captureRatio("player.oxygenpercentage",param1,"fOxygen","fMaxO2CO2");
+         this.captureFinite("player.carbondioxide",param1,"fCarbonDioxide");
+         this.captureRatio("player.carbondioxidepercentage",param1,"fCarbonDioxide","fMaxO2CO2");
+         this.captureFinite("power.current",param1,"fStarPower");
+         this.captureFinite("power.maximum",param1,"fMaxStarPower");
+         this.captureRatio("power.percentage",param1,"fStarPower","fMaxStarPower");
+      }
+
+      private function captureText(param1:String, param2:Object, param3:String) : void
+      {
+         if(param2 == null || !(param3 in param2) || param2[param3] == null)
+         {
+            delete this.playerValues[param1];
+            return;
+         }
+         var value:String = String(param2[param3]);
+         if(value.length > 256)
+         {
+            delete this.playerValues[param1];
+            return;
+         }
+         this.playerValues[param1] = value;
+      }
+
+      private function captureFinite(param1:String, param2:Object, param3:String) : void
+      {
+         if(param2 == null || !(param3 in param2) || typeof param2[param3] != "number" || !isFinite(Number(param2[param3])))
+         {
+            delete this.playerValues[param1];
+            return;
+         }
+         this.playerValues[param1] = Number(param2[param3]);
+      }
+
+      private function captureRatio(param1:String, param2:Object, param3:String, param4:String) : void
+      {
+         if(param2 == null || !(param3 in param2) || !(param4 in param2) || typeof param2[param3] != "number" || typeof param2[param4] != "number")
+         {
+            delete this.playerValues[param1];
+            return;
+         }
+         var current:Number = Number(param2[param3]);
+         var maximum:Number = Number(param2[param4]);
+         if(!isFinite(current) || !isFinite(maximum) || maximum <= 0)
+         {
+            delete this.playerValues[param1];
+            return;
+         }
+         this.playerValues[param1] = Math.max(0,Math.min(100,current / maximum * 100));
       }
 
       private function submitSampleData() : void

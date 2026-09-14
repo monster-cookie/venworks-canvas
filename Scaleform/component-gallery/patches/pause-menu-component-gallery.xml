@@ -9,6 +9,7 @@
       <token><![CDATA[scrollConsumerBy]]></token>
       <token><![CDATA[scrollConsumerTo]]></token>
       <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA[getVenworksCanvasMenuDataManager]]></token>
       <token><![CDATA["hostKind":"menu"]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
       <token><![CDATA[MouseEvent.MOUSE_WHEEL]]></token>
@@ -24,6 +25,7 @@
       <token><![CDATA[scrollConsumerBy]]></token>
       <token><![CDATA[scrollConsumerTo]]></token>
       <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA[getVenworksCanvasMenuDataManager]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
     </requiredInspectionTokens>
   </validation>
@@ -126,7 +128,7 @@
          if(!venworksCanvasGalleryEntryFound)
          {
             venworksCanvasPauseEntries.push({
-               "text":"CANVAS COMPONENT GALLERY",
+               "sText":"CANVAS COMPONENT GALLERY",
                "uActionType":this.VENWORKS_CANVAS_GALLERY_ACTION,
                "sConfirmText":"",
                "bDisabled":false,
@@ -141,7 +143,12 @@
             return;
          }
 ]]></content></insertion>
-    <insertion position="before"><anchor><![CDATA[      private function onSavePanelConfirmSave(param1:CustomEvent) : void]]></anchor><content><![CDATA[      private function openVenworksCanvasGallery() : void
+    <insertion position="before"><anchor><![CDATA[      private function onSavePanelConfirmSave(param1:CustomEvent) : void]]></anchor><content><![CDATA[      public function getVenworksCanvasMenuDataManager() : Object
+      {
+         return BSUIDataManager;
+      }
+
+      private function openVenworksCanvasGallery() : void
       {
          if(this.VenworksCanvasGalleryActive)
          {

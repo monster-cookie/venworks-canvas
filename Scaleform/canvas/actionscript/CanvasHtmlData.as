@@ -74,7 +74,7 @@ package
                var key:String = null;
                for(key in source)
                {
-                  if(!source.hasOwnProperty(key) || !isIdentifier(key))
+                  if(!source.hasOwnProperty(key) || !isDataIdentifier(key))
                   {
                      throw new Error("Canvas HTML data contains an invalid property");
                   }
@@ -178,6 +178,37 @@ package
          return result;
       }
 
+      public static function isDataIdentifier(param1:String) : Boolean
+      {
+         return param1 != null && param1.length > 0 && param1.length <= CanvasHtmlLimits.MAX_IDENTIFIER_LENGTH && /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(param1);
+      }
+
+      public static function validateTemplate(param1:String) : Boolean
+      {
+         parseTemplate(param1);
+         return true;
+      }
+
+      public static function formatTemplate(param1:String, param2:Object) : String
+      {
+         var variables:Array = parseTemplate(param1);
+         var result:String = param1;
+         var variable:Object = null;
+         var resolved:Object = null;
+         var replacement:String = null;
+         for each(variable in variables)
+         {
+            resolved = resolve(param2,String(variable.source));
+            replacement = resolved.found ? formatTemplateValue(resolved.value,String(variable.format)) : "";
+            result = result.split(String(variable.token)).join(replacement);
+            if(result.length > CanvasHtmlLimits.MAX_STRING_CODE_UNITS)
+            {
+               throw new Error("Canvas HTML formatted template exceeds string limit");
+            }
+         }
+         return result;
+      }
+
       private static function makeChild(param1:*, param2:Dictionary, param3:Array, param4:int) : Object
       {
          if(param1 == null || typeof param1 != "object")
@@ -212,9 +243,108 @@ package
          return param1;
       }
 
-      private static function isIdentifier(param1:String) : Boolean
+      private static function parseTemplate(param1:String) : Array
       {
-         return param1 != null && param1.length > 0 && param1.length <= CanvasHtmlLimits.MAX_IDENTIFIER_LENGTH && /^[a-z][a-z0-9-]*$/.test(param1);
+         if(param1 == null || param1.length == 0 || param1.length > CanvasHtmlLimits.MAX_FORMAT_CODE_UNITS)
+         {
+            throw new Error("Canvas HTML data template is invalid");
+         }
+         var variables:Array = [];
+         var cursor:int = 0;
+         var openIndex:int = 0;
+         var closeIndex:int = 0;
+         var body:String = null;
+         var separatorIndex:int = 0;
+         var source:String = null;
+         var format:String = null;
+         while(cursor < param1.length)
+         {
+            if(param1.charAt(cursor) == "}")
+            {
+               throw new Error("Canvas HTML data template is malformed");
+            }
+            if(param1.charAt(cursor) != "{")
+            {
+               cursor++;
+               continue;
+            }
+            openIndex = cursor;
+            closeIndex = param1.indexOf("}",openIndex + 1);
+            if(closeIndex < 0 || param1.indexOf("{",openIndex + 1) >= 0 && param1.indexOf("{",openIndex + 1) < closeIndex)
+            {
+               throw new Error("Canvas HTML data template is malformed");
+            }
+            body = param1.substring(openIndex + 1,closeIndex);
+            separatorIndex = body.indexOf(":");
+            source = separatorIndex < 0 ? body : body.substring(0,separatorIndex);
+            format = separatorIndex < 0 ? "raw" : body.substring(separatorIndex + 1).toLowerCase();
+            if(!isDataIdentifier(source) || separatorIndex >= 0 && body.indexOf(":",separatorIndex + 1) >= 0 || !isTemplateFormat(format))
+            {
+               throw new Error("Canvas HTML data template variable is invalid");
+            }
+            variables.push({"source":source,"format":format,"token":param1.substring(openIndex,closeIndex + 1)});
+            if(variables.length > CanvasHtmlLimits.MAX_TEMPLATE_VARIABLES)
+            {
+               throw new Error("Canvas HTML data template exceeds variable limit");
+            }
+            cursor = closeIndex + 1;
+         }
+         if(variables.length == 0)
+         {
+            throw new Error("Canvas HTML data template requires a variable");
+         }
+         return variables;
+      }
+
+      private static function isTemplateFormat(param1:String) : Boolean
+      {
+         return param1 == "raw" || param1 == "integer" || param1 == "percent" || param1 == "temperature" || param1 == "gravity" || param1 == "time24" || param1 == "boolean";
+      }
+
+      private static function formatTemplateValue(param1:*, param2:String) : String
+      {
+         if(param2 == "raw")
+         {
+            return toText(param1);
+         }
+         if(param2 == "boolean")
+         {
+            if(typeof param1 != "boolean")
+            {
+               throw new Error("Canvas HTML boolean template value is invalid");
+            }
+            return Boolean(param1) ? "TRUE" : "FALSE";
+         }
+         if(typeof param1 != "number" || !isFinite(Number(param1)))
+         {
+            throw new Error("Canvas HTML numeric template value is invalid");
+         }
+         var numeric:Number = Number(param1);
+         if(param2 == "integer")
+         {
+            return Math.round(numeric).toString();
+         }
+         if(param2 == "percent")
+         {
+            return Math.round(numeric).toString() + "%";
+         }
+         if(param2 == "temperature")
+         {
+            return Math.round(numeric).toString() + "°";
+         }
+         if(param2 == "gravity")
+         {
+            return numeric.toFixed(2) + "g";
+         }
+         numeric = numeric - Math.floor(numeric);
+         if(numeric < 0)
+         {
+            numeric += 1;
+         }
+         var totalMinutes:int = Math.floor(numeric * 1440 + 0.5) % 1440;
+         var hours:int = int(totalMinutes / 60);
+         var minutes:int = totalMinutes % 60;
+         return (hours < 10 ? "0" : "") + hours.toString() + ":" + (minutes < 10 ? "0" : "") + minutes.toString();
       }
    }
 }

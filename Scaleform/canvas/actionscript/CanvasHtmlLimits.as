@@ -66,6 +66,8 @@ package
 
       public static const MAX_FORMAT_CODE_UNITS:int = 256;
 
+      public static const MAX_TEMPLATE_VARIABLES:int = 8;
+
       public static const MAX_SVG_PATH_TOKENS:int = 2048;
 
       public static const MAX_SVG_ELEMENTS:int = 256;

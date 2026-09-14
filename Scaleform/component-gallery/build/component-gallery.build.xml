@@ -15,6 +15,7 @@
     <token>minimumContractVersion</token>
     <token>maximumContractVersion</token>
     <token>"hostKinds":["menu"]</token>
+    <token>"uiChannels":["PlayerData","PlayerFrequentData"]</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -34,6 +35,16 @@
     <token>sampleitems</token>
     <token>samplemeter</token>
     <token>sampleupdates</token>
+    <token>player.name</token>
+    <token>player.health</token>
+    <token>player.maxhealth</token>
+    <token>player.oxygen</token>
+    <token>player.maxoxygen</token>
+    <token>player.carbondioxide</token>
+    <token>player.levelxp</token>
+    <token>player.nextlevelxp</token>
+    <token>power.current</token>
+    <token>power.maximum</token>
     <token>Menu-local sample data</token>
     <token>dispatch</token>
     <token>Event.ADDED_TO_STAGE</token>

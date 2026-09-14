@@ -148,6 +148,11 @@
             <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleformat&quot; data-vw-format=&quot;Score: {value}&quot;&gt;&lt;/p&gt;</p></div>
             <div class="gallery-result"><p data-vw-text="sampleformat" data-vw-format="Score: {value}"></p></div>
           </div>
+          <div id="template-binding-row" class="gallery-row">
+            <div class="gallery-tag"><span>data-vw-template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;Score: {sampleformat:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="Score: {sampleformat:integer}"></p></div>
+          </div>
           <div id="data-update-row" class="gallery-row">
             <div class="gallery-tag"><span>setData</span></div>
             <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;sampleupdates&quot;&gt;&lt;/p&gt;</p></div>
@@ -177,6 +182,120 @@
             <div class="gallery-tag"><span>vw-meter</span></div>
             <div class="gallery-syntax"><p>&lt;vw-meter class=&quot;demo-meter&quot; value=&quot;samplemeter&quot;&gt;&lt;/vw-meter&gt;</p></div>
             <div class="gallery-result"><vw-meter class="demo-meter" value="samplemeter"></vw-meter></div>
+          </div>
+        </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Live VWHUD player placeholders</h2>
+          <div id="player-name-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.name</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.name&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.name"></p></div>
+          </div>
+          <div id="player-level-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.level</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.level&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.level"></p></div>
+          </div>
+          <div id="player-level-xp-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.levelxp</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.levelxp&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.levelxp"></p></div>
+          </div>
+          <div id="player-next-level-xp-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.nextlevelxp</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.nextlevelxp&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.nextlevelxp"></p></div>
+          </div>
+          <div id="player-xp-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.xppercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.xppercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.xppercentage"></p></div>
+          </div>
+          <div id="player-health-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.health</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.health&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.health"></p></div>
+          </div>
+          <div id="player-max-health-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.maxhealth</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.maxhealth&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.maxhealth"></p></div>
+          </div>
+          <div id="player-health-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.healthpercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.healthpercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.healthpercentage"></p></div>
+          </div>
+          <div id="player-oxygen-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.oxygen</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.oxygen&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.oxygen"></p></div>
+          </div>
+          <div id="player-max-oxygen-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.maxoxygen</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.maxoxygen&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.maxoxygen"></p></div>
+          </div>
+          <div id="player-oxygen-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.oxygenpercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.oxygenpercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.oxygenpercentage"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.carbondioxide</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.carbondioxide&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.carbondioxide"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>player.carbondioxidepercentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;player.carbondioxidepercentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="player.carbondioxidepercentage"></p></div>
+          </div>
+          <div id="power-current-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.current</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.current&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.current"></p></div>
+          </div>
+          <div id="power-maximum-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.maximum</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.maximum&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.maximum"></p></div>
+          </div>
+          <div id="power-percentage-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power.percentage</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;power.percentage&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="power.percentage"></p></div>
+          </div>
+          <div id="player-identity-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>identity template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;{player.name} | LEVEL {player.level:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="{player.name} | LEVEL {player.level:integer}"></p></div>
+          </div>
+          <div id="player-xp-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>XP template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;XP {player.levelxp:integer}/{player.nextlevelxp:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="XP {player.levelxp:integer}/{player.nextlevelxp:integer}"></p></div>
+          </div>
+          <div id="player-health-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>health template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;HEALTH {player.health:integer}/{player.maxhealth:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="HEALTH {player.health:integer}/{player.maxhealth:integer}"></p></div>
+          </div>
+          <div id="player-oxygen-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>O2 template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;O2 {player.oxygen:integer}/{player.maxoxygen:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="O2 {player.oxygen:integer}/{player.maxoxygen:integer}"></p></div>
+          </div>
+          <div id="player-carbon-dioxide-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>CO2 template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;CO2 {player.carbondioxide:integer} ({player.carbondioxidepercentage:percent})&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="CO2 {player.carbondioxide:integer} ({player.carbondioxidepercentage:percent})"></p></div>
+          </div>
+          <div id="power-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>power template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;POWER {power.current:integer}/{power.maximum:integer}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="POWER {power.current:integer}/{power.maximum:integer}"></p></div>
           </div>
         </section>
       </div>

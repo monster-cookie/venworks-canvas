@@ -198,6 +198,7 @@ package
             }
             else if(this.hostKind == "menu")
             {
+               this.connectMenuDataManager();
                this.appendDiagnostic("MENU LOCAL TRANSPORT READY");
             }
             else
@@ -1092,6 +1093,25 @@ package
             "uiChannels":uiChannels,
             "eventTopics":eventTopics
          };
+      }
+
+      private function connectMenuDataManager() : void
+      {
+         if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING || this.consumerSubscriptions != null)
+         {
+            throw new Error("menu UI data ownership unavailable");
+         }
+         if(this.owner == null || !("getVenworksCanvasMenuDataManager" in this.owner) || typeof this.owner["getVenworksCanvasMenuDataManager"] != "function")
+         {
+            throw new Error("MENU DATA BRIDGE MISSING");
+         }
+         this.dataManager = this.owner["getVenworksCanvasMenuDataManager"]();
+         if(this.dataManager == null || !("GetDataFromClient" in this.dataManager) || !("Subscribe" in this.dataManager) || !("Unsubscribe" in this.dataManager))
+         {
+            throw new Error("MENU DATA MANAGER UNAVAILABLE");
+         }
+         this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
+         this.appendDiagnostic("MENU UI DATA READY");
       }
 
       private function validateHostKinds(param1:Object) : Array

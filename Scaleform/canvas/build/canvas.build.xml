@@ -40,6 +40,8 @@
     <token>css-import-depth</token>
     <token>composition-work</token>
     <token>data-vw-format</token>
+    <token>data-vw-template</token>
+    <token>MAX_TEMPLATE_VARIABLES</token>
     <token>z-index</token>
     <token>svg-work</token>
     <token>HTML PARSED</token>
@@ -55,6 +57,8 @@
     <token>public function scrollConsumerTo(param1:String, param2:Number) : Object</token>
     <token>public function getConsumerScrollState(param1:String) : Object</token>
     <token>MENU LOCAL TRANSPORT READY</token>
+    <token>MENU UI DATA READY</token>
+    <token>getVenworksCanvasMenuDataManager</token>
     <token>hostKinds</token>
     <token>public function dispatch(param1:String) : void</token>
     <token>handleUIData</token>

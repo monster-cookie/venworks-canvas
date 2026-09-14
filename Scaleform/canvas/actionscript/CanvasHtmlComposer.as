@@ -246,18 +246,26 @@ package
          {
             return;
          }
+         var template:String = source.getAttribute("data-vw-template");
          var textName:String = source.getAttribute("data-vw-text");
-         if(textName != null)
+         if(template != null || textName != null)
          {
-            var textValue:Object = CanvasHtmlData.resolve(scope,textName);
             var boundText:String = "";
             try
             {
-               boundText = textValue.found ? CanvasHtmlData.toText(textValue.value) : "";
-               var format:String = source.getAttribute("data-vw-format");
-               if(format != null)
+               if(template != null)
                {
-                  boundText = CanvasHtmlData.formatText(format,boundText);
+                  boundText = CanvasHtmlData.formatTemplate(template,scope);
+               }
+               else
+               {
+                  var textValue:Object = CanvasHtmlData.resolve(scope,textName);
+                  boundText = textValue.found ? CanvasHtmlData.toText(textValue.value) : "";
+                  var format:String = source.getAttribute("data-vw-format");
+                  if(format != null)
+                  {
+                     boundText = CanvasHtmlData.formatText(format,boundText);
+                  }
                }
             }
             catch(textError:*)
