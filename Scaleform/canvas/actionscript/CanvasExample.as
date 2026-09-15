@@ -108,7 +108,7 @@ package
          {
             this.surfaceLatitude = this.parseLocationCoordinate(param2,"LAT",90);
             this.surfaceLongitude = this.parseLocationCoordinate(param2,"LON",180);
-            this.isCassiopeiaI = param2 != null && param2.indexOf("|planet=CASSIOPEIA_I|") >= 0;
+            this.isCassiopeiaI = param2 != null && (param2.indexOf("|planet=CASSIOPEIA_I|") >= 0 || param2.indexOf("location=[Location <CassiopeiaIPlanetWorldLandingOverlay") == 0);
             this.orbitalGameDays = this.parseEventNumber(param2,"gt",0,100000000);
             this.updateOrbitalSolarPhases();
             this.renderClock();
