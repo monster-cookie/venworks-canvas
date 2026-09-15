@@ -24,6 +24,16 @@ package
 
       public static const CARBON_DIOXIDE_COLOR:uint = 13382451;
 
+      public static const OXYGEN_METER_RADIUS:Number = 90.8;
+
+      public static const OXYGEN_METER_START_ANGLE:Number = 18;
+
+      public static const OXYGEN_METER_SWEEP:Number = 144;
+
+      public static const DAY_PLANET_RADIUS:Number = 45;
+
+      public static const LOCATION_TEXT_RADIUS:Number = 55;
+
       public static const GENERAL_MARKER_CAPACITY:int = 48;
 
       public static const MISSION_MARKER_CAPACITY:int = 16;
@@ -31,6 +41,8 @@ package
       public static const ENEMY_MARKER_CAPACITY:int = 16;
 
       public static const PERSONAL_EFFECT_CAPACITY:int = 5;
+
+      public static const SUSTENANCE_EFFECT_CAPACITY:int = 2;
 
       public static const PERSONAL_EFFECT_INGRESS_CAPACITY:int = 48;
 
@@ -67,6 +79,34 @@ package
       public static const OXYGEN_THRESHOLD_TOLERANCE:Number = 0.001;
 
       public static const LOCATION_MARKER_TYPE:int = 7;
+
+      public static const MARKER_QUEST:int = 1;
+
+      public static const MARKER_QUEST_DOOR:int = 2;
+
+      public static const MARKER_QUEST_OFFPLANET:int = 3;
+
+      public static const MARKER_PLAYER_SET:int = 4;
+
+      public static const MARKER_ENEMY:int = 5;
+
+      public static const MARKER_ENEMY_TARGETED:int = 6;
+
+      public static const MARKER_LOCATION:int = 7;
+
+      public static const MARKER_COMPANION:int = 8;
+
+      public static const MARKER_RECON:int = 9;
+
+      public static const MARKER_SHIP:int = 10;
+
+      public static const MARKER_OUTPOST:int = 11;
+
+      public static const MARKER_HAZARD:int = 12;
+
+      public static const MARKER_POSITION:int = 13;
+
+      public static const MARKER_VEHICLE:int = 14;
 
       public static function profile(param1:String) : Object
       {

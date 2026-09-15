@@ -215,6 +215,10 @@ package
                   "isNear":this.booleanValue(source,"bIsNear",false),
                   "iconType":this.integerValue(source,"uiMarkerIconType",0,0,65535),
                   "relativeHeight":this.integerValue(source,"uiRelativeMarkerHeightType",0,0,3),
+                  "mapMarkerType":this.integerValue(source,"uMapMarkerType",0,0,65535),
+                  "mapMarkerCategory":this.integerValue(source,"uMapMarkerCategory",0,0,65535),
+                  "locationMarkerState":this.integerValue(source,"uLocationMarkerState",0,0,2),
+                  "mapMarkerSubCategoryType":this.integerValue(source,"uiMapMarkerSubCategoryType",0,0,3),
                   "scale":this.numberValue(source,"fDistanceScale",1,0.4,1.6),
                   "alpha":this.numberValue(source,"fDistanceAlpha",1,0.15,1)
                });
@@ -240,6 +244,12 @@ package
                   "handle":uint(this.numberValue(source,"uiHandle",0,0,4294967295)),
                   "heading":this.numberValue(source,"fHeading",0,-1000000,1000000),
                   "isNear":this.booleanValue(source,"bIsNear",false),
+                  "iconType":CanvasChronomarkStyle.MARKER_HAZARD,
+                  "relativeHeight":this.integerValue(source,"uiRelativeMarkerHeightType",0,0,3),
+                  "mapMarkerType":this.integerValue(source,"uMapMarkerType",0,0,65535),
+                  "mapMarkerCategory":this.integerValue(source,"uMapMarkerCategory",0,0,65535),
+                  "locationMarkerState":this.integerValue(source,"uLocationMarkerState",0,0,2),
+                  "mapMarkerSubCategoryType":this.integerValue(source,"uiMapMarkerSubCategoryType",0,0,3),
                   "scale":this.numberValue(source,"fDistanceScale",1,0.4,1.6),
                   "alpha":this.numberValue(source,"fDistanceAlpha",1,0.15,1)
                });
@@ -251,32 +261,62 @@ package
 
       private function normalizePersonalEffects(param1:Object) : Array
       {
-         var result:Array = [];
+         var personal:Array = [];
          var seen:Object = {};
          var length:int = this.collectionLength(param1,CanvasChronomarkStyle.PERSONAL_EFFECT_INGRESS_CAPACITY);
+         var food:Object = null;
+         var drink:Object = null;
+         var foodPriority:int = -1;
+         var drinkPriority:int = -1;
          var index:int = 0;
-         while(index < length && result.length < CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY)
+         while(index < length)
          {
             var source:Object = param1[index];
             var icon:String = this.stringValue(source,"sEffectIcon",64);
-            if(icon != "" && !this.isSuppressedPersonalEffect(icon) && !seen.hasOwnProperty("$" + icon))
+            var family:String = this.sustenanceFamily(icon);
+            var priority:int = this.sustenancePriority(icon);
+            if(family == "food" && priority > foodPriority)
+            {
+               food = this.normalizePersonalEffect(source,icon,true);
+               foodPriority = priority;
+            }
+            else if(family == "drink" && priority > drinkPriority)
+            {
+               drink = this.normalizePersonalEffect(source,icon,true);
+               drinkPriority = priority;
+            }
+            else if(family == "" && icon != "" && personal.length < CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY && !seen.hasOwnProperty("$" + icon))
             {
                seen["$" + icon] = true;
-               result.push({
-                  "icon":icon,
-                  "handle":uint(this.numberValue(source,"uiHandle",0,0,4294967295)),
-                  "heading":this.numberValue(source,"fHeading",0,-1000000,1000000),
-                  "isNear":this.booleanValue(source,"bIsNear",false),
-                  "scale":this.numberValue(source,"fDistanceScale",1,0.4,1.6),
-                  "alpha":this.numberValue(source,"fDistanceAlpha",1,0.15,1)
-               });
+               personal.push(this.normalizePersonalEffect(source,icon,false));
             }
             index++;
          }
-         return result;
+         if(food != null)
+         {
+            personal.push(food);
+         }
+         if(drink != null)
+         {
+            personal.push(drink);
+         }
+         return personal;
       }
 
-      private function isSuppressedPersonalEffect(param1:String) : Boolean
+      private function normalizePersonalEffect(param1:Object, param2:String, param3:Boolean) : Object
+      {
+         return {
+            "icon":param2,
+            "sustenance":param3,
+            "handle":uint(this.numberValue(param1,"uiHandle",0,0,4294967295)),
+            "heading":this.numberValue(param1,"fHeading",0,-1000000,1000000),
+            "isNear":this.booleanValue(param1,"bIsNear",false),
+            "scale":this.numberValue(param1,"fDistanceScale",1,0.4,1.6),
+            "alpha":this.numberValue(param1,"fDistanceAlpha",1,0.15,1)
+         };
+      }
+
+      private function sustenanceFamily(param1:String) : String
       {
          switch(param1)
          {
@@ -285,14 +325,38 @@ package
             case "Sustenance_Food_Positive_3":
             case "Sustenance_Food_Negative_1":
             case "Sustenance_Food_Negative_2":
+               return "food";
             case "Sustenance_Drink_Positive_1":
             case "Sustenance_Drink_Positive_2":
             case "Sustenance_Drink_Positive_3":
             case "Sustenance_Drink_Negative_1":
             case "Sustenance_Drink_Negative_2":
-               return true;
+               return "drink";
          }
-         return false;
+         return "";
+      }
+
+      private function sustenancePriority(param1:String) : int
+      {
+         switch(param1)
+         {
+            case "Sustenance_Food_Negative_2":
+            case "Sustenance_Drink_Negative_2":
+               return 202;
+            case "Sustenance_Food_Negative_1":
+            case "Sustenance_Drink_Negative_1":
+               return 201;
+            case "Sustenance_Food_Positive_3":
+            case "Sustenance_Drink_Positive_3":
+               return 103;
+            case "Sustenance_Food_Positive_2":
+            case "Sustenance_Drink_Positive_2":
+               return 102;
+            case "Sustenance_Food_Positive_1":
+            case "Sustenance_Drink_Positive_1":
+               return 101;
+         }
+         return -1;
       }
 
       private function normalizeAlerts(param1:Object, param2:Boolean) : Array

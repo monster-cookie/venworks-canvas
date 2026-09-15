@@ -7,6 +7,8 @@ package
    {
       private var personalPool:Array;
 
+      private var sustenancePool:Array;
+
       private var environmentPool:Array;
 
       private var activeEnvironmentIcons:Array;
@@ -28,15 +30,35 @@ package
          super();
          mouseEnabled = false;
          mouseChildren = false;
-         this.personalPool = this.createPool(CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY,72,1863319);
-         this.environmentPool = this.createPool(CanvasChronomarkStyle.ENVIRONMENT_EFFECT_CAPACITY,155,CanvasChronomarkStyle.ALERT_COLOR);
+         this.personalPool = this.createPool(CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY,72,74.5);
+         this.sustenancePool = this.createPool(CanvasChronomarkStyle.SUSTENANCE_EFFECT_CAPACITY,91,101.5);
+         this.environmentPool = this.createPool(CanvasChronomarkStyle.ENVIRONMENT_EFFECT_CAPACITY,155,83.5);
          this.activeEnvironmentIcons = [];
       }
 
       public function setPersonalEffects(param1:Array) : void
       {
-         var icons:Array = this.uniqueIcons(param1,CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY);
-         this.renderPool(this.personalPool,icons,1863319);
+         var personal:Array = [];
+         var sustenance:Array = [];
+         var index:int = 0;
+         while(param1 != null && index < param1.length && (personal.length < CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY || sustenance.length < CanvasChronomarkStyle.SUSTENANCE_EFFECT_CAPACITY))
+         {
+            var entry:Object = param1[index];
+            if(entry != null)
+            {
+               if(entry.sustenance === true && sustenance.length < CanvasChronomarkStyle.SUSTENANCE_EFFECT_CAPACITY)
+               {
+                  sustenance.push(entry);
+               }
+               else if(entry.sustenance !== true && personal.length < CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY)
+               {
+                  personal.push(entry);
+               }
+            }
+            index++;
+         }
+         this.renderPool(this.personalPool,this.uniqueIcons(personal,CanvasChronomarkStyle.PERSONAL_EFFECT_CAPACITY),1863319);
+         this.renderPool(this.sustenancePool,this.uniqueIcons(sustenance,CanvasChronomarkStyle.SUSTENANCE_EFFECT_CAPACITY),CanvasChronomarkStyle.OXYGEN_COLOR);
       }
 
       public function setEnvironmentEffects(param1:Array, param2:Number, param3:Number, param4:Number, param5:Boolean) : void
@@ -84,6 +106,20 @@ package
                return "digestive";
             case "PersonalEffect_Misc":
                return "misc";
+            case "Sustenance_Food_Positive_1":
+            case "Sustenance_Food_Positive_2":
+            case "Sustenance_Food_Positive_3":
+               return "food-positive";
+            case "Sustenance_Food_Negative_1":
+            case "Sustenance_Food_Negative_2":
+               return "food-negative";
+            case "Sustenance_Drink_Positive_1":
+            case "Sustenance_Drink_Positive_2":
+            case "Sustenance_Drink_Positive_3":
+               return "drink-positive";
+            case "Sustenance_Drink_Negative_1":
+            case "Sustenance_Drink_Negative_2":
+               return "drink-negative";
          }
          return "unknown";
       }
@@ -133,6 +169,7 @@ package
       public function dispose() : void
       {
          this.personalPool = [];
+         this.sustenancePool = [];
          this.environmentPool = [];
          this.activeEnvironmentIcons = [];
          while(numChildren > 0)
@@ -148,7 +185,8 @@ package
          var index:int = 0;
          while(param1 != null && index < param1.length && result.length < param2)
          {
-            var icon:String = String(param1[index].icon);
+            var entry:Object = param1[index];
+            var icon:String = entry != null && entry.icon != null ? String(entry.icon) : "";
             if(icon != "" && !seen.hasOwnProperty("$" + icon))
             {
                seen["$" + icon] = true;
@@ -168,15 +206,15 @@ package
             display.visible = index < param2.length;
             if(display.visible)
             {
-               this.redrawEffect(display,param3,String(param2[index]));
+               drawEffect(display.getChildAt(0) as Shape,param3,String(param2[index]));
             }
             index++;
          }
       }
 
-      private function redrawEffect(param1:Sprite, param2:uint, param3:String) : void
+      public static function drawEffect(param1:Shape, param2:uint, param3:String) : void
       {
-         var shape:Shape = param1.getChildAt(0) as Shape;
+         var shape:Shape = param1;
          var style:String = iconStyle(param3);
          shape.graphics.clear();
          shape.graphics.lineStyle(1,param2,1,true);
@@ -206,9 +244,9 @@ package
          }
          else if(style == "airborne")
          {
-            this.drawWave(shape,-4);
-            this.drawWave(shape,0);
-            this.drawWave(shape,4);
+            drawWave(shape,-4);
+            drawWave(shape,0);
+            drawWave(shape,4);
          }
          else if(style == "corrosive")
          {
@@ -277,6 +315,49 @@ package
             shape.graphics.moveTo(0,-3);
             shape.graphics.lineTo(0,3);
          }
+         else if(style == "food-positive" || style == "food-negative")
+         {
+            shape.graphics.drawCircle(1,1,5);
+            shape.graphics.drawCircle(1,1,2);
+            shape.graphics.moveTo(-7,-6);
+            shape.graphics.lineTo(-7,7);
+            shape.graphics.moveTo(-9,-2);
+            shape.graphics.lineTo(-5,-2);
+            if(style == "food-positive")
+            {
+               shape.graphics.moveTo(4,-7);
+               shape.graphics.lineTo(4,-3);
+               shape.graphics.moveTo(2,-5);
+               shape.graphics.lineTo(6,-5);
+            }
+            else
+            {
+               shape.graphics.moveTo(-5,-6);
+               shape.graphics.lineTo(7,6);
+            }
+         }
+         else if(style == "drink-positive" || style == "drink-negative")
+         {
+            shape.graphics.moveTo(-5,-6);
+            shape.graphics.lineTo(-3,7);
+            shape.graphics.lineTo(4,7);
+            shape.graphics.lineTo(6,-6);
+            shape.graphics.lineTo(-5,-6);
+            shape.graphics.moveTo(-4,1);
+            shape.graphics.lineTo(5,1);
+            if(style == "drink-positive")
+            {
+               shape.graphics.moveTo(0,-5);
+               shape.graphics.lineTo(0,-1);
+               shape.graphics.moveTo(-2,-3);
+               shape.graphics.lineTo(2,-3);
+            }
+            else
+            {
+               shape.graphics.moveTo(-6,-7);
+               shape.graphics.lineTo(7,7);
+            }
+         }
          else
          {
             shape.graphics.drawCircle(0,0,5);
@@ -284,21 +365,21 @@ package
          }
       }
 
-      private function drawWave(param1:Shape, param2:Number) : void
+      private static function drawWave(param1:Shape, param2:Number) : void
       {
          param1.graphics.moveTo(-7,param2);
          param1.graphics.curveTo(-3,param2 - 3,0,param2);
          param1.graphics.curveTo(3,param2 + 3,7,param2);
       }
 
-      private function createPool(param1:int, param2:Number, param3:uint) : Array
+      private function createPool(param1:int, param2:Number, param3:Number) : Array
       {
          var pool:Array = [];
          var index:int = 0;
          while(index < param1)
          {
             var display:Sprite = new Sprite();
-            display.x = 64 + index * 18;
+            display.x = param3 + index * 18;
             display.y = param2;
             display.addChild(new Shape());
             display.visible = false;

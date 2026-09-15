@@ -89,7 +89,9 @@
     <token>CanvasChronomarkData</token>
     <token>CanvasChronomarkView</token>
     <token>CanvasChronomarkMarkers</token>
+    <token>CanvasChronomarkIcons</token>
     <token>CanvasChronomarkEffects</token>
+    <token>public static function drawEffect</token>
     <token>CanvasChronomarkAnimation</token>
     <token>CanvasChronomarkStyle</token>
     <token>LocalEnvironmentData</token>

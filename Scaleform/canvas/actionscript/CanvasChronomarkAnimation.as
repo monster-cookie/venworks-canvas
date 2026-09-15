@@ -191,7 +191,7 @@ package
             return;
          }
          this.alertPhase = "enter";
-         this.view.showAlert(String(this.activeAlert.kind),String(this.activeAlert.heading),String(this.activeAlert.subtext),this.activeAlert.positive === true,0);
+         this.view.showAlert(String(this.activeAlert.kind),String(this.activeAlert.icon),String(this.activeAlert.heading),String(this.activeAlert.subtext),this.activeAlert.positive === true,0);
          this.playSound(CanvasChronomarkStyle.screenSoundForEffect(String(this.activeAlert.icon)));
          if(this.activeAlert.kind == "personal")
          {

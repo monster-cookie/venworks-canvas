@@ -39,6 +39,7 @@
       <token><![CDATA[this.VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](this.VenworksCanvasBottomLeftVisible);]]></token>
       <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;]]></token>
+      <token><![CDATA[VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
       <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge)]]></token>
       <token><![CDATA[removeChild(this.VenworksCanvasRegistryBridge)]]></token>
@@ -61,6 +62,7 @@
       <token><![CDATA[VenworksCanvasBottomLeftVisible]]></token>
       <token><![CDATA[updateVanillaHudModeVisibility]]></token>
       <token><![CDATA[VenworksCanvasHudOpacity]]></token>
+      <token><![CDATA[VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;]]></token>
     </requiredInspectionTokens>
     <forbiddenInspectionTokens>
       <token>BottomLeftGroup_mc</token>
@@ -343,7 +345,11 @@
                }]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[            var _loc3_:MovieClip = null;]]></anchor><content><![CDATA[
             var venworksCanvasOpacity:Number = Number(param1.data.fHUDOpacity);
-            VenworksCanvasHudOpacity = isFinite(venworksCanvasOpacity) ? Math.max(0,Math.min(1,venworksCanvasOpacity)) : 1;]]></content></insertion>
+            VenworksCanvasHudOpacity = isFinite(venworksCanvasOpacity) ? Math.max(0,Math.min(1,venworksCanvasOpacity)) : 1;
+            if(VenworksCanvasRegistryBridge != null)
+            {
+               VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;
+            }]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[         CENTER_GROUP_POINT.y = this.CenterGroup_mc.y;]]></anchor><content><![CDATA[
          this.refreshVenworksCanvasLayout();]]></content></insertion>
   </insertions>

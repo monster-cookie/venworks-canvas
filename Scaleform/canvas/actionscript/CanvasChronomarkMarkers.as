@@ -17,6 +17,12 @@ package
 
       private var enemyPool:Array;
 
+      private var generalAppearance:Array;
+
+      private var missionAppearance:Array;
+
+      private var enemyAppearance:Array;
+
       private var compassMarkers:Array;
 
       private var hazardMarkers:Array;
@@ -32,9 +38,12 @@ package
          super();
          mouseEnabled = false;
          mouseChildren = false;
-         this.generalPool = this.createPool(CanvasChronomarkStyle.GENERAL_MARKER_CAPACITY,CanvasChronomarkStyle.TEXT_COLOR,"general");
-         this.missionPool = this.createPool(CanvasChronomarkStyle.MISSION_MARKER_CAPACITY,16771919,"mission");
-         this.enemyPool = this.createPool(CanvasChronomarkStyle.ENEMY_MARKER_CAPACITY,CanvasChronomarkStyle.ALERT_COLOR,"enemy");
+         this.generalPool = this.createPool(CanvasChronomarkStyle.GENERAL_MARKER_CAPACITY);
+         this.missionPool = this.createPool(CanvasChronomarkStyle.MISSION_MARKER_CAPACITY);
+         this.enemyPool = this.createPool(CanvasChronomarkStyle.ENEMY_MARKER_CAPACITY);
+         this.generalAppearance = this.createAppearanceCache(CanvasChronomarkStyle.GENERAL_MARKER_CAPACITY);
+         this.missionAppearance = this.createAppearanceCache(CanvasChronomarkStyle.MISSION_MARKER_CAPACITY);
+         this.enemyAppearance = this.createAppearanceCache(CanvasChronomarkStyle.ENEMY_MARKER_CAPACITY);
          this.compassMarkers = [];
          this.hazardMarkers = [];
          this.missionMarkers = [];
@@ -65,6 +74,9 @@ package
          this.generalPool = [];
          this.missionPool = [];
          this.enemyPool = [];
+         this.generalAppearance = [];
+         this.missionAppearance = [];
+         this.enemyAppearance = [];
          while(numChildren > 0)
          {
             removeChildAt(numChildren - 1);
@@ -99,12 +111,12 @@ package
             }
             index++;
          }
-         this.renderPool(this.generalPool,combined,"general");
-         this.renderPool(this.missionPool,this.missionMarkers,"mission");
-         this.renderPool(this.enemyPool,this.enemyMarkers,"enemy");
+         this.renderPool(this.generalPool,combined,"general",this.generalAppearance);
+         this.renderPool(this.missionPool,this.missionMarkers,"mission",this.missionAppearance);
+         this.renderPool(this.enemyPool,this.enemyMarkers,"enemy",this.enemyAppearance);
       }
 
-      private function renderPool(param1:Array, param2:Array, param3:String) : void
+      private function renderPool(param1:Array, param2:Array, param3:String, param4:Array) : void
       {
          var index:int = 0;
          while(index < param1.length)
@@ -112,7 +124,7 @@ package
             var display:Sprite = param1[index] as Sprite;
             if(index < param2.length && param2[index] != null)
             {
-               this.positionMarker(display,param2[index],param3);
+               this.positionMarker(display,param2[index],param3,param4[index]);
                display.visible = true;
             }
             else
@@ -123,8 +135,16 @@ package
          }
       }
 
-      private function positionMarker(param1:Sprite, param2:Object, param3:String) : void
+      private function positionMarker(param1:Sprite, param2:Object, param3:String, param4:Object) : void
       {
+         var color:uint = param3 == "mission" ? 16771919 : (param3 == "enemy" || param2.isHazard === true ? CanvasChronomarkStyle.ALERT_COLOR : CanvasChronomarkStyle.TEXT_COLOR);
+         var effectIcon:String = param2.icon != null ? String(param2.icon) : "";
+         var iconKey:String = param3 + "|" + color + "|" + int(param2.iconType) + "|" + int(param2.mapMarkerType) + "|" + int(param2.mapMarkerCategory) + "|" + int(param2.locationMarkerState) + "|" + int(param2.mapMarkerSubCategoryType) + "|" + (param2.isHazard === true ? 1 : 0) + "|" + effectIcon;
+         if(param4.iconKey !== iconKey)
+         {
+            CanvasChronomarkIcons.draw(param1.getChildAt(0) as Shape,param2,param3,color);
+            param4.iconKey = iconKey;
+         }
          var heading:Number = Number(param2.heading);
          if(!isFinite(heading))
          {
@@ -149,7 +169,16 @@ package
          {
             param1.rotation = 0;
          }
-         this.renderRelativeHeight(param1,int(param2.relativeHeight),param3);
+         var relativeHeight:int = int(param2.relativeHeight);
+         if(param4.relativeHeight !== relativeHeight)
+         {
+            this.renderRelativeHeight(param1,relativeHeight,param3);
+            param4.relativeHeight = relativeHeight;
+         }
+         else
+         {
+            (param1.getChildAt(1) as Shape).rotation = -param1.rotation;
+         }
       }
 
       private function renderRelativeHeight(param1:Sprite, param2:int, param3:String) : void
@@ -182,7 +211,7 @@ package
          }
       }
 
-      private function createPool(param1:int, param2:uint, param3:String) : Array
+      private function createPool(param1:int) : Array
       {
          var pool:Array = [];
          var index:int = 0;
@@ -190,30 +219,6 @@ package
          {
             var marker:Sprite = new Sprite();
             var shape:Shape = new Shape();
-            shape.graphics.lineStyle(1,param2,1,true);
-            if(param3 == "mission")
-            {
-               shape.graphics.beginFill(param2,0.85);
-               shape.graphics.moveTo(0,-5);
-               shape.graphics.lineTo(5,0);
-               shape.graphics.lineTo(0,5);
-               shape.graphics.lineTo(-5,0);
-               shape.graphics.lineTo(0,-5);
-               shape.graphics.endFill();
-            }
-            else if(param3 == "enemy")
-            {
-               shape.graphics.moveTo(-5,4);
-               shape.graphics.lineTo(0,-5);
-               shape.graphics.lineTo(5,4);
-               shape.graphics.lineTo(-5,4);
-            }
-            else
-            {
-               shape.graphics.drawCircle(0,0,3.5);
-               shape.graphics.moveTo(0,-7);
-               shape.graphics.lineTo(0,-3.5);
-            }
             marker.addChild(shape);
             var relativeHeightCue:Shape = new Shape();
             relativeHeightCue.y = 9;
@@ -224,6 +229,18 @@ package
             index++;
          }
          return pool;
+      }
+
+      private function createAppearanceCache(param1:int) : Array
+      {
+         var result:Array = [];
+         var index:int = 0;
+         while(index < param1)
+         {
+            result.push({"iconKey":"","relativeHeight":-1});
+            index++;
+         }
+         return result;
       }
    }
 }

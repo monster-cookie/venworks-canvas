@@ -12,13 +12,23 @@ package
    {
       private var informationLayer:Sprite;
 
+      private var normalInteriorLayer:Sprite;
+
       private var scannerLayer:Sprite;
 
       private var dayCycleShape:Shape;
 
       private var oxygenShape:Shape;
 
+      private var oxygenTrackShape:Shape;
+
       private var carbonDioxideShape:Shape;
+
+      private var localPlanetTimeFrame:int = -1;
+
+      private var oxygenFrame:int = -1;
+
+      private var carbonDioxideFrame:int = -1;
 
       private var pointerShape:Shape;
 
@@ -42,6 +52,8 @@ package
 
       private var alertBackdrop:Shape;
 
+      private var alertIcon:Shape;
+
       private var alertHeading:TextField;
 
       private var alertSubtext:TextField;
@@ -60,6 +72,7 @@ package
          this.setLocalPlanetTime(0);
          this.setDirection(0);
          this.setDetection(false,0);
+         this.setScannerAlpha(0);
          this.clearAlert();
       }
 
@@ -87,30 +100,81 @@ package
 
       public function setLocalPlanetTime(param1:Number) : void
       {
-         var value:Number = CanvasChronomarkStyle.clamp(param1,0,1);
-         value = Math.round(value * 47) / 47;
-         var angle:Number = -180 + value * 180;
-         var radians:Number = angle * Math.PI / 180;
+         var frame:int = int(Math.round(CanvasChronomarkStyle.clamp(param1,0,1) * 47));
+         if(this.localPlanetTimeFrame == frame)
+         {
+            return;
+         }
+         this.localPlanetTimeFrame = frame;
+         var value:Number = frame / 47;
+         var phase:Number = value * Math.PI * 2;
+         var firstHalf:Boolean = phase <= Math.PI;
+         var litSide:Number = firstHalf ? 1 : -1;
+         var terminatorScale:Number = firstHalf ? Math.cos(phase) : -Math.cos(phase);
+         var radius:Number = CanvasChronomarkStyle.DAY_PLANET_RADIUS;
+         var centerX:Number = CanvasChronomarkStyle.FACE_CENTER_X;
+         var centerY:Number = CanvasChronomarkStyle.FACE_CENTER_Y;
+         var segments:int = 24;
+         var index:int = 0;
+         var y:Number = 0;
+         var extent:Number = 0;
          this.dayCycleShape.graphics.clear();
-         this.dayCycleShape.graphics.lineStyle(2,CanvasChronomarkStyle.MUTED_TEXT_COLOR,0.65,true);
-         this.drawArc(this.dayCycleShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,93,180,180,1);
-         this.dayCycleShape.graphics.lineStyle(2,CanvasChronomarkStyle.TEXT_COLOR,0.9,true);
-         this.dayCycleShape.graphics.moveTo(CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y);
-         this.dayCycleShape.graphics.lineTo(CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * 91,CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * 91);
+         this.dayCycleShape.graphics.beginFill(1054752,0.94);
+         this.dayCycleShape.graphics.drawCircle(centerX,centerY,radius);
+         this.dayCycleShape.graphics.endFill();
+         this.dayCycleShape.graphics.beginFill(CanvasChronomarkStyle.TEXT_COLOR,0.72);
+         while(index <= segments)
+         {
+            y = -radius + radius * 2 * index / segments;
+            extent = Math.sqrt(Math.max(0,radius * radius - y * y));
+            if(index == 0)
+            {
+               this.dayCycleShape.graphics.moveTo(centerX + terminatorScale * extent,centerY + y);
+            }
+            else
+            {
+               this.dayCycleShape.graphics.lineTo(centerX + terminatorScale * extent,centerY + y);
+            }
+            index++;
+         }
+         index = segments;
+         while(index >= 0)
+         {
+            y = -radius + radius * 2 * index / segments;
+            extent = Math.sqrt(Math.max(0,radius * radius - y * y));
+            this.dayCycleShape.graphics.lineTo(centerX + litSide * extent,centerY + y);
+            index--;
+         }
+         this.dayCycleShape.graphics.endFill();
+         this.dayCycleShape.graphics.lineStyle(1.5,CanvasChronomarkStyle.MUTED_TEXT_COLOR,0.85,true);
+         this.dayCycleShape.graphics.drawCircle(centerX,centerY,radius);
+         this.dayCycleShape.graphics.lineStyle(1,CanvasChronomarkStyle.MUTED_TEXT_COLOR,0.35,true);
+         this.dayCycleShape.graphics.moveTo(centerX - radius * 0.72,centerY + 8);
+         this.dayCycleShape.graphics.curveTo(centerX,centerY + 20,centerX + radius * 0.72,centerY + 8);
       }
 
       public function setOxygen(param1:Number, param2:Number) : void
       {
-         var oxygen:Number = CanvasChronomarkStyle.clamp(param1,0,1);
-         var carbonDioxide:Number = CanvasChronomarkStyle.clamp(param2,0,1);
-         oxygen = Math.round(oxygen * 59) / 59;
-         carbonDioxide = Math.round(carbonDioxide * 59) / 59;
-         this.oxygenShape.graphics.clear();
-         this.oxygenShape.graphics.lineStyle(7,CanvasChronomarkStyle.OXYGEN_COLOR,0.95,true);
-         this.drawArc(this.oxygenShape,21.7,89.85,17,-80,160,oxygen);
-         this.carbonDioxideShape.graphics.clear();
-         this.carbonDioxideShape.graphics.lineStyle(4,CanvasChronomarkStyle.CARBON_DIOXIDE_COLOR,0.95,true);
-         this.drawArc(this.carbonDioxideShape,16.1,88.3,11,-80,160,carbonDioxide);
+         var nextOxygenFrame:int = int(Math.round(CanvasChronomarkStyle.clamp(param1,0,1) * 59));
+         var nextCarbonDioxideFrame:int = int(Math.round(CanvasChronomarkStyle.clamp(param2,0,1) * 59));
+         if(this.oxygenFrame != nextOxygenFrame)
+         {
+            this.oxygenFrame = nextOxygenFrame;
+            var oxygen:Number = nextOxygenFrame / 59;
+            this.oxygenShape.graphics.clear();
+            this.oxygenShape.graphics.lineStyle(8,CanvasChronomarkStyle.OXYGEN_COLOR,0.95,true);
+            this.drawArc(this.oxygenShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,CanvasChronomarkStyle.OXYGEN_METER_RADIUS,CanvasChronomarkStyle.OXYGEN_METER_START_ANGLE,CanvasChronomarkStyle.OXYGEN_METER_SWEEP,oxygen);
+            this.oxygenShape.graphics.lineStyle(2,CanvasChronomarkStyle.TEXT_COLOR,0.92,true);
+            this.drawArc(this.oxygenShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,CanvasChronomarkStyle.OXYGEN_METER_RADIUS,CanvasChronomarkStyle.OXYGEN_METER_START_ANGLE,CanvasChronomarkStyle.OXYGEN_METER_SWEEP,oxygen);
+         }
+         if(this.carbonDioxideFrame != nextCarbonDioxideFrame)
+         {
+            this.carbonDioxideFrame = nextCarbonDioxideFrame;
+            var carbonDioxide:Number = nextCarbonDioxideFrame / 59;
+            this.carbonDioxideShape.graphics.clear();
+            this.carbonDioxideShape.graphics.lineStyle(7,CanvasChronomarkStyle.CARBON_DIOXIDE_COLOR,0.98,true);
+            this.drawArc(this.carbonDioxideShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,CanvasChronomarkStyle.OXYGEN_METER_RADIUS,CanvasChronomarkStyle.OXYGEN_METER_START_ANGLE + CanvasChronomarkStyle.OXYGEN_METER_SWEEP,-CanvasChronomarkStyle.OXYGEN_METER_SWEEP,carbonDioxide);
+         }
       }
 
       public function setDirection(param1:Number) : void
@@ -126,26 +190,49 @@ package
 
       public function setScannerAlpha(param1:Number) : void
       {
-         this.scannerLayer.alpha = CanvasChronomarkStyle.clamp(param1,0,1);
+         var value:Number = CanvasChronomarkStyle.clamp(param1,0,1);
+         this.scannerLayer.alpha = value;
+         this.scannerLayer.visible = value > 0;
+         this.normalInteriorLayer.alpha = 1 - value;
+         this.normalInteriorLayer.visible = value < 1;
       }
 
-      public function showAlert(param1:String, param2:String, param3:String, param4:Boolean, param5:Number) : void
+      public function showAlert(param1:String, param2:String, param3:String, param4:String, param5:Boolean, param6:Number) : void
       {
          var personal:Boolean = param1 == "personal";
          this.alertLayer.visible = true;
-         this.alertLayer.alpha = CanvasChronomarkStyle.clamp(param5,0,1);
+         this.alertLayer.alpha = CanvasChronomarkStyle.clamp(param6,0,1);
          this.alertBackdrop.graphics.clear();
+         this.alertBackdrop.graphics.beginFill(personal ? 15522019 : 0,personal ? 0.94 : 0.82);
+         this.alertBackdrop.graphics.drawCircle(CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,82);
+         this.alertBackdrop.graphics.endFill();
          if(personal)
          {
-            this.alertBackdrop.graphics.beginFill(15522019,0.94);
-            this.alertBackdrop.graphics.drawRoundRect(28,69,165,83,8,8);
-            this.alertBackdrop.graphics.endFill();
+            this.alertBackdrop.graphics.lineStyle(2,0,0.12,true);
+            var stripe:int = -3;
+            while(stripe <= 3)
+            {
+               this.alertBackdrop.graphics.moveTo(53,CanvasChronomarkStyle.FACE_CENTER_Y + stripe * 13 + 18);
+               this.alertBackdrop.graphics.lineTo(168,CanvasChronomarkStyle.FACE_CENTER_Y + stripe * 13 - 18);
+               stripe++;
+            }
          }
-         this.alertHeading.defaultTextFormat = new TextFormat("$MAIN_Font_Bold",personal ? 18 : 26,personal ? 0 : param4 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,true,null,null,null,null,TextFormatAlign.CENTER);
-         this.alertHeading.text = param2;
+         this.alertBackdrop.graphics.lineStyle(2,personal ? 0 : param5 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,0.88,true);
+         this.alertBackdrop.graphics.drawCircle(CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,82);
+         this.alertIcon.visible = param2 != "";
+         if(this.alertIcon.visible)
+         {
+            CanvasChronomarkEffects.drawEffect(this.alertIcon,personal ? 0 : param5 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,param2);
+         }
+         else
+         {
+            this.alertIcon.graphics.clear();
+         }
+         this.alertHeading.defaultTextFormat = new TextFormat("$MAIN_Font_Bold",personal ? 18 : 26,personal ? 0 : param5 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,true,null,null,null,null,TextFormatAlign.CENTER);
+         this.alertHeading.text = param3;
          this.alertHeading.setTextFormat(this.alertHeading.defaultTextFormat);
-         this.alertSubtext.defaultTextFormat = new TextFormat("$MAIN_Font_Bold",16,personal ? 0 : param4 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,false,null,null,null,null,TextFormatAlign.CENTER);
-         this.alertSubtext.text = personal ? "" : param3;
+         this.alertSubtext.defaultTextFormat = new TextFormat("$MAIN_Font_Bold",16,personal ? 0 : param5 ? 7454875 : CanvasChronomarkStyle.ALERT_COLOR,false,null,null,null,null,TextFormatAlign.CENTER);
+         this.alertSubtext.text = personal ? "" : param4;
          this.alertSubtext.setTextFormat(this.alertSubtext.defaultTextFormat);
       }
 
@@ -161,6 +248,8 @@ package
          this.alertHeading.text = "";
          this.alertSubtext.text = "";
          this.alertBackdrop.graphics.clear();
+         this.alertIcon.graphics.clear();
+         this.alertIcon.visible = false;
       }
 
       public function takeAlertLayer() : Sprite
@@ -196,8 +285,25 @@ package
          innerRim.graphics.drawCircle(CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,99);
          addChild(innerRim);
 
+         var compassTicks:Shape = new Shape();
+         var index:int = 0;
+         while(index < 24)
+         {
+            var radians:Number = (index * 15 - 90) * Math.PI / 180;
+            var innerRadius:Number = index % 6 == 0 ? 87 : index % 2 == 0 ? 90 : 92;
+            compassTicks.graphics.lineStyle(index % 6 == 0 ? 2 : 1,CanvasChronomarkStyle.MUTED_TEXT_COLOR,index % 6 == 0 ? 0.8 : 0.45,true);
+            compassTicks.graphics.moveTo(CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * innerRadius,CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * innerRadius);
+            compassTicks.graphics.lineTo(CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * 96,CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * 96);
+            index++;
+         }
+         addChild(compassTicks);
+
+         this.oxygenTrackShape = new Shape();
+         this.oxygenTrackShape.graphics.lineStyle(10,CanvasChronomarkStyle.RIM_COLOR,0.55,true);
+         this.drawArc(this.oxygenTrackShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,CanvasChronomarkStyle.OXYGEN_METER_RADIUS,CanvasChronomarkStyle.OXYGEN_METER_START_ANGLE,CanvasChronomarkStyle.OXYGEN_METER_SWEEP,1);
          this.oxygenShape = new Shape();
          this.carbonDioxideShape = new Shape();
+         addChild(this.oxygenTrackShape);
          addChild(this.oxygenShape);
          addChild(this.carbonDioxideShape);
       }
@@ -207,11 +313,14 @@ package
          this.informationLayer = new Sprite();
          addChild(this.informationLayer);
 
+         this.normalInteriorLayer = new Sprite();
+         this.informationLayer.addChild(this.normalInteriorLayer);
+
          this.scannerLayer = new Sprite();
          this.informationLayer.addChild(this.scannerLayer);
 
          this.dayCycleShape = new Shape();
-         this.informationLayer.addChild(this.dayCycleShape);
+         this.normalInteriorLayer.addChild(this.dayCycleShape);
 
          this.pointerShape = new Shape();
          this.pointerShape.x = 111;
@@ -228,20 +337,20 @@ package
          this.bodyNameField = this.createText(20,94,181.5,25,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
          this.bodyNameField.multiline = true;
          this.bodyNameField.wordWrap = true;
-         this.statusField = this.createText(35,117,151,18,12,CanvasChronomarkStyle.MUTED_TEXT_COLOR,true,TextFormatAlign.CENTER);
+         this.statusField = this.createText(35,158,151,18,12,CanvasChronomarkStyle.MUTED_TEXT_COLOR,true,TextFormatAlign.CENTER);
          this.scannerLayer.addChild(this.bodyTypeField);
          this.scannerLayer.addChild(this.bodyNameField);
-         this.informationLayer.addChild(this.statusField);
+         this.normalInteriorLayer.addChild(this.statusField);
 
-         this.createMetric(55,133.75,"$TEMP");
-         this.temperatureField = this.createText(54,148,51.4,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
-         this.createMetric(88,133.75,"$O2");
-         this.oxygenField = this.createText(87,148,51.9,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
-         this.createMetric(125,133.75,"$GRAV");
-         this.gravityField = this.createText(124,148,51.4,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
+         this.temperatureField = this.createText(31,130,47,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
+         this.oxygenField = this.createText(87,130,47,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
+         this.gravityField = this.createText(143,130,47,24,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
          this.scannerLayer.addChild(this.temperatureField);
          this.scannerLayer.addChild(this.oxygenField);
          this.scannerLayer.addChild(this.gravityField);
+         this.createMetric(31,153,"$TEMP");
+         this.createMetric(87,153,"$O2");
+         this.createMetric(143,153,"$GRAV");
 
          var index:int = 0;
          while(index < CanvasChronomarkStyle.LOCATION_CHARACTER_CAPACITY)
@@ -272,13 +381,18 @@ package
       {
          this.alertLayer = new Sprite();
          this.alertBackdrop = new Shape();
-         this.alertHeading = this.createText(25,82,171,58,26,CanvasChronomarkStyle.ALERT_COLOR,true,TextFormatAlign.CENTER);
+         this.alertIcon = new Shape();
+         this.alertIcon.x = CanvasChronomarkStyle.FACE_CENTER_X;
+         this.alertIcon.y = 72;
+         this.alertIcon.scaleX = this.alertIcon.scaleY = 1.25;
+         this.alertHeading = this.createText(25,85,171,53,26,CanvasChronomarkStyle.ALERT_COLOR,true,TextFormatAlign.CENTER);
          this.alertSubtext = this.createText(30,132,161,40,16,CanvasChronomarkStyle.ALERT_COLOR,false,TextFormatAlign.CENTER);
          this.alertHeading.multiline = true;
          this.alertHeading.wordWrap = true;
          this.alertSubtext.multiline = true;
          this.alertSubtext.wordWrap = true;
          this.alertLayer.addChild(this.alertBackdrop);
+         this.alertLayer.addChild(this.alertIcon);
          this.alertLayer.addChild(this.alertHeading);
          this.alertLayer.addChild(this.alertSubtext);
          addChild(this.alertLayer);
@@ -301,8 +415,8 @@ package
             {
                angle = 90 + (index - (length - 1) / 2) * 9;
                radians = angle * Math.PI / 180;
-               field.x = CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * 87;
-               field.y = CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * 87;
+               field.x = CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.width / 2;
+               field.y = CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.height / 2;
                field.rotation = angle - 90;
             }
             index++;
@@ -328,7 +442,7 @@ package
       private function drawArc(param1:Shape, param2:Number, param3:Number, param4:Number, param5:Number, param6:Number, param7:Number) : void
       {
          var sweep:Number = param6 * CanvasChronomarkStyle.clamp(param7,0,1);
-         if(sweep <= 0)
+         if(Math.abs(sweep) <= 0)
          {
             return;
          }

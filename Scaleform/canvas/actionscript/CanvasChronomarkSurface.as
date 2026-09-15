@@ -247,7 +247,7 @@ package
 
       private function updateOxygen() : void
       {
-         if(this.localEnvironment == null || this.playerFrequent == null)
+         if(this.playerFrequent == null)
          {
             return;
          }
