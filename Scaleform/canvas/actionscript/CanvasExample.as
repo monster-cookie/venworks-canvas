@@ -21,6 +21,8 @@ package
 
       private var panel:Shape;
 
+      private var clockFormat:TextFormat;
+
       private var universalTimeField:TextField;
 
       private var localTimeField:TextField;
@@ -41,6 +43,7 @@ package
 
       public function CanvasExample()
       {
+         this.clockFormat = new TextFormat("$MAIN_Font_Bold",18,TEXT_COLOR,true);
          this.createClock();
          this.renderClock();
       }
@@ -100,6 +103,7 @@ package
             removeChildAt(numChildren - 1);
          }
          this.panel = null;
+         this.clockFormat = null;
          this.universalTimeField = null;
          this.localTimeField = null;
          this.solarTransitionField = null;
@@ -120,14 +124,13 @@ package
 
       private function createClockField(param1:Number) : TextField
       {
-         var format:TextFormat = new TextFormat("$MAIN_Font_Bold",18,TEXT_COLOR,true);
          var field:TextField = new TextField();
          field.x = PANEL_X + 14;
          field.y = param1;
          field.width = PANEL_WIDTH - 28;
          field.height = 27;
          field.embedFonts = true;
-         field.defaultTextFormat = format;
+         field.defaultTextFormat = this.clockFormat;
          field.selectable = false;
          field.mouseEnabled = false;
          addChild(field);
@@ -140,16 +143,25 @@ package
          {
             return;
          }
-         this.universalTimeField.text = "UNIVERSAL TIME   " + this.formatClock(this.galacticStandardTime) + " UT";
+         this.setClockText(this.universalTimeField,"UNIVERSAL TIME   " + this.formatClock(this.galacticStandardTime) + " UT");
          if(this.inSpaceship || !isFinite(this.localPlanetTime) || !isFinite(this.localPlanetHoursPerDay) || this.localPlanetHoursPerDay <= 0)
          {
-            this.localTimeField.text = "LOCAL TIME       --:--";
-            this.solarTransitionField.text = "SOLAR EVENT     UNAVAILABLE";
+            this.setClockText(this.localTimeField,"LOCAL TIME       --:--");
+            this.setClockText(this.solarTransitionField,"SOLAR EVENT     UNAVAILABLE");
          }
          else
          {
-            this.localTimeField.text = "LOCAL TIME       " + this.formatClock(this.localPlanetTime * 24);
-            this.solarTransitionField.text = this.hasSurfaceCoordinates() ? this.formatSolarTransition() : "SOLAR EVENT     LOCATION PENDING";
+            this.setClockText(this.localTimeField,"LOCAL TIME       " + this.formatClock(this.localPlanetTime * 24));
+            this.setClockText(this.solarTransitionField,this.hasSurfaceCoordinates() ? this.formatSolarTransition() : "SOLAR EVENT     LOCATION PENDING");
+         }
+      }
+
+      private function setClockText(param1:TextField, param2:String) : void
+      {
+         if(param1.text != param2)
+         {
+            param1.text = param2;
+            param1.setTextFormat(this.clockFormat);
          }
       }
 

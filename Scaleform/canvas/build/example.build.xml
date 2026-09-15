@@ -25,6 +25,8 @@
     <token>parseLocationCoordinate</token>
     <token>surfaceLatitude</token>
     <token>surfaceLongitude</token>
+    <token>setClockText</token>
+    <token>setTextFormat</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>
