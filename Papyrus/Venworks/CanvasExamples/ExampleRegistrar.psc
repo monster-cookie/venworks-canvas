@@ -23,6 +23,9 @@ String PendingDisplayName
 String PendingNormalMovieUrl
 String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
+Bool LocationEventRegistered = False
+Bool PlayerLoadEventRegistered = False
+Bool LocationRefreshPending = False
 
 ; Reports this packaged script's runtime quest binding only; does not register or request UI work.
 String Function ConsoleResolve() Global
@@ -132,27 +135,129 @@ Function LogConsoleExample(String functionName, String logMessage) Global
   Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasExamples:ExampleRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
 EndFunction
 
-; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.
+; Bootstrap only: register bounded menu and player notifications without waiting or requesting UI work.
 Event OnInit()
+  LogUserInformational(ModuleName, "OnInit", "EVENT_TRIGGERED | Registering HUD menus and player events.")
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
+  EnsurePlayerEventRegistrations()
 EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
+  LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "EVENT_TRIGGERED | Menu=" + menuName + " | Opening=" + opening)
   If (opening)
+    EnsurePlayerEventRegistrations()
     Float delay = InitialDelaySeconds
     If (delay < 0.1)
       delay = 0.1
     EndIf
     StartTimer(delay, 1)
+    If (menuName == "HUDMenu")
+      LocationRefreshPending = True
+      StartTimer(delay + 1.5, 21)
+    EndIf
   EndIf
 EndEvent
 
+; Publishes one Example-owned refresh notification when the player changes location; clock values still come from subscribed UI providers.
+Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
+  LogUserInformational(ModuleName, "Actor.OnLocationChange", "EVENT_TRIGGERED | Sender=" + akSender + " | OldLocation=" + akOldLoc + " | NewLocation=" + akNewLoc)
+  PublishLocation(akNewLoc, "Actor.OnLocationChange")
+EndEvent
+
+; A saved game can load without changing location; publish the current player location and retain a HUD-open refresh if the auxiliary movie is not ready yet.
+Event Actor.OnPlayerLoadGame(Actor akSender)
+  LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
+  LocationRefreshPending = True
+  PublishPlayerCurrentLocation("Actor.OnPlayerLoadGame")
+EndEvent
+
+; Read the player's authoritative current location rather than relying on a prior change event from the save.
+String Function PublishPlayerCurrentLocation(String source)
+  Actor player = Game.GetPlayer()
+  If (player == None)
+    LogUserWarning(ModuleName, source, "LOCATION_EVENT_DROPPED_PLAYER_UNAVAILABLE")
+    Return "DEFERRED_PLAYER_UNAVAILABLE"
+  EndIf
+  Return PublishLocation(player.GetCurrentLocation(), source)
+EndFunction
+
+; Keep both player event paths on the same location packet, including the editor ID that can encode surface coordinates.
+String Function PublishLocation(Location currentLocation, String source)
+  If (Registry == None)
+    LogUserWarning(ModuleName, source, "LOCATION_EVENT_DROPPED_REGISTRY_UNAVAILABLE")
+    Return "DEFERRED_REGISTRY_UNAVAILABLE"
+  EndIf
+  String body = "location=none"
+  If (currentLocation != None)
+    body = "location=" + currentLocation
+  EndIf
+  Actor player = Game.GetPlayer()
+  Planet currentPlanet = None
+  If (player != None)
+    currentPlanet = player.GetCurrentPlanet()
+  EndIf
+  If (currentPlanet == None && currentLocation != None)
+    currentPlanet = currentLocation.GetCurrentPlanet()
+  EndIf
+  Planet cassiopeiaI = Game.GetFormFromFile(0x05E4E6, "Starfield.esm") as Planet
+  String planetTag = "OTHER"
+  If (currentPlanet != None && currentPlanet == cassiopeiaI)
+    planetTag = "CASSIOPEIA_I"
+  EndIf
+  body += "|planet=" + planetTag + "|gt=" + Utility.GetCurrentGameTime()
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.location.changed", body)
+  Registry.LogOperation(result)
+  LogUserInformational(ModuleName, "PublishLocation", "LOCATION_EVENT_RESULT | Source=" + source + " | Body=" + body + " | Status=" + result.Status)
+  Return result.Status
+EndFunction
+
+; Saved quests enter this path through their existing menu registration after a script update.
+Function EnsurePlayerEventRegistrations()
+  Actor player = Game.GetPlayer()
+  If (player == None)
+    LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "PLAYER_EVENT_REGISTRATION_DEFERRED | Player=None | Events=OnLocationChange,OnPlayerLoadGame")
+    Return
+  EndIf
+  If (!LocationEventRegistered)
+    Bool locationRegistrationAccepted = RegisterForRemoteEvent(player, "OnLocationChange")
+    LocationEventRegistered = locationRegistrationAccepted
+    If (locationRegistrationAccepted)
+      LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=true | Player=" + player)
+    Else
+      LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=false | Player=" + player)
+    EndIf
+  Else
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnLocationChange | Player=" + player)
+  EndIf
+  If (!PlayerLoadEventRegistered)
+    Bool playerLoadRegistrationAccepted = RegisterForRemoteEvent(player, "OnPlayerLoadGame")
+    PlayerLoadEventRegistered = playerLoadRegistrationAccepted
+    If (playerLoadRegistrationAccepted)
+      LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnPlayerLoadGame | Accepted=true | Player=" + player)
+    Else
+      LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnPlayerLoadGame | Accepted=false | Player=" + player)
+    EndIf
+  Else
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnPlayerLoadGame | Player=" + player)
+  EndIf
+EndFunction
+
 ; Each timer ID is an attempt number, so retry exhaustion needs no cross-stack mutable counter.
 Event OnTimer(Int aiTimerID)
+  LogUserInformational(ModuleName, "OnTimer", "EVENT_TRIGGERED | TimerId=" + aiTimerID + " | LocationRefreshPending=" + LocationRefreshPending)
   If (aiTimerID >= 1 && aiTimerID <= 20)
     ProcessAttempt(aiTimerID)
+  ElseIf (aiTimerID >= 21 && aiTimerID <= 30 && LocationRefreshPending)
+    String status = PublishPlayerCurrentLocation("OnTimer")
+    If (status == "EVENT_SUBMITTED")
+      LocationRefreshPending = False
+    ElseIf ((IsDeferred(status) || status == "DEFERRED_PLAYER_UNAVAILABLE" || status == "EVENT_CANCELLED_ACTIVATION") && aiTimerID < 30)
+      StartTimer(1.0, aiTimerID + 1)
+    ElseIf (aiTimerID == 30)
+      LogUserWarning(ModuleName, "OnTimer", "LOCATION_REFRESH_RETRY_EXHAUSTED | Later HUD opening can retry.")
+    EndIf
   EndIf
 EndEvent
 

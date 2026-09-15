@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<scaleformBuild name="vwcanvas-hudmenu-gfx"
+                inputFile="hudmenu.gfx"
+                outputFile="hudmenu.gfx"
+                displayMode="normal">
+  <actionScriptPatches>
+    <patch path="../patches/player-hud-auxiliary-loader.xml" />
+  </actionScriptPatches>
+  <structuralRemovals>
+    <removal construction="class" instanceName="BottomLeftGroup_mc" className="BottomLeftGroup" placeTagType="PlaceObject3Tag" rootDepth="2" />
+  </structuralRemovals>
+</scaleformBuild>

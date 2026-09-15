@@ -87,9 +87,13 @@ package
 
       private var htmlEngine:CanvasHtmlEngine;
 
+      private var chronomarkSurface:CanvasChronomarkSurface;
+
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
+
+      private var chronomarkLayout:Object = null;
 
       private var hostKind:String = "";
 
@@ -170,6 +174,10 @@ package
          {
             if(this.owner === param1 && this.hostKind == context.hostKind && this.displayMode == context.displayMode)
             {
+               if(context.layout != null)
+               {
+                  this.reapplyVanillaPlacements(context.layout);
+               }
                return true;
             }
             trace("VWCANVAS-HOST-INIT | CONFLICTING DUPLICATE | OWNER " + this.resolveOwnerUrl(param1));
@@ -194,7 +202,7 @@ package
             this.appendDiagnostic("OWNER " + this.ownerLabel);
             if(this.hostKind == "player")
             {
-               this.subscribe();
+               this.subscribe(context.layout);
             }
             else if(this.hostKind == "menu")
             {
@@ -222,8 +230,22 @@ package
          return false;
       }
 
-      public function reapplyVanillaPlacements() : void
+      public function reapplyVanillaPlacements(param1:Object = null) : void
       {
+         if(param1 != null)
+         {
+            try
+            {
+               this.chronomarkLayout = this.validateChronomarkLayout(param1);
+            }
+            catch(layoutError:*)
+            {
+            }
+         }
+         if(this.chronomarkSurface != null && this.chronomarkLayout != null)
+         {
+            this.chronomarkSurface.updateLayout(this.chronomarkLayout);
+         }
          if(this.diagnostics != null)
          {
             this.diagnostics.x = 24;
@@ -231,8 +253,12 @@ package
          }
       }
 
-      public function updateVanillaHudModeVisibility(param1:Array) : void
+      public function updateVanillaHudModeVisibility(param1:Boolean) : void
       {
+         if(!this.disposed && this.hostKind == "player" && this.chronomarkSurface != null)
+         {
+            this.chronomarkSurface.setHudModeVisibility(param1);
+         }
       }
 
       public function loadLocalConsumer(param1:Object) : Boolean
@@ -320,6 +346,16 @@ package
             }
          }
          this.subscribed = false;
+         if(this.chronomarkSurface != null)
+         {
+            this.chronomarkSurface.dispose();
+            if(this.chronomarkSurface.parent === this)
+            {
+               removeChild(this.chronomarkSurface);
+            }
+         }
+         this.chronomarkSurface = null;
+         this.chronomarkLayout = null;
          consumerIds = this.getLoaderIds();
          for each(consumerId in consumerIds)
          {
@@ -357,30 +393,30 @@ package
          this.alertDiagnosticCount = 0;
       }
 
-      private function subscribe() : void
+      private function subscribe(param1:Object) : void
       {
          if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING || this.subscribed)
          {
             throw new Error("load bridge subscription ownership unavailable");
          }
-         var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
-         if(watch == null || !("getCanvasWatchDisabled" in watch) || !("getCanvasWatchSubscriptionsRestored" in watch))
+         if(this.owner == null || !("getVenworksCanvasDataManager" in this.owner) || typeof this.owner["getVenworksCanvasDataManager"] != "function")
          {
-            throw new Error("WATCH PATCH MISSING; verify Host archive deployment");
+            throw new Error("PLAYER DATA BRIDGE MISSING");
          }
-         if(!watch.getCanvasWatchSubscriptionsRestored())
+         this.dataManager = this.owner["getVenworksCanvasDataManager"]();
+         if(this.dataManager == null || !("GetDataFromClient" in this.dataManager) || !("Subscribe" in this.dataManager) || !("Unsubscribe" in this.dataManager))
          {
-            throw new Error("WATCH SUBSCRIPTIONS NOT RESTORED");
+            throw new Error("PLAYER DATA MANAGER UNAVAILABLE");
          }
-         this.appendDiagnostic("WATCH SUBSCRIPTIONS RESTORED");
-         if(!watch.getCanvasWatchDisabled())
-         {
-            throw new Error("WATCH PRESENTATION ACTIVE");
-         }
-         this.appendDiagnostic("WATCH PRESENTATION DISABLED");
-         // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
-         this.dataManager = watch.getCanvasWatchDataManager();
          this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
+         this.chronomarkLayout = param1;
+         this.chronomarkSurface = new CanvasChronomarkSurface();
+         addChildAt(this.chronomarkSurface,0);
+         if(!this.chronomarkSurface.initialize(this.dataManager,this.displayMode,this.dispatchChronomarkSound,this.appendDiagnostic,param1))
+         {
+            throw new Error("CHRONOMARK INITIALIZATION FAILED");
+         }
+         this.appendDiagnostic("CANVAS CHRONOMARK READY");
          var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
          if(provider == null)
          {
@@ -400,6 +436,21 @@ package
             throw new Error("startup replay exceeded the host queue limit");
          }
          this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
+      }
+
+      private function dispatchChronomarkSound(param1:String) : void
+      {
+         if(this.disposed || this.owner == null || !("playVenworksCanvasSound" in this.owner) || typeof this.owner["playVenworksCanvasSound"] != "function")
+         {
+            return;
+         }
+         try
+         {
+            this.owner["playVenworksCanvasSound"](param1);
+         }
+         catch(soundError:*)
+         {
+         }
       }
 
       private function onCustomAlertsData(param1:Object) : void
@@ -1676,10 +1727,57 @@ package
          {
             throw new Error("unsupported host context");
          }
+         var layout:Object = "layout" in param2 && param2.layout != null ? this.validateChronomarkLayout(param2.layout) : null;
+         if(param2.hostKind == "player" && layout == null)
+         {
+            throw new Error("invalid player layout");
+         }
          return {
             "hostKind":String(param2.hostKind),
-            "displayMode":String(param2.displayMode)
+            "displayMode":String(param2.displayMode),
+            "layout":layout
          };
+      }
+
+      private function validateChronomarkLayout(param1:Object) : Object
+      {
+         if(param1 == null || param1 is Array || typeof param1 != "object")
+         {
+            throw new Error("invalid Chronomark layout");
+         }
+         var visibleX:Number = this.requiredLayoutNumber(param1,"visibleX");
+         var visibleY:Number = this.requiredLayoutNumber(param1,"visibleY");
+         var visibleWidth:Number = this.requiredLayoutNumber(param1,"visibleWidth");
+         var visibleHeight:Number = this.requiredLayoutNumber(param1,"visibleHeight");
+         var safeX:Number = this.requiredLayoutNumber(param1,"safeX");
+         var safeY:Number = this.requiredLayoutNumber(param1,"safeY");
+         if(visibleWidth <= 0 || visibleHeight <= 0 || safeX < 0 || safeY < 0 || !("ownerAppliesOpacity" in param1) || typeof param1.ownerAppliesOpacity != "boolean")
+         {
+            throw new Error("invalid Chronomark layout values");
+         }
+         return {
+            "visibleX":visibleX,
+            "visibleY":visibleY,
+            "visibleWidth":visibleWidth,
+            "visibleHeight":visibleHeight,
+            "safeX":safeX,
+            "safeY":safeY,
+            "ownerAppliesOpacity":param1.ownerAppliesOpacity === true
+         };
+      }
+
+      private function requiredLayoutNumber(param1:Object, param2:String) : Number
+      {
+         if(!(param2 in param1) || typeof param1[param2] != "number")
+         {
+            throw new Error("missing Chronomark layout value");
+         }
+         var value:Number = Number(param1[param2]);
+         if(!isFinite(value))
+         {
+            throw new Error("invalid Chronomark layout number");
+         }
+         return value;
       }
 
       private function resolveOwnerUrl(param1:DisplayObjectContainer) : String

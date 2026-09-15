@@ -17,7 +17,16 @@
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
-    <token>venworks.canvas.example.ping</token>
+    <token>LocalEnvironmentData</token>
+    <token>LocalEnvData_Frequent</token>
+    <token>fGalacticStandardTime</token>
+    <token>fLocalPlanetHoursPerDay</token>
+    <token>venworks.canvas.example.location.changed</token>
+    <token>parseLocationCoordinate</token>
+    <token>surfaceLatitude</token>
+    <token>surfaceLongitude</token>
+    <token>setClockText</token>
+    <token>setTextFormat</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>

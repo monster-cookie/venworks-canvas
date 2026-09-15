@@ -68,6 +68,7 @@
     <token>public function initialize(param1:DisplayObjectContainer, param2:Object) : Boolean</token>
     <token>public function reapplyVanillaPlacements</token>
     <token>public function updateVanillaHudModeVisibility</token>
+    <token>public function setHudModeVisibility</token>
     <token>public function dispose</token>
     <token>VWCANVAS_HOST/1</token>
     <token>HOST_STATE_INITIALIZED</token>
@@ -82,10 +83,30 @@
     <token>ASCII CASE-FOLDED</token>
     <token>invalid UI load envelope</token>
     <token>LOAD BRIDGE SUBSCRIBED</token>
-    <token>getCanvasWatchDataManager</token>
-    <token>getCanvasWatchDisabled</token>
-    <token>getCanvasWatchSubscriptionsRestored</token>
-    <token>WATCH SUBSCRIPTIONS RESTORED</token>
+    <token>getVenworksCanvasDataManager</token>
+    <token>CANVAS CHRONOMARK READY</token>
+    <token>CanvasChronomarkSurface</token>
+    <token>CanvasChronomarkData</token>
+    <token>CanvasChronomarkView</token>
+    <token>CanvasChronomarkMarkers</token>
+    <token>CanvasChronomarkIcons</token>
+    <token>CanvasChronomarkEffects</token>
+    <token>public static function drawEffect</token>
+    <token>CanvasChronomarkAnimation</token>
+    <token>CanvasChronomarkStyle</token>
+    <token>LocalEnvironmentData</token>
+    <token>LocalEnvData_Frequent</token>
+    <token>PlayerFrequentData</token>
+    <token>HudCompassData</token>
+    <token>PersonalEffectsData</token>
+    <token>PersonalAlertsData</token>
+    <token>EnvironmentEffectsData</token>
+    <token>EnvironmentAlertsData</token>
+    <token>HUDOpacityData</token>
+    <token>GENERAL_MARKER_CAPACITY</token>
+    <token>ALERT_QUEUE_CAPACITY</token>
+    <token>CHRONOMARK SUBSCRIBE FAILED</token>
+    <token>CHRONOMARK UNSUBSCRIBE FAILED</token>
     <token>PROVIDER CALLBACK #</token>
     <token>PROVIDER ALERT #</token>
     <token>PROVIDER PAYLOAD REJECTED</token>
@@ -113,5 +134,8 @@
     <token>.jpeg</token>
     <token>.png</token>
     <token>.dds</token>
+    <token>BottomLeftGroup</token>
+    <token>UIWatchAlert_</token>
+    <token>customwatchalert</token>
   </forbiddenTokens>
 </movieBuild>
