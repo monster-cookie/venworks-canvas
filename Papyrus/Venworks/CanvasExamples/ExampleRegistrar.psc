@@ -193,6 +193,20 @@ String Function PublishLocation(Location currentLocation, String source)
   If (currentLocation != None)
     body = "location=" + currentLocation
   EndIf
+  Actor player = Game.GetPlayer()
+  Planet currentPlanet = None
+  If (player != None)
+    currentPlanet = player.GetCurrentPlanet()
+  EndIf
+  If (currentPlanet == None && currentLocation != None)
+    currentPlanet = currentLocation.GetCurrentPlanet()
+  EndIf
+  Planet cassiopeiaI = Game.GetFormFromFile(0x05E4E6, "Starfield.esm") as Planet
+  String planetTag = "OTHER"
+  If (currentPlanet != None && currentPlanet == cassiopeiaI)
+    planetTag = "CASSIOPEIA_I"
+  EndIf
+  body += "|planet=" + planetTag + "|gt=" + Utility.GetCurrentGameTime()
   OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.location.changed", body)
   Registry.LogOperation(result)
   LogUserInformational(ModuleName, "PublishLocation", "LOCATION_EVENT_RESULT | Source=" + source + " | Body=" + body + " | Status=" + result.Status)

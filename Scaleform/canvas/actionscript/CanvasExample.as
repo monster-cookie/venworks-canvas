@@ -11,13 +11,23 @@ package
 
       private static const ACCENT_COLOR:uint = 3845628;
 
+      private static const CASSIOPEIA_YEAR_DAYS:Number = 343;
+
+      private static const CASSIOPEIA_ECCENTRICITY:Number = 0.032944;
+
+      private static const CASSIOPEIA_AXIAL_TILT:Number = 0.5235988;
+
+      private static const CASSIOPEIA_START_ANGLE:Number = 62 * Math.PI / 180;
+
+      private static const CASSIOPEIA_PERIHELION_ANGLE:Number = 342 * Math.PI / 180;
+
       private static const PANEL_X:Number = 32;
 
       private static const PANEL_Y:Number = 28;
 
-      private static const PANEL_WIDTH:Number = 430;
+      private static const PANEL_WIDTH:Number = 460;
 
-      private static const PANEL_HEIGHT:Number = 104;
+      private static const PANEL_HEIGHT:Number = 166;
 
       private var panel:Shape;
 
@@ -27,7 +37,11 @@ package
 
       private var localTimeField:TextField;
 
-      private var solarTransitionField:TextField;
+      private var coordinatesField:TextField;
+
+      private var timeSolarField:TextField;
+
+      private var orbitalSolarField:TextField;
 
       private var inSpaceship:Boolean = false;
 
@@ -40,6 +54,16 @@ package
       private var surfaceLatitude:Number = NaN;
 
       private var surfaceLongitude:Number = NaN;
+
+      private var orbitalGameDays:Number = NaN;
+
+      private var isCassiopeiaI:Boolean = false;
+
+      private var orbitalSunrisePhase:Number = NaN;
+
+      private var orbitalSunsetPhase:Number = NaN;
+
+      private var orbitalSolarStatus:String = "";
 
       public function CanvasExample()
       {
@@ -84,6 +108,9 @@ package
          {
             this.surfaceLatitude = this.parseLocationCoordinate(param2,"LAT",90);
             this.surfaceLongitude = this.parseLocationCoordinate(param2,"LON",180);
+            this.isCassiopeiaI = param2 != null && param2.indexOf("|planet=CASSIOPEIA_I|") >= 0;
+            this.orbitalGameDays = this.parseEventNumber(param2,"gt",0,100000000);
+            this.updateOrbitalSolarPhases();
             this.renderClock();
          }
       }
@@ -106,7 +133,9 @@ package
          this.clockFormat = null;
          this.universalTimeField = null;
          this.localTimeField = null;
-         this.solarTransitionField = null;
+         this.coordinatesField = null;
+         this.timeSolarField = null;
+         this.orbitalSolarField = null;
       }
 
       private function createClock() : void
@@ -119,7 +148,9 @@ package
          addChild(this.panel);
          this.universalTimeField = this.createClockField(PANEL_Y + 9);
          this.localTimeField = this.createClockField(PANEL_Y + 38);
-         this.solarTransitionField = this.createClockField(PANEL_Y + 67);
+         this.coordinatesField = this.createClockField(PANEL_Y + 67);
+         this.timeSolarField = this.createClockField(PANEL_Y + 96);
+         this.orbitalSolarField = this.createClockField(PANEL_Y + 125);
       }
 
       private function createClockField(param1:Number) : TextField
@@ -139,20 +170,23 @@ package
 
       private function renderClock() : void
       {
-         if(this.universalTimeField == null || this.localTimeField == null || this.solarTransitionField == null)
+         if(this.universalTimeField == null || this.localTimeField == null || this.coordinatesField == null || this.timeSolarField == null || this.orbitalSolarField == null)
          {
             return;
          }
          this.setClockText(this.universalTimeField,"UNIVERSAL TIME   " + this.formatClock(this.galacticStandardTime) + " UT");
+         this.setClockText(this.coordinatesField,"LAT/LON          " + this.formatCoordinate(this.surfaceLatitude) + " / " + this.formatCoordinate(this.surfaceLongitude));
          if(this.inSpaceship || !isFinite(this.localPlanetTime) || !isFinite(this.localPlanetHoursPerDay) || this.localPlanetHoursPerDay <= 0)
          {
             this.setClockText(this.localTimeField,"LOCAL TIME       --:--");
-            this.setClockText(this.solarTransitionField,"SOLAR EVENT     UNAVAILABLE");
+            this.setClockText(this.timeSolarField,"TIME ONLY        UNAVAILABLE");
+            this.setClockText(this.orbitalSolarField,"ORBIT EST        UNAVAILABLE");
          }
          else
          {
             this.setClockText(this.localTimeField,"LOCAL TIME       " + this.formatClock(this.localPlanetTime * 24));
-            this.setClockText(this.solarTransitionField,this.hasSurfaceCoordinates() ? this.formatSolarTransition() : "SOLAR EVENT     LOCATION PENDING");
+            this.setClockText(this.timeSolarField,this.formatNextSolarTransition("TIME ONLY",0.25,0.75));
+            this.setClockText(this.orbitalSolarField,this.formatOrbitalSolarTransition());
          }
       }
 
@@ -165,11 +199,11 @@ package
          }
       }
 
-      private function formatSolarTransition() : String
+      private function formatNextSolarTransition(param1:String, param2:Number, param3:Number) : String
       {
          var phase:Number = this.localPlanetTime;
-         var daylight:Boolean = phase >= 0.25 && phase < 0.75;
-         var target:Number = daylight ? 0.75 : 0.25;
+         var daylight:Boolean = phase >= param2 && phase < param3;
+         var target:Number = daylight ? param3 : param2;
          if(target <= phase)
          {
             target += 1;
@@ -177,7 +211,77 @@ package
          var remainingMinutes:int = Math.max(0,Math.round((target - phase) * this.localPlanetHoursPerDay * 60));
          var hours:int = Math.floor(remainingMinutes / 60);
          var minutes:int = remainingMinutes % 60;
-         return (daylight ? "SUNSET IN       " : "SUNRISE IN      ") + this.pad(hours) + "H " + this.pad(minutes) + "M";
+         return param1 + (daylight ? "  SUNSET IN " : "  SUNRISE IN ") + this.pad(hours) + "H " + this.pad(minutes) + "M";
+      }
+
+      private function formatOrbitalSolarTransition() : String
+      {
+         if(!this.hasSurfaceCoordinates())
+         {
+            return "ORBIT EST        LOCATION PENDING";
+         }
+         if(!this.isCassiopeiaI)
+         {
+            return "ORBIT EST        CASSIOPEIA I ONLY";
+         }
+         if(!isFinite(this.orbitalGameDays))
+         {
+            return "ORBIT EST        GAME TIME PENDING";
+         }
+         if(this.orbitalSolarStatus != "")
+         {
+            return "ORBIT EST        " + this.orbitalSolarStatus;
+         }
+         if(!isFinite(this.orbitalSunrisePhase) || !isFinite(this.orbitalSunsetPhase))
+         {
+            return "ORBIT EST        UNAVAILABLE";
+         }
+         return this.formatNextSolarTransition("ORBIT EST",this.orbitalSunrisePhase,this.orbitalSunsetPhase);
+      }
+
+      private function updateOrbitalSolarPhases() : void
+      {
+         this.orbitalSunrisePhase = NaN;
+         this.orbitalSunsetPhase = NaN;
+         this.orbitalSolarStatus = "";
+         if(!this.hasSurfaceCoordinates() || !this.isCassiopeiaI || !isFinite(this.orbitalGameDays))
+         {
+            return;
+         }
+         // Start and perihelion angles are treated as an epoch and orbit orientation;
+         // the game's solstice alignment is not exposed, so this remains an estimate.
+         var meanAnomaly:Number = 2 * Math.PI * (this.orbitalGameDays / CASSIOPEIA_YEAR_DAYS % 1) + CASSIOPEIA_START_ANGLE;
+         var eccentricAnomaly:Number = meanAnomaly;
+         for(var iteration:int = 0; iteration < 6; iteration++)
+         {
+            eccentricAnomaly -= (eccentricAnomaly - CASSIOPEIA_ECCENTRICITY * Math.sin(eccentricAnomaly) - meanAnomaly) / (1 - CASSIOPEIA_ECCENTRICITY * Math.cos(eccentricAnomaly));
+         }
+         var trueAnomaly:Number = Math.atan2(Math.sqrt(1 - CASSIOPEIA_ECCENTRICITY * CASSIOPEIA_ECCENTRICITY) * Math.sin(eccentricAnomaly),Math.cos(eccentricAnomaly) - CASSIOPEIA_ECCENTRICITY);
+         var solarDeclination:Number = Math.asin(Math.sin(CASSIOPEIA_AXIAL_TILT) * Math.sin(trueAnomaly + CASSIOPEIA_PERIHELION_ANGLE));
+         var latitudeRadians:Number = this.surfaceLatitude * Math.PI / 180;
+         var horizonCosine:Number = -Math.tan(latitudeRadians) * Math.tan(solarDeclination);
+         if(horizonCosine >= 1)
+         {
+            this.orbitalSolarStatus = "POLAR NIGHT";
+            return;
+         }
+         if(horizonCosine <= -1)
+         {
+            this.orbitalSolarStatus = "POLAR DAY";
+            return;
+         }
+         if(!isFinite(horizonCosine))
+         {
+            return;
+         }
+         var halfDayPhase:Number = Math.acos(horizonCosine) / (2 * Math.PI);
+         this.orbitalSunrisePhase = 0.5 - halfDayPhase;
+         this.orbitalSunsetPhase = 0.5 + halfDayPhase;
+      }
+
+      private function formatCoordinate(param1:Number) : String
+      {
+         return isFinite(param1) ? param1.toFixed(4) : "--";
       }
 
       private function formatClock(param1:Number) : String
@@ -249,6 +353,32 @@ package
             return NaN;
          }
          return sign * coordinate;
+      }
+
+      private function parseEventNumber(param1:String, param2:String, param3:Number, param4:Number) : Number
+      {
+         if(param1 == null)
+         {
+            return NaN;
+         }
+         var token:String = "|" + param2 + "=";
+         var start:int = param1.indexOf(token);
+         if(start < 0)
+         {
+            return NaN;
+         }
+         start += token.length;
+         var end:int = param1.indexOf("|",start);
+         if(end < 0)
+         {
+            end = param1.length;
+         }
+         if(end == start)
+         {
+            return NaN;
+         }
+         var value:Number = Number(param1.substring(start,end));
+         return isFinite(value) && value >= param3 && value <= param4 ? value : NaN;
       }
 
       private function numberValue(param1:Object, param2:String, param3:Number, param4:Number) : Number
