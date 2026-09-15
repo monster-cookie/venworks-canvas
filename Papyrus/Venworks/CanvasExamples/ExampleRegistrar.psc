@@ -137,6 +137,7 @@ EndFunction
 
 ; Bootstrap only: register bounded menu and player notifications without waiting or requesting UI work.
 Event OnInit()
+  LogUserInformational(ModuleName, "OnInit", "EVENT_TRIGGERED | Registering HUD menus and player events.")
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
   EnsurePlayerEventRegistrations()
@@ -144,6 +145,7 @@ EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
+  LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "EVENT_TRIGGERED | Menu=" + menuName + " | Opening=" + opening)
   If (opening)
     EnsurePlayerEventRegistrations()
     Float delay = InitialDelaySeconds
@@ -160,11 +162,13 @@ EndEvent
 
 ; Publishes one Example-owned refresh notification when the player changes location; clock values still come from subscribed UI providers.
 Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
+  LogUserInformational(ModuleName, "Actor.OnLocationChange", "EVENT_TRIGGERED | Sender=" + akSender + " | OldLocation=" + akOldLoc + " | NewLocation=" + akNewLoc)
   PublishLocation(akNewLoc, "Actor.OnLocationChange")
 EndEvent
 
 ; A saved game can load without changing location; publish the current player location and retain a HUD-open refresh if the auxiliary movie is not ready yet.
 Event Actor.OnPlayerLoadGame(Actor akSender)
+  LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
   LocationRefreshPending = True
   PublishPlayerCurrentLocation("Actor.OnPlayerLoadGame")
 EndEvent
@@ -191,26 +195,36 @@ String Function PublishLocation(Location currentLocation, String source)
   EndIf
   OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.location.changed", body)
   Registry.LogOperation(result)
+  LogUserInformational(ModuleName, "PublishLocation", "LOCATION_EVENT_RESULT | Source=" + source + " | Body=" + body + " | Status=" + result.Status)
   Return result.Status
 EndFunction
 
 ; Saved quests enter this path through their existing menu registration after a script update.
 Function EnsurePlayerEventRegistrations()
   Actor player = Game.GetPlayer()
-  If (player != None)
-    If (!LocationEventRegistered)
-      RegisterForRemoteEvent(player, "OnLocationChange")
-      LocationEventRegistered = True
-    EndIf
-    If (!PlayerLoadEventRegistered)
-      RegisterForRemoteEvent(player, "OnPlayerLoadGame")
-      PlayerLoadEventRegistered = True
-    EndIf
+  If (player == None)
+    LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "PLAYER_EVENT_REGISTRATION_DEFERRED | Player=None | Events=OnLocationChange,OnPlayerLoadGame")
+    Return
+  EndIf
+  If (!LocationEventRegistered)
+    RegisterForRemoteEvent(player, "OnLocationChange")
+    LocationEventRegistered = True
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_REQUESTED | Event=OnLocationChange | Player=" + player)
+  Else
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnLocationChange | Player=" + player)
+  EndIf
+  If (!PlayerLoadEventRegistered)
+    RegisterForRemoteEvent(player, "OnPlayerLoadGame")
+    PlayerLoadEventRegistered = True
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_REQUESTED | Event=OnPlayerLoadGame | Player=" + player)
+  Else
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnPlayerLoadGame | Player=" + player)
   EndIf
 EndFunction
 
 ; Each timer ID is an attempt number, so retry exhaustion needs no cross-stack mutable counter.
 Event OnTimer(Int aiTimerID)
+  LogUserInformational(ModuleName, "OnTimer", "EVENT_TRIGGERED | TimerId=" + aiTimerID + " | LocationRefreshPending=" + LocationRefreshPending)
   If (aiTimerID >= 1 && aiTimerID <= 20)
     ProcessAttempt(aiTimerID)
   ElseIf (aiTimerID >= 21 && aiTimerID <= 30 && LocationRefreshPending)
