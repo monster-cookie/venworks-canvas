@@ -207,16 +207,24 @@ Function EnsurePlayerEventRegistrations()
     Return
   EndIf
   If (!LocationEventRegistered)
-    RegisterForRemoteEvent(player, "OnLocationChange")
-    LocationEventRegistered = True
-    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_REQUESTED | Event=OnLocationChange | Player=" + player)
+    Bool locationRegistrationAccepted = RegisterForRemoteEvent(player, "OnLocationChange")
+    LocationEventRegistered = locationRegistrationAccepted
+    If (locationRegistrationAccepted)
+      LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=true | Player=" + player)
+    Else
+      LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=false | Player=" + player)
+    EndIf
   Else
     LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnLocationChange | Player=" + player)
   EndIf
   If (!PlayerLoadEventRegistered)
-    RegisterForRemoteEvent(player, "OnPlayerLoadGame")
-    PlayerLoadEventRegistered = True
-    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_REQUESTED | Event=OnPlayerLoadGame | Player=" + player)
+    Bool playerLoadRegistrationAccepted = RegisterForRemoteEvent(player, "OnPlayerLoadGame")
+    PlayerLoadEventRegistered = playerLoadRegistrationAccepted
+    If (playerLoadRegistrationAccepted)
+      LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnPlayerLoadGame | Accepted=true | Player=" + player)
+    Else
+      LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnPlayerLoadGame | Accepted=false | Player=" + player)
+    EndIf
   Else
     LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnPlayerLoadGame | Player=" + player)
   EndIf
