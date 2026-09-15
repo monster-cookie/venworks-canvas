@@ -10,6 +10,8 @@ package
 
    internal final class CanvasChronomarkView extends Sprite
    {
+      private var normalFaceLayer:Sprite;
+
       private var informationLayer:Sprite;
 
       private var normalInteriorLayer:Sprite;
@@ -193,8 +195,18 @@ package
          var value:Number = CanvasChronomarkStyle.clamp(param1,0,1);
          this.scannerLayer.alpha = value;
          this.scannerLayer.visible = value > 0;
+         this.normalFaceLayer.alpha = 1 - value;
+         this.normalFaceLayer.visible = value < 1;
          this.normalInteriorLayer.alpha = 1 - value;
          this.normalInteriorLayer.visible = value < 1;
+      }
+
+      public function addNormalContent(param1:Sprite) : void
+      {
+         if(param1 != null)
+         {
+            this.normalInteriorLayer.addChild(param1);
+         }
       }
 
       public function showAlert(param1:String, param2:String, param3:String, param4:String, param5:Boolean, param6:Number) : void
@@ -280,10 +292,13 @@ package
          face.filters = [new DropShadowFilter(4,90,0,0.75,10,10,1,1,false,false,false)];
          addChild(face);
 
+         this.normalFaceLayer = new Sprite();
+         addChild(this.normalFaceLayer);
+
          var innerRim:Shape = new Shape();
          innerRim.graphics.lineStyle(1,CanvasChronomarkStyle.MUTED_TEXT_COLOR,0.5,true);
          innerRim.graphics.drawCircle(CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,99);
-         addChild(innerRim);
+         this.normalFaceLayer.addChild(innerRim);
 
          var compassTicks:Shape = new Shape();
          var index:int = 0;
@@ -296,16 +311,16 @@ package
             compassTicks.graphics.lineTo(CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * 96,CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * 96);
             index++;
          }
-         addChild(compassTicks);
+         this.normalFaceLayer.addChild(compassTicks);
 
          this.oxygenTrackShape = new Shape();
          this.oxygenTrackShape.graphics.lineStyle(10,CanvasChronomarkStyle.RIM_COLOR,0.55,true);
          this.drawArc(this.oxygenTrackShape,CanvasChronomarkStyle.FACE_CENTER_X,CanvasChronomarkStyle.FACE_CENTER_Y,CanvasChronomarkStyle.OXYGEN_METER_RADIUS,CanvasChronomarkStyle.OXYGEN_METER_START_ANGLE,CanvasChronomarkStyle.OXYGEN_METER_SWEEP,1);
          this.oxygenShape = new Shape();
          this.carbonDioxideShape = new Shape();
-         addChild(this.oxygenTrackShape);
-         addChild(this.oxygenShape);
-         addChild(this.carbonDioxideShape);
+         this.normalFaceLayer.addChild(this.oxygenTrackShape);
+         this.normalFaceLayer.addChild(this.oxygenShape);
+         this.normalFaceLayer.addChild(this.carbonDioxideShape);
       }
 
       private function createInformation() : void
@@ -331,7 +346,7 @@ package
          this.pointerShape.graphics.lineTo(4,-94);
          this.pointerShape.graphics.lineTo(0,-104);
          this.pointerShape.graphics.endFill();
-         this.informationLayer.addChild(this.pointerShape);
+         this.normalInteriorLayer.addChild(this.pointerShape);
 
          this.bodyTypeField = this.createText(38,75,145,21,16,CanvasChronomarkStyle.MUTED_TEXT_COLOR,true,TextFormatAlign.CENTER);
          this.bodyNameField = this.createText(20,94,181.5,25,18,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
@@ -358,7 +373,7 @@ package
             var locationField:TextField = this.createText(-9,-8,18,18,13,CanvasChronomarkStyle.TEXT_COLOR,true,TextFormatAlign.CENTER);
             locationField.autoSize = TextFieldAutoSize.CENTER;
             this.locationFields.push(locationField);
-            this.informationLayer.addChild(locationField);
+            this.normalInteriorLayer.addChild(locationField);
             index++;
          }
 
@@ -367,7 +382,7 @@ package
          this.detectionShape.graphics.moveTo(92,45);
          this.detectionShape.graphics.lineTo(110.5,36);
          this.detectionShape.graphics.lineTo(129,45);
-         this.informationLayer.addChild(this.detectionShape);
+         this.normalInteriorLayer.addChild(this.detectionShape);
       }
 
       private function createMetric(param1:Number, param2:Number, param3:String) : void
@@ -413,7 +428,7 @@ package
             field.text = index < length ? param1.charAt(index) : "";
             if(field.visible)
             {
-               angle = 90 + (index - (length - 1) / 2) * 9;
+               angle = 90 - (index - (length - 1) / 2) * 9;
                radians = angle * Math.PI / 180;
                field.x = CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.width / 2;
                field.y = CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.height / 2;

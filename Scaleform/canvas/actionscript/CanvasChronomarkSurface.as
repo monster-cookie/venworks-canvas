@@ -65,8 +65,8 @@ package
          this.effects = new CanvasChronomarkEffects();
          this.alertLayer = this.view.takeAlertLayer();
          addChild(this.view);
-         addChild(this.markers);
-         addChild(this.effects);
+         this.view.addNormalContent(this.markers);
+         this.view.addNormalContent(this.effects);
          addChild(this.alertLayer);
       }
 

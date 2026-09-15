@@ -34,6 +34,12 @@ package
 
       public static const LOCATION_TEXT_RADIUS:Number = 55;
 
+      public static const MARKER_DISPLAY_SCALE:Number = 1.6;
+
+      public static const SUSTENANCE_POSITIVE_COLOR:uint = 4784021;
+
+      public static const SUSTENANCE_NEGATIVE_COLOR:uint = 16540272;
+
       public static const GENERAL_MARKER_CAPACITY:int = 48;
 
       public static const MISSION_MARKER_CAPACITY:int = 16;

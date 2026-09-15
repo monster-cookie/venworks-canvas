@@ -155,7 +155,7 @@ package
          var radius:Number = outline ? OUTLINE_RADIUS : param2.isNear === true ? NEAR_RADIUS : FAR_RADIUS;
          param1.x = CanvasChronomarkStyle.FACE_CENTER_X - Math.sin(relative) * radius;
          param1.y = CanvasChronomarkStyle.FACE_CENTER_Y + Math.cos(relative) * radius + (param3 == "general" && int(param2.iconType) != CanvasChronomarkStyle.LOCATION_MARKER_TYPE ? 15 : 0);
-         param1.scaleX = param1.scaleY = CanvasChronomarkStyle.clamp(Number(param2.scale),0.4,1.6);
+         param1.scaleX = param1.scaleY = CanvasChronomarkStyle.clamp(Number(param2.scale),0.4,1.6) * CanvasChronomarkStyle.MARKER_DISPLAY_SCALE;
          param1.alpha = CanvasChronomarkStyle.clamp(Number(param2.alpha),0.15,1);
          if(outline)
          {
