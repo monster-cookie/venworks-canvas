@@ -421,6 +421,9 @@ package
          var index:int = 0;
          var angle:Number = 0;
          var radians:Number = 0;
+         var rotationRadians:Number = 0;
+         var characterCenterX:Number = 0;
+         var characterCenterY:Number = 0;
          while(index < this.locationFields.length)
          {
             var field:TextField = this.locationFields[index] as TextField;
@@ -430,9 +433,12 @@ package
             {
                angle = 90 - (index - (length - 1) / 2) * 9;
                radians = angle * Math.PI / 180;
-               field.x = CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.width / 2;
-               field.y = CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS - field.height / 2;
                field.rotation = angle - 90;
+               rotationRadians = field.rotation * Math.PI / 180;
+               characterCenterX = CanvasChronomarkStyle.FACE_CENTER_X + Math.cos(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS;
+               characterCenterY = CanvasChronomarkStyle.FACE_CENTER_Y + Math.sin(radians) * CanvasChronomarkStyle.LOCATION_TEXT_RADIUS;
+               field.x = characterCenterX - Math.cos(rotationRadians) * field.width / 2 + Math.sin(rotationRadians) * field.height / 2;
+               field.y = characterCenterY - Math.sin(rotationRadians) * field.width / 2 - Math.cos(rotationRadians) * field.height / 2;
             }
             index++;
          }

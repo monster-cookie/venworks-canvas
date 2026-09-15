@@ -23,6 +23,7 @@ String PendingDisplayName
 String PendingNormalMovieUrl
 String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
+Bool LocationEventRegistered = False
 
 ; Reports this packaged script's runtime quest binding only; does not register or request UI work.
 String Function ConsoleResolve() Global
@@ -132,15 +133,17 @@ Function LogConsoleExample(String functionName, String logMessage) Global
   Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasExamples:ExampleRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
 EndFunction
 
-; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.
+; Bootstrap only: register bounded menu and player-location notifications without waiting or requesting UI work.
 Event OnInit()
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
+  EnsureLocationEventRegistration()
 EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
+    EnsureLocationEventRegistration()
     Float delay = InitialDelaySeconds
     If (delay < 0.1)
       delay = 0.1
@@ -148,6 +151,31 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
     StartTimer(delay, 1)
   EndIf
 EndEvent
+
+; Publishes one Example-owned refresh notification when the player changes location; clock values still come from subscribed UI providers.
+Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
+  If (Registry == None)
+    LogUserWarning(ModuleName, "Actor.OnLocationChange", "LOCATION_EVENT_DROPPED_REGISTRY_UNAVAILABLE")
+    Return
+  EndIf
+  String body = "location=none"
+  If (akNewLoc != None)
+    body = "location=" + akNewLoc
+  EndIf
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.location.changed", body)
+  Registry.LogOperation(result)
+EndEvent
+
+; Saved quests enter this path through their existing menu registration after a script update.
+Function EnsureLocationEventRegistration()
+  If (!LocationEventRegistered)
+    Actor player = Game.GetPlayer()
+    If (player != None)
+      RegisterForRemoteEvent(player, "OnLocationChange")
+      LocationEventRegistered = True
+    EndIf
+  EndIf
+EndFunction
 
 ; Each timer ID is an attempt number, so retry exhaustion needs no cross-stack mutable counter.
 Event OnTimer(Int aiTimerID)

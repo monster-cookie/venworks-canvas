@@ -34,7 +34,7 @@ package
 
       public static const LOCATION_TEXT_RADIUS:Number = 55;
 
-      public static const MARKER_DISPLAY_SCALE:Number = 1.6;
+      public static const MARKER_DISPLAY_SCALE:Number = 3.2;
 
       public static const SUSTENANCE_POSITIVE_COLOR:uint = 4784021;
 

@@ -1,17 +1,48 @@
 package
 {
    import flash.display.MovieClip;
+   import flash.display.Shape;
    import flash.text.TextField;
    import flash.text.TextFormat;
 
    public final class CanvasExample extends MovieClip
    {
-      private var marker:TextField;
-      private var pingReceived:Boolean;
+      private static const TEXT_COLOR:uint = 14941695;
+
+      private static const ACCENT_COLOR:uint = 3845628;
+
+      private static const PANEL_X:Number = 32;
+
+      private static const PANEL_Y:Number = 28;
+
+      private static const PANEL_WIDTH:Number = 430;
+
+      private static const PANEL_HEIGHT:Number = 104;
+
+      private var panel:Shape;
+
+      private var universalTimeField:TextField;
+
+      private var localTimeField:TextField;
+
+      private var solarTransitionField:TextField;
+
+      private var inSpaceship:Boolean = false;
+
+      private var localPlanetTime:Number = NaN;
+
+      private var localPlanetHoursPerDay:Number = NaN;
+
+      private var galacticStandardTime:Number = NaN;
+
+      private var surfaceLatitude:Number = NaN;
+
+      private var surfaceLongitude:Number = NaN;
 
       public function CanvasExample()
       {
-         this.marker = this.createMarker("VWCANVAS EXAMPLE",16776960);
+         this.createClock();
+         this.renderClock();
       }
 
       public function getCanvasRegistration() : Object
@@ -23,79 +54,223 @@ package
             "version":1,
             "minimumContractVersion":2,
             "maximumContractVersion":2,
-            "uiChannels":["PlayerData"],
-            "eventTopics":["venworks.canvas.example.ping"],
+            "uiChannels":["LocalEnvironmentData","LocalEnvData_Frequent"],
+            "eventTopics":["venworks.canvas.example.location.changed"],
             "marker":"EXAMPLE"
          };
       }
 
       public function handleUIData(param1:String, param2:Object) : void
       {
-         if(this.marker != null && !this.pingReceived && param1 == "PlayerData")
+         if(param1 == "LocalEnvironmentData")
          {
-            this.marker.text = "VWCANVAS EXAMPLE | DATA " + param1;
+            this.inSpaceship = this.booleanValue(param2,"bInSpaceship",false);
          }
+         else if(param1 == "LocalEnvData_Frequent")
+         {
+            this.localPlanetTime = this.numberValue(param2,"fLocalPlanetTime",0,1);
+            this.localPlanetHoursPerDay = this.numberValue(param2,"fLocalPlanetHoursPerDay",0,1000000);
+            this.galacticStandardTime = this.numberValue(param2,"fGalacticStandardTime",0,24);
+         }
+         this.renderClock();
       }
 
       public function handleCanvasEvent(param1:String, param2:String) : void
       {
-         if(this.marker != null && param1 == "venworks.canvas.example.ping")
+         if(param1 == "venworks.canvas.example.location.changed")
          {
-            this.pingReceived = true;
-            this.marker.text = "pong";
+            this.surfaceLatitude = this.parseLocationCoordinate(param2,"LAT",90);
+            this.surfaceLongitude = this.parseLocationCoordinate(param2,"LON",180);
+            this.renderClock();
          }
       }
 
       public function handleLifecycle(param1:String, param2:Object) : void
       {
-         if(this.marker != null && !this.pingReceived && param1 == "ready")
+         if(param1 == "ready")
          {
-            this.marker.text = "VWCANVAS EXAMPLE | READY V" + param2.contractVersion;
+            this.renderClock();
          }
       }
 
       public function dispose() : void
       {
-         if(this.marker != null && this.marker.parent === this)
+         while(numChildren > 0)
          {
-            removeChild(this.marker);
+            removeChildAt(numChildren - 1);
          }
-         this.marker = null;
+         this.panel = null;
+         this.universalTimeField = null;
+         this.localTimeField = null;
+         this.solarTransitionField = null;
       }
 
-      private function createMarker(param1:String, param2:uint) : TextField
+      private function createClock() : void
       {
-         var format:TextFormat = new TextFormat("$MAIN_Font_Bold",18,param2,true);
+         this.panel = new Shape();
+         this.panel.graphics.beginFill(1315860,0.82);
+         this.panel.graphics.lineStyle(1,ACCENT_COLOR,0.9);
+         this.panel.graphics.drawRect(PANEL_X,PANEL_Y,PANEL_WIDTH,PANEL_HEIGHT);
+         this.panel.graphics.endFill();
+         addChild(this.panel);
+         this.universalTimeField = this.createClockField(PANEL_Y + 9);
+         this.localTimeField = this.createClockField(PANEL_Y + 38);
+         this.solarTransitionField = this.createClockField(PANEL_Y + 67);
+      }
+
+      private function createClockField(param1:Number) : TextField
+      {
+         var format:TextFormat = new TextFormat("$MAIN_Font_Bold",18,TEXT_COLOR,true);
          var field:TextField = new TextField();
-         field.x = 32;
-         field.y = 1012;
-         field.width = 620;
-         field.height = 36;
-         field.background = true;
-         field.backgroundColor = 2097152;
-         field.border = true;
-         field.borderColor = param2;
+         field.x = PANEL_X + 14;
+         field.y = param1;
+         field.width = PANEL_WIDTH - 28;
+         field.height = 27;
          field.embedFonts = true;
          field.defaultTextFormat = format;
-         field.text = param1 + " | " + this.resolveUrl();
-         field.setTextFormat(format);
          field.selectable = false;
          field.mouseEnabled = false;
          addChild(field);
          return field;
       }
 
-      private function resolveUrl() : String
+      private function renderClock() : void
       {
-         var movieUrl:String = "url-unavailable";
+         if(this.universalTimeField == null || this.localTimeField == null || this.solarTransitionField == null)
+         {
+            return;
+         }
+         this.universalTimeField.text = "UNIVERSAL TIME   " + this.formatClock(this.galacticStandardTime) + " UT";
+         if(this.inSpaceship || !isFinite(this.localPlanetTime) || !isFinite(this.localPlanetHoursPerDay) || this.localPlanetHoursPerDay <= 0)
+         {
+            this.localTimeField.text = "LOCAL TIME       --:--";
+            this.solarTransitionField.text = "SOLAR EVENT     UNAVAILABLE";
+         }
+         else
+         {
+            this.localTimeField.text = "LOCAL TIME       " + this.formatClock(this.localPlanetTime * 24);
+            this.solarTransitionField.text = this.hasSurfaceCoordinates() ? this.formatSolarTransition() : "SOLAR EVENT     LOCATION PENDING";
+         }
+      }
+
+      private function formatSolarTransition() : String
+      {
+         var phase:Number = this.localPlanetTime;
+         var daylight:Boolean = phase >= 0.25 && phase < 0.75;
+         var target:Number = daylight ? 0.75 : 0.25;
+         if(target <= phase)
+         {
+            target += 1;
+         }
+         var remainingMinutes:int = Math.max(0,Math.round((target - phase) * this.localPlanetHoursPerDay * 60));
+         var hours:int = Math.floor(remainingMinutes / 60);
+         var minutes:int = remainingMinutes % 60;
+         return (daylight ? "SUNSET IN       " : "SUNRISE IN      ") + this.pad(hours) + "H " + this.pad(minutes) + "M";
+      }
+
+      private function formatClock(param1:Number) : String
+      {
+         if(!isFinite(param1))
+         {
+            return "--:--";
+         }
+         var normalized:Number = param1 % 24;
+         if(normalized < 0)
+         {
+            normalized += 24;
+         }
+         var totalMinutes:int = Math.floor(normalized * 60) % 1440;
+         return this.pad(Math.floor(totalMinutes / 60)) + ":" + this.pad(totalMinutes % 60);
+      }
+
+      private function pad(param1:int) : String
+      {
+         return param1 < 10 ? "0" + param1 : String(param1);
+      }
+
+      private function hasSurfaceCoordinates() : Boolean
+      {
+         return isFinite(this.surfaceLatitude) && isFinite(this.surfaceLongitude);
+      }
+
+      private function parseLocationCoordinate(param1:String, param2:String, param3:Number) : Number
+      {
+         if(param1 == null || param1 == "")
+         {
+            return NaN;
+         }
+         var source:String = param1.toUpperCase();
+         var positiveToken:String = param2 + "POS";
+         var negativeToken:String = param2 + "NEG";
+         var tokenIndex:int = source.indexOf(positiveToken);
+         var sign:Number = 1;
+         var tokenLength:int = positiveToken.length;
+         if(tokenIndex < 0)
+         {
+            tokenIndex = source.indexOf(negativeToken);
+            sign = -1;
+            tokenLength = negativeToken.length;
+         }
+         if(tokenIndex < 0)
+         {
+            return NaN;
+         }
+         var index:int = tokenIndex + tokenLength;
+         var digits:String = "";
+         while(index < source.length)
+         {
+            var code:int = source.charCodeAt(index);
+            if(code < 48 || code > 57)
+            {
+               break;
+            }
+            digits += source.charAt(index);
+            index++;
+         }
+         if(digits.length == 0)
+         {
+            return NaN;
+         }
+         var coordinate:Number = Number(digits) / 10000;
+         if(!isFinite(coordinate) || coordinate > param3)
+         {
+            return NaN;
+         }
+         return sign * coordinate;
+      }
+
+      private function numberValue(param1:Object, param2:String, param3:Number, param4:Number) : Number
+      {
          try
          {
-            movieUrl = loaderInfo.url;
+            if(param1 != null && param2 in param1)
+            {
+               var value:Number = Number(param1[param2]);
+               if(isFinite(value) && value >= param3 && value <= param4)
+               {
+                  return value;
+               }
+            }
          }
-         catch(urlError:Error)
+         catch(valueError:*)
          {
          }
-         return movieUrl;
+         return NaN;
+      }
+
+      private function booleanValue(param1:Object, param2:String, param3:Boolean) : Boolean
+      {
+         try
+         {
+            if(param1 != null && param2 in param1)
+            {
+               return param1[param2] === true;
+            }
+         }
+         catch(valueError:*)
+         {
+         }
+         return param3;
       }
    }
 }
