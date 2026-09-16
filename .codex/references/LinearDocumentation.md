@@ -5,8 +5,8 @@ Use this procedure when technical project documentation, design decisions, resea
 ## Documentation boundary
 
 - Keep user and public documentation in the repository when it supports product discovery, installation, usage, security reporting, release history, or user-facing known issues.
-- Store technical contracts, architecture, domain design, implementation guidance, research findings, validation evidence, and maintainer runbooks in documents verified to belong to the canonical Creations Forge team in the Venworks Linear workspace.
-- Treat `CHANGELOG.md`, `Documentation/KNOWN-ISSUES.md`, and migrated human-maintained naming content as approval-gated documentation. Moving or indexing that content does not authorize edits.
+- Store technical contracts, architecture, domain design, implementation guidance, research findings, validation evidence, and maintainer runbooks in documents verified to belong to the canonical Venworks Canvas team in the Venworks Linear workspace.
+- Treat existing human-maintained repository documentation, including `README.md` and `CHANGELOG.md`, as approval-gated documentation. Moving or indexing that content does not authorize edits.
 - Keep repository agent instructions, credential and tooling policies, and Linear lifecycle procedures local because they govern repository and tool execution.
 - Do not create a second local technical copy after a document has been migrated to Linear. This procedure does not authorize Linear document creation, edits, comments, or attachments; verify the target and obtain explicit authorization before any mutation.
 
@@ -19,18 +19,19 @@ Use this procedure when technical project documentation, design decisions, resea
 
 ## Current document index
 
-The verified team index is [CreationsForge engineering documentation](https://linear.app/venworks/document/engineering-documentation-fa3d2c85e329). Use current Linear readback and that index to select a destination; the index's migrated prose itself still needs terminology cleanup. The migrated source snapshot was repository commit `4d084a0ac0153d027ef56aa6b2beb3310f6483fd`.
+Use current Linear readback and the verified Canvas team identity to select a destination. The following team-scoped documents are current known destinations; re-read the selected document before relying on its content or performing an authorized mutation.
 
-| Linear destination | Repository material covered |
+| Linear destination | Scope indicated by the current document title |
 | --- | --- |
-| [Native FormList MVP Contracts](https://linear.app/venworks/document/native-formlist-mvp-contracts-e708102301b2) | Native engine contract and cross-game field and operation requirements; planned contracts are separate from completed acceptance evidence. |
-| [Native Backend Replacement Plan](https://linear.app/venworks/document/native-backend-replacement-plan-e8e86b562d53) | Superseded SQLite backend inventory, implementation sequence, and remaining decisions. |
-| [CI and Native FormList Validation Handoff](https://linear.app/venworks/document/ci-and-native-formlist-validation-handoff-ddd4408d99c4) | Prior source-baseline evidence and acceptance instructions, with snapshots kept distinct. |
-| [Presentation Test Guide](https://linear.app/venworks/document/presentation-test-guide-3a0d0ca522a3) | Avalonia/headless presentation test practices. |
-| [Arch Packaging Guide](https://linear.app/venworks/document/arch-packaging-guide-8e825fb60fc2) | Maintainer Arch release-package operations. |
-| [OpenRouter Chat Authoring Architecture and Implementation Plan](https://linear.app/venworks/document/openrouter-chat-authoring-architecture-and-implementation-plan-832e4061b004) | Proposed chat-authoring design and decisions; current issue scope must be read separately. |
+| [Venworks HUD Framework Theoretical Design](https://linear.app/venworks/document/venworks-hud-framework-theoretical-design-2b622b6adbcd) | Theoretical HUD framework design. |
+| [Venworks Canvas — Design Document](https://linear.app/venworks/document/venworks-canvas-design-document-4d59c05019ae) | Canvas design. |
+| [VWCANVAS-13 — VWHUD provider subscription inventory](https://linear.app/venworks/document/vwcanvas-13-vwhud-provider-subscription-inventory-fa8243691cec) | VWHUD provider subscription inventory. |
+| [VWCANVAS-24 — Local Resource Loader Implementation](https://linear.app/venworks/document/vwcanvas-24-local-resource-loader-implementation-e1e05ba6557b) | Local resource loader implementation. |
+| [VWCANVAS-25 — HTML Tokenizer and Parser Implementation](https://linear.app/venworks/document/vwcanvas-25-html-tokenizer-and-parser-implementation-187631848030) | HTML tokenizer and parser implementation. |
+| [VWCANVAS-10 — Consumer Lifecycle Contract and Runtime Test Handoff](https://linear.app/venworks/document/vwcanvas-10-consumer-lifecycle-contract-and-runtime-test-handoff-1367c0290a11) | Consumer lifecycle contract and runtime test handoff. |
+| [VWCANVAS-34 — Repository Build and Packaging Operations](https://linear.app/venworks/document/vwcanvas-34-repository-build-and-packaging-operations-9c28e05c7f86) | Repository build and packaging operations. |
 
-`Documentation/ROADMAP.md` remains a public summary, not an independent current backlog. Preserve implemented behavior, proposed design, historical findings, and unverified acceptance as separate claims. Link to source files and tests where authoritative, but do not duplicate large implementation listings in Linear.
+No repository public roadmap is currently declared by this procedure. If one is authorized later, it must remain a public summary rather than an independent current backlog. Preserve implemented behavior, proposed design, historical findings, and unverified acceptance as separate claims. Link to source files and tests where authoritative, but do not duplicate large implementation listings in Linear.
 
 ## Migration and handoff
 

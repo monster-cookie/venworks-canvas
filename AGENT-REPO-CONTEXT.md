@@ -5,8 +5,8 @@ These instructions apply only to the Venworks Canvas repository.
 ## Repository and Linear mapping
 
 | Linear workspace UUID | Linear team UUID | Issue prefix | Repository path | Repository URL |
-| -------------------------------------- | ---------------- | -------------------------------------------------- | ----------------------------------------------------------- |
-| `b9432d80-7966-48dd-86ea-f8eb5668bbd3` | `VWCNVS`       | `C:\Repositories\Venworks\venworks-canvas`         | `https://github.com/monster-cookie/venworks-canvas`         |
+| --- | --- | --- | --- | --- |
+| `ebbc7d5c-e2b9-40e0-b998-615b61e37bdd` | `0023a44a-376e-43f3-9cd9-444dcf4f5a78` | `VWCNVS` | `C:\Repositories\Venworks\venworks-canvas` | `https://github.com/monster-cookie/venworks-canvas` |
 
 The verified Linear workspace is `Venworks` at `https://linear.app/venworks`, and the canonical team is `Venworks Canvas`. Match their stable UUIDs rather than relying on names or issue prefixes alone. The team currently has no Linear project, and migrated issues currently have no native parent links; do not invent a project or Epic mapping from historical Plane text in descriptions.
 
@@ -46,7 +46,7 @@ Do not query, update, or fall back to Plane or Codecks for current requirements.
 ## Linear team scoping
 
 - Use the canonical team UUID from the mapping above in every Linear operation that accepts a team scope. Verify the workspace UUID as well. Do not make unscoped requests when team scoping is available.
-- Verify that a returned issue or document belongs to the canonical team before dependent decisions or an authorized mutation. Retain an issue's full UUID and current `VWCF` identifier; resolve document IDs and URLs from current readback.
+- Verify that a returned issue or document belongs to the canonical team before dependent decisions or an authorized mutation. Retain an issue's full UUID and current `VWCNVS` identifier; resolve document IDs and URLs from current readback.
 - A verified team rename or issue-prefix change does not change the canonical UUID. Record the current name or prefix; stop for a wrong UUID or ambiguous identity. Do not silently edit this instruction file to record a rename.
 - Do not rely only on remembered titles, identifiers, labels, list positions, or search results. Resolve mutation targets through current team-scoped data and full provider IDs where supported.
 
