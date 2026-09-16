@@ -29,6 +29,8 @@ package
 
       private static const PANEL_HEIGHT:Number = 166;
 
+      private static const COMPACT_PANEL_HEIGHT:Number = 108;
+
       private var panel:Shape;
 
       private var clockFormat:TextFormat;
@@ -64,6 +66,8 @@ package
       private var orbitalSunsetPhase:Number = NaN;
 
       private var orbitalSolarStatus:String = "";
+
+      private var coordinateRowsVisible:Boolean = true;
 
       public function CanvasExample()
       {
@@ -112,6 +116,7 @@ package
             this.isCassiopeiaI = locationBody.indexOf("|PLANET=CASSIOPEIA_I|") >= 0 || locationBody.indexOf("LOCATION=[LOCATION <CASSIOPEIAIPLANETWORLDLANDINGOVERLAY") >= 0;
             this.orbitalGameDays = this.parseEventNumber(param2,"gt",0,100000000);
             this.updateOrbitalSolarPhases();
+            this.setCoordinateRowsVisible(this.hasSurfaceCoordinates());
             this.renderClock();
          }
       }
@@ -152,6 +157,24 @@ package
          this.coordinatesField = this.createClockField(PANEL_Y + 67);
          this.timeSolarField = this.createClockField(PANEL_Y + 96);
          this.orbitalSolarField = this.createClockField(PANEL_Y + 125);
+         this.setCoordinateRowsVisible(false);
+      }
+
+      private function setCoordinateRowsVisible(param1:Boolean) : void
+      {
+         if(this.panel == null || this.coordinateRowsVisible == param1)
+         {
+            return;
+         }
+         this.coordinateRowsVisible = param1;
+         this.coordinatesField.visible = param1;
+         this.orbitalSolarField.visible = param1;
+         this.timeSolarField.y = PANEL_Y + (param1 ? 96 : 67);
+         this.panel.graphics.clear();
+         this.panel.graphics.beginFill(1315860,0.82);
+         this.panel.graphics.lineStyle(1,ACCENT_COLOR,0.9);
+         this.panel.graphics.drawRect(PANEL_X,PANEL_Y,PANEL_WIDTH,param1 ? PANEL_HEIGHT : COMPACT_PANEL_HEIGHT);
+         this.panel.graphics.endFill();
       }
 
       private function createClockField(param1:Number) : TextField
