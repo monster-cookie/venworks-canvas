@@ -19,17 +19,17 @@ Per the user's direction for this repository, apply these tool and identity sele
 | Operations | task-scoped; repository inspection and GitHub operations only when authorized by the current task and applicable repository instructions. Pull requests must be ready for review. This entry grants no standing permission to publish, change repository settings, manage credentials, merge, approve, deploy, or release. Prohibited: draft pull requests, force updates, and commits or pushes directly to a protected branch. |
 | Fallbacks | The installed `Invoke-GitHubAppGh.ps1` wrapper with GitHub CLI (`gh`) when the MCP context is unavailable. The wrapper must mint a fresh installation token from the configured GitHub App environment, supply it only as child-process `GH_TOKEN`, isolate `GH_CONFIG_DIR`, and discard and revoke the token after the command. Invoke `gh` only through that wrapper for Codex GitHub operations; direct or ambient CLI authentication is not a permitted fallback. The same target, identity, and operation limits apply. No personal-account fallback. |
 
-## Tool: plane
+## Tool: linear
 
 | Field | Value |
 | --- | --- |
-| Service | plane |
+| Service | linear |
 | Roles | all |
 | Requirement | required |
-| Tool | The Plane MCP integration exposed as `mcp__plane__*`, using the Codex AI service-account context from the `Plane (Codex AI)` Proton Pass item. |
-| Identity | plane-automation |
-| Target | MCP endpoint=https://mcp.plane.so/http/api-key/mcp; only the workspace and project mapped to this repository in its existing `AGENT-REPO-CONTEXT.md`. Resolve the workspace selector and project ID at runtime from that mapping and scoped Plane lookup, then require agreement with the repository mapping, current task, and any workspace metadata from the selected item. Stop on missing or conflicting mappings. Do not save resolved identifiers in this policy. |
-| Operations | task-scoped; read current governing requirements and perform only explicitly authorized operations on related work items in the Target project. Supply the exact project UUID whenever the tool supports project scoping, and verify the returned project for unscoped retrieval. Comments, assignments, and state changes require explicit task authorization. Final acceptance, Done transitions, and completion unassignment retain the repository's separate action-time confirmation requirement. Prohibited: unrelated workspace maintenance and use of the retired Codecks system. |
+| Tool | The configured Linear connection exposed as `mcp__linear_codex__*`, using its Codex OAuth app-user context. Verify the consuming connection's identity before dependent operations. |
+| Identity | linear-automation |
+| Target | Only the Venworks workspace and Creations Forge team mapped in `AGENT-REPO-CONTEXT.md`. Verify both UUIDs through the current Linear connection, supply the team UUID wherever team scoping is supported, and verify each unscoped issue or document belongs to that team. The current migration has no Linear project; do not infer one from a name or historical Plane annotation. |
+| Operations | Task-scoped reads of current requirements and only explicitly authorized mutations of related team issues or documents. Comments, assignments, state changes, document writes, and completion actions require explicit task authorization; this entry supplies no standing grant for them. Read back every mutation. Prohibited: unrelated workspace maintenance. |
 | Fallbacks | none |
 
 ## Documentation audience and internal research
@@ -100,6 +100,10 @@ git show --no-patch --format=fuller HEAD
 ```
 
 Require both identities to be `MonsterCookieAI <venworksai@venworkscreations.com>`. If either identity differs, stop and report the mismatch. Do not amend, reset, rebase, or otherwise rewrite the commit unless that operation is separately and explicitly approved. Do not rewrite existing commit history merely to change cosmetic attribution.
+
+Never expose or commit GitHub App private keys, installation tokens, access tokens, or other credentials. The fixed commit email is public identity metadata, not an authentication secret.
+
+This rule controls identity only for an otherwise authorized commit. All existing protected-branch, staging, commit, push, pull-request, destination-verification, and Git safety requirements remain in force.
 
 ## GitHub App and personal application separation
 
