@@ -187,7 +187,38 @@ Function LogPlayerLocationSources(String source, Location eventLocation)
   If (currentPlanet != None)
     planetLocation = currentPlanet.GetLocation()
   EndIf
-  LogUserInformational(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | EventLocation=" + eventLocation + " | PlayerLocation=" + player.GetCurrentLocation() + " | Planet=" + currentPlanet + " | PlanetLocation=" + planetLocation + " | Cell=" + player.GetParentCell() + " | WorldSpace=" + player.GetWorldSpace())
+  Location playerLocation = player.GetCurrentLocation()
+  LogUserInformational(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | EventLocation=" + eventLocation + " | PlayerLocation=" + playerLocation + " | Planet=" + currentPlanet + " | PlanetLocation=" + planetLocation + " | Cell=" + player.GetParentCell() + " | WorldSpace=" + player.GetWorldSpace())
+  If (eventLocation != None)
+    LogLocationParents(source, "EventLocation", eventLocation)
+  EndIf
+  If (playerLocation != None && playerLocation != eventLocation)
+    LogLocationParents(source, "PlayerLocation", playerLocation)
+  EndIf
+EndFunction
+
+; Records a bounded view of the location hierarchy at event entry so coordinate ownership can be diagnosed without timer noise.
+Function LogLocationParents(String source, String locationKind, Location currentLocation)
+  Location[] parentLocations = currentLocation.GetParentLocations()
+  Int parentCount = 0
+  If (parentLocations != None)
+    parentCount = parentLocations.Length
+  EndIf
+  LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_SNAPSHOT | Source=" + source + " | Kind=" + locationKind + " | Location=" + currentLocation + " | ParentCount=" + parentCount)
+  Int inspectionCount = parentCount
+  Int logLimit = 12
+  If (inspectionCount > logLimit)
+    inspectionCount = logLimit
+  EndIf
+  Int index = 0
+  While (index < inspectionCount)
+    Location parentLocation = parentLocations[index]
+    LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_ENTRY | Source=" + source + " | Kind=" + locationKind + " | Index=" + index + " | Parent=" + parentLocation + " | HasCoordinates=" + HasSurfaceCoordinateTokens(parentLocation))
+    index += 1
+  EndWhile
+  If (parentCount > inspectionCount)
+    LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_TRUNCATED | Source=" + source + " | Kind=" + locationKind + " | Logged=" + inspectionCount + " | ParentCount=" + parentCount)
+  EndIf
 EndFunction
 
 ; Read the player's authoritative current location rather than relying on a prior change event from the save.
@@ -200,15 +231,27 @@ String Function PublishPlayerCurrentLocation(String source)
   Return PublishLocation(player.GetCurrentLocation(), source)
 EndFunction
 
-; Keep both player event paths on the same location packet, including the editor ID that can encode surface coordinates.
+; Keep both player event paths on the same location packet, preferring the coordinate-bearing landing ancestor for PCM child locations.
 String Function PublishLocation(Location currentLocation, String source)
   If (Registry == None)
     LogUserWarning(ModuleName, source, "LOCATION_EVENT_DROPPED_REGISTRY_UNAVAILABLE")
     Return "DEFERRED_REGISTRY_UNAVAILABLE"
   EndIf
+  Location coordinateLocation = ResolveSurfaceCoordinateLocation(currentLocation)
+  Location publishedLocation = currentLocation
+  String coordinateSource = "UNAVAILABLE"
+  If (coordinateLocation != None)
+    publishedLocation = coordinateLocation
+    If (coordinateLocation == currentLocation)
+      coordinateSource = "CURRENT"
+    Else
+      coordinateSource = "PARENT"
+    EndIf
+  EndIf
+  LogUserInformational(ModuleName, "PublishLocation", "LOCATION_COORDINATE_RESOLUTION | Source=" + source + " | CoordinateSource=" + coordinateSource + " | CurrentLocation=" + currentLocation + " | PublishedLocation=" + publishedLocation)
   String body = "location=none"
-  If (currentLocation != None)
-    body = "location=" + currentLocation
+  If (publishedLocation != None)
+    body = "location=" + publishedLocation
   EndIf
   Actor player = Game.GetPlayer()
   Planet currentPlanet = None
@@ -228,6 +271,80 @@ String Function PublishLocation(Location currentLocation, String source)
   Registry.LogOperation(result)
   LogUserInformational(ModuleName, "PublishLocation", "LOCATION_EVENT_RESULT | Source=" + source + " | Body=" + body + " | Status=" + result.Status)
   Return result.Status
+EndFunction
+
+; Resolves the current location or its first coordinate-bearing ancestor without persisting a potentially stale landing site.
+Location Function ResolveSurfaceCoordinateLocation(Location currentLocation)
+  If (currentLocation == None)
+    Return None
+  EndIf
+  If (HasSurfaceCoordinateTokens(currentLocation))
+    Return currentLocation
+  EndIf
+  Location[] parentLocations = currentLocation.GetParentLocations()
+  If (parentLocations == None)
+    Return None
+  EndIf
+  Int inspectionCount = parentLocations.Length
+  Int inspectionLimit = 32
+  If (inspectionCount > inspectionLimit)
+    inspectionCount = inspectionLimit
+  EndIf
+  Int index = 0
+  While (index < inspectionCount)
+    Location parentLocation = parentLocations[index]
+    If (HasSurfaceCoordinateTokens(parentLocation))
+      Return parentLocation
+    EndIf
+    index += 1
+  EndWhile
+  Return None
+EndFunction
+
+; Requires both signed latitude and longitude markers; numeric range validation remains at the Scaleform consumer boundary.
+Bool Function HasSurfaceCoordinateTokens(Location candidateLocation)
+  If (candidateLocation == None)
+    Return False
+  EndIf
+  Int[] characters = Utility.SplitStringChars("" + candidateLocation)
+  If (characters == None || characters.Length < 6)
+    Return False
+  EndIf
+  Bool hasLatitude = False
+  Bool hasLongitude = False
+  Int index = 0
+  Int lastStart = characters.Length - 6
+  While (index <= lastStart && (!hasLatitude || !hasLongitude))
+    Int first = FoldAsciiCharacter(characters[index])
+    Int second = FoldAsciiCharacter(characters[index + 1])
+    Int third = FoldAsciiCharacter(characters[index + 2])
+    Bool signedDirection = IsSurfaceCoordinateDirection(characters, index + 3)
+    If (signedDirection && first == 108)
+      If (second == 97 && third == 116)
+        hasLatitude = True
+      ElseIf (second == 111 && third == 110)
+        hasLongitude = True
+      EndIf
+    EndIf
+    index += 1
+  EndWhile
+  Return hasLatitude && hasLongitude
+EndFunction
+
+; Accepts the case-insensitive POS or NEG suffix that follows a latitude or longitude marker.
+Bool Function IsSurfaceCoordinateDirection(Int[] characters, Int index)
+  Int first = FoldAsciiCharacter(characters[index])
+  Int second = FoldAsciiCharacter(characters[index + 1])
+  Int third = FoldAsciiCharacter(characters[index + 2])
+  Return (first == 112 && second == 111 && third == 115) || (first == 110 && second == 101 && third == 103)
+EndFunction
+
+; Normalizes an ASCII letter to lower case while leaving digits and punctuation unchanged.
+Int Function FoldAsciiCharacter(Int character)
+  If (character >= 65 && character <= 90)
+    Return character + 32
+  EndIf
+  Return character
 EndFunction
 
 ; Saved quests enter this path through their existing menu registration after a script update.
