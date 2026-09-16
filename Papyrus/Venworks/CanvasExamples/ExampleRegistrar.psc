@@ -163,15 +163,32 @@ EndEvent
 ; Publishes one Example-owned refresh notification when the player changes location; clock values still come from subscribed UI providers.
 Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
   LogUserInformational(ModuleName, "Actor.OnLocationChange", "EVENT_TRIGGERED | Sender=" + akSender + " | OldLocation=" + akOldLoc + " | NewLocation=" + akNewLoc)
+  LogPlayerLocationSources("Actor.OnLocationChange", akNewLoc)
   PublishLocation(akNewLoc, "Actor.OnLocationChange")
 EndEvent
 
 ; A saved game can load without changing location; publish the current player location and retain a HUD-open refresh if the auxiliary movie is not ready yet.
 Event Actor.OnPlayerLoadGame(Actor akSender)
   LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
+  LogPlayerLocationSources("Actor.OnPlayerLoadGame", None)
   LocationRefreshPending = True
   PublishPlayerCurrentLocation("Actor.OnPlayerLoadGame")
 EndEvent
+
+; Compare the current player objects only at event entry; the HUD retry timers must not repeat this diagnostic.
+Function LogPlayerLocationSources(String source, Location eventLocation)
+  Actor player = Game.GetPlayer()
+  If (player == None)
+    LogUserWarning(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | Player=None")
+    Return
+  EndIf
+  Planet currentPlanet = player.GetCurrentPlanet()
+  Location planetLocation = None
+  If (currentPlanet != None)
+    planetLocation = currentPlanet.GetLocation()
+  EndIf
+  LogUserInformational(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | EventLocation=" + eventLocation + " | PlayerLocation=" + player.GetCurrentLocation() + " | Planet=" + currentPlanet + " | PlanetLocation=" + planetLocation + " | Cell=" + player.GetParentCell() + " | WorldSpace=" + player.GetWorldSpace())
+EndFunction
 
 ; Read the player's authoritative current location rather than relying on a prior change event from the save.
 String Function PublishPlayerCurrentLocation(String source)

@@ -106,9 +106,10 @@ package
       {
          if(param1 == "venworks.canvas.example.location.changed")
          {
+            var locationBody:String = param2 == null ? "" : param2.toUpperCase();
             this.surfaceLatitude = this.parseLocationCoordinate(param2,"LAT",90);
             this.surfaceLongitude = this.parseLocationCoordinate(param2,"LON",180);
-            this.isCassiopeiaI = param2 != null && (param2.indexOf("|planet=CASSIOPEIA_I|") >= 0 || param2.indexOf("location=[Location <CassiopeiaIPlanetWorldLandingOverlay") == 0);
+            this.isCassiopeiaI = locationBody.indexOf("|PLANET=CASSIOPEIA_I|") >= 0 || locationBody.indexOf("LOCATION=[LOCATION <CASSIOPEIAIPLANETWORLDLANDINGOVERLAY") >= 0;
             this.orbitalGameDays = this.parseEventNumber(param2,"gt",0,100000000);
             this.updateOrbitalSolarPhases();
             this.renderClock();
@@ -361,23 +362,24 @@ package
          {
             return NaN;
          }
-         var token:String = "|" + param2 + "=";
-         var start:int = param1.indexOf(token);
+         var source:String = param1.toUpperCase();
+         var token:String = "|" + param2.toUpperCase() + "=";
+         var start:int = source.indexOf(token);
          if(start < 0)
          {
             return NaN;
          }
          start += token.length;
-         var end:int = param1.indexOf("|",start);
+         var end:int = source.indexOf("|",start);
          if(end < 0)
          {
-            end = param1.length;
+            end = source.length;
          }
          if(end == start)
          {
             return NaN;
          }
-         var value:Number = Number(param1.substring(start,end));
+         var value:Number = Number(source.substring(start,end));
          return isFinite(value) && value >= param3 && value <= param4 ? value : NaN;
       }
 
