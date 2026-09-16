@@ -347,7 +347,7 @@ package
          {
             return NaN;
          }
-         var coordinate:Number = Number(digits) / 10000;
+         var coordinate:Number = Number(digits) / 100000;
          if(!isFinite(coordinate) || coordinate > param3)
          {
             return NaN;
