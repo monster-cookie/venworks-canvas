@@ -9,6 +9,10 @@ String Property LargeMoviePath Auto Const Mandatory
 Int Property DescriptorVersion Auto Const Mandatory
 Bool Property ExpectedRegistration Auto Const Mandatory
 Float Property InitialDelaySeconds Auto Const Mandatory
+FormList Property BuffEffects Auto Const Mandatory
+FormList Property DebuffEffects Auto Const Mandatory
+String[] Property BuffLabels Auto Const Mandatory
+String[] Property DebuffLabels Auto Const Mandatory
 
 String ModuleName = "CanvasExamples:ExampleRegistrar"
 ; Retained for saved-script compatibility only; this flag is never consulted as a lock or scheduling gate.
@@ -25,7 +29,17 @@ String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
 Bool LocationEventRegistered = False
 Bool PlayerLoadEventRegistered = False
-Bool LocationRefreshPending = False
+Bool EffectRefreshPending = False
+Bool EffectForceRefresh = False
+Bool EffectChangedDuringPublication = False
+Int EffectSnapshotSequence = 0
+Int EffectPacketIndex = 0
+Int EffectRetryCount = 0
+Int LastActiveEffectCount = 0
+Float LastEffectSnapshotAt = 0.0
+String LastEffectSignature = ""
+String PendingEffectSignature = ""
+String[] EffectPackets
 
 ; Reports this packaged script's runtime quest binding only; does not register or request UI work.
 String Function ConsoleResolve() Global
@@ -135,12 +149,15 @@ Function LogConsoleExample(String functionName, String logMessage) Global
   Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasExamples:ExampleRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
 EndFunction
 
-; Bootstrap only: register bounded menu and player notifications without waiting or requesting UI work.
+; Bootstrap menu and player notifications and schedule the first bounded effect scan.
 Event OnInit()
-  LogUserInformational(ModuleName, "OnInit", "EVENT_TRIGGERED | Registering HUD menus and player events.")
+  LogUserInformational(ModuleName, "OnInit", "EVENT_TRIGGERED | Registering HUD menus and effect events.")
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
   EnsurePlayerEventRegistrations()
+  EnsureMagicEffectRegistrations()
+  RequestEffectRefresh(True)
+  ScheduleEffectPoll()
 EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
@@ -148,222 +165,46 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "EVENT_TRIGGERED | Menu=" + menuName + " | Opening=" + opening)
   If (opening)
     EnsurePlayerEventRegistrations()
+    EnsureMagicEffectRegistrations()
     Float delay = InitialDelaySeconds
     If (delay < 0.1)
       delay = 0.1
     EndIf
     StartTimer(delay, 1)
-    If (menuName == "HUDMenu")
-      LocationRefreshPending = True
-      StartTimer(delay + 1.5, 21)
-    EndIf
+    EffectForceRefresh = True
+    EffectRefreshPending = True
+    StartTimer(delay + 1.5, 31)
+    StartTimer(delay + 8.0, 34)
+    StartTimer(delay + 1.5, 33)
+    ScheduleEffectPoll()
   EndIf
 EndEvent
 
-; Publishes one Example-owned refresh notification when the player changes location; clock values still come from subscribed UI providers.
+; Saved registrations from pre-effect Example versions can still dispatch this event; location is no longer published.
 Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
-  LogUserInformational(ModuleName, "Actor.OnLocationChange", "EVENT_TRIGGERED | Sender=" + akSender + " | OldLocation=" + akOldLoc + " | NewLocation=" + akNewLoc)
-  LogPlayerLocationSources("Actor.OnLocationChange", akNewLoc)
-  PublishLocation(akNewLoc, "Actor.OnLocationChange")
 EndEvent
 
-; A saved game can load without changing location; publish the current player location and retain a HUD-open refresh if the auxiliary movie is not ready yet.
+; A saved game can load with effects already active; HUD opening provides a second path when this event is skipped.
 Event Actor.OnPlayerLoadGame(Actor akSender)
   LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
-  LogPlayerLocationSources("Actor.OnPlayerLoadGame", None)
-  LocationRefreshPending = True
-  PublishPlayerCurrentLocation("Actor.OnPlayerLoadGame")
+  EffectPackets = None
+  EffectPacketIndex = 0
+  EnsureMagicEffectRegistrations()
+  RequestEffectRefresh(True)
+  ScheduleEffectPoll()
 EndEvent
-
-; Compare the current player objects only at event entry; the HUD retry timers must not repeat this diagnostic.
-Function LogPlayerLocationSources(String source, Location eventLocation)
-  Actor player = Game.GetPlayer()
-  If (player == None)
-    LogUserWarning(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | Player=None")
-    Return
-  EndIf
-  Planet currentPlanet = player.GetCurrentPlanet()
-  Location planetLocation = None
-  If (currentPlanet != None)
-    planetLocation = currentPlanet.GetLocation()
-  EndIf
-  Location playerLocation = player.GetCurrentLocation()
-  LogUserInformational(ModuleName, "LogPlayerLocationSources", "LOCATION_SOURCE_SNAPSHOT | Source=" + source + " | EventLocation=" + eventLocation + " | PlayerLocation=" + playerLocation + " | Planet=" + currentPlanet + " | PlanetLocation=" + planetLocation + " | Cell=" + player.GetParentCell() + " | WorldSpace=" + player.GetWorldSpace())
-  If (eventLocation != None)
-    LogLocationParents(source, "EventLocation", eventLocation)
-  EndIf
-  If (playerLocation != None && playerLocation != eventLocation)
-    LogLocationParents(source, "PlayerLocation", playerLocation)
-  EndIf
-EndFunction
-
-; Records a bounded view of the location hierarchy at event entry so coordinate ownership can be diagnosed without timer noise.
-Function LogLocationParents(String source, String locationKind, Location currentLocation)
-  Location[] parentLocations = currentLocation.GetParentLocations()
-  Int parentCount = 0
-  If (parentLocations != None)
-    parentCount = parentLocations.Length
-  EndIf
-  LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_SNAPSHOT | Source=" + source + " | Kind=" + locationKind + " | Location=" + currentLocation + " | ParentCount=" + parentCount)
-  Int inspectionCount = parentCount
-  Int logLimit = 12
-  If (inspectionCount > logLimit)
-    inspectionCount = logLimit
-  EndIf
-  Int index = 0
-  While (index < inspectionCount)
-    Location parentLocation = parentLocations[index]
-    LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_ENTRY | Source=" + source + " | Kind=" + locationKind + " | Index=" + index + " | Parent=" + parentLocation + " | HasCoordinates=" + HasSurfaceCoordinateTokens(parentLocation))
-    index += 1
-  EndWhile
-  If (parentCount > inspectionCount)
-    LogUserInformational(ModuleName, "LogLocationParents", "LOCATION_PARENT_TRUNCATED | Source=" + source + " | Kind=" + locationKind + " | Logged=" + inspectionCount + " | ParentCount=" + parentCount)
-  EndIf
-EndFunction
-
-; Read the player's authoritative current location rather than relying on a prior change event from the save.
-String Function PublishPlayerCurrentLocation(String source)
-  Actor player = Game.GetPlayer()
-  If (player == None)
-    LogUserWarning(ModuleName, source, "LOCATION_EVENT_DROPPED_PLAYER_UNAVAILABLE")
-    Return "DEFERRED_PLAYER_UNAVAILABLE"
-  EndIf
-  Return PublishLocation(player.GetCurrentLocation(), source)
-EndFunction
-
-; Keep both player event paths on the same location packet, preferring the coordinate-bearing landing ancestor for PCM child locations.
-String Function PublishLocation(Location currentLocation, String source)
-  If (Registry == None)
-    LogUserWarning(ModuleName, source, "LOCATION_EVENT_DROPPED_REGISTRY_UNAVAILABLE")
-    Return "DEFERRED_REGISTRY_UNAVAILABLE"
-  EndIf
-  Location coordinateLocation = ResolveSurfaceCoordinateLocation(currentLocation)
-  Location publishedLocation = currentLocation
-  String coordinateSource = "UNAVAILABLE"
-  If (coordinateLocation != None)
-    publishedLocation = coordinateLocation
-    If (coordinateLocation == currentLocation)
-      coordinateSource = "CURRENT"
-    Else
-      coordinateSource = "PARENT"
-    EndIf
-  EndIf
-  LogUserInformational(ModuleName, "PublishLocation", "LOCATION_COORDINATE_RESOLUTION | Source=" + source + " | CoordinateSource=" + coordinateSource + " | CurrentLocation=" + currentLocation + " | PublishedLocation=" + publishedLocation)
-  String body = "location=none"
-  If (publishedLocation != None)
-    body = "location=" + publishedLocation
-  EndIf
-  Actor player = Game.GetPlayer()
-  Planet currentPlanet = None
-  If (player != None)
-    currentPlanet = player.GetCurrentPlanet()
-  EndIf
-  If (currentPlanet == None && currentLocation != None)
-    currentPlanet = currentLocation.GetCurrentPlanet()
-  EndIf
-  Planet cassiopeiaI = Game.GetFormFromFile(0x05E4E6, "Starfield.esm") as Planet
-  String planetTag = "OTHER"
-  If (currentPlanet != None && currentPlanet == cassiopeiaI)
-    planetTag = "CASSIOPEIA_I"
-  EndIf
-  body += "|planet=" + planetTag + "|gt=" + Utility.GetCurrentGameTime()
-  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.location.changed", body)
-  Registry.LogOperation(result)
-  LogUserInformational(ModuleName, "PublishLocation", "LOCATION_EVENT_RESULT | Source=" + source + " | Body=" + body + " | Status=" + result.Status)
-  Return result.Status
-EndFunction
-
-; Resolves the current location or its first coordinate-bearing ancestor without persisting a potentially stale landing site.
-Location Function ResolveSurfaceCoordinateLocation(Location currentLocation)
-  If (currentLocation == None)
-    Return None
-  EndIf
-  If (HasSurfaceCoordinateTokens(currentLocation))
-    Return currentLocation
-  EndIf
-  Location[] parentLocations = currentLocation.GetParentLocations()
-  If (parentLocations == None)
-    Return None
-  EndIf
-  Int inspectionCount = parentLocations.Length
-  Int inspectionLimit = 32
-  If (inspectionCount > inspectionLimit)
-    inspectionCount = inspectionLimit
-  EndIf
-  Int index = 0
-  While (index < inspectionCount)
-    Location parentLocation = parentLocations[index]
-    If (HasSurfaceCoordinateTokens(parentLocation))
-      Return parentLocation
-    EndIf
-    index += 1
-  EndWhile
-  Return None
-EndFunction
-
-; Requires both signed latitude and longitude markers; numeric range validation remains at the Scaleform consumer boundary.
-Bool Function HasSurfaceCoordinateTokens(Location candidateLocation)
-  If (candidateLocation == None)
-    Return False
-  EndIf
-  Int[] characters = Utility.SplitStringChars("" + candidateLocation)
-  If (characters == None || characters.Length < 6)
-    Return False
-  EndIf
-  Bool hasLatitude = False
-  Bool hasLongitude = False
-  Int index = 0
-  Int lastStart = characters.Length - 6
-  While (index <= lastStart && (!hasLatitude || !hasLongitude))
-    Int first = FoldAsciiCharacter(characters[index])
-    Int second = FoldAsciiCharacter(characters[index + 1])
-    Int third = FoldAsciiCharacter(characters[index + 2])
-    Bool signedDirection = IsSurfaceCoordinateDirection(characters, index + 3)
-    If (signedDirection && first == 108)
-      If (second == 97 && third == 116)
-        hasLatitude = True
-      ElseIf (second == 111 && third == 110)
-        hasLongitude = True
-      EndIf
-    EndIf
-    index += 1
-  EndWhile
-  Return hasLatitude && hasLongitude
-EndFunction
-
-; Accepts the case-insensitive POS or NEG suffix that follows a latitude or longitude marker.
-Bool Function IsSurfaceCoordinateDirection(Int[] characters, Int index)
-  Int first = FoldAsciiCharacter(characters[index])
-  Int second = FoldAsciiCharacter(characters[index + 1])
-  Int third = FoldAsciiCharacter(characters[index + 2])
-  Return (first == 112 && second == 111 && third == 115) || (first == 110 && second == 101 && third == 103)
-EndFunction
-
-; Normalizes an ASCII letter to lower case while leaving digits and punctuation unchanged.
-Int Function FoldAsciiCharacter(Int character)
-  If (character >= 65 && character <= 90)
-    Return character + 32
-  EndIf
-  Return character
-EndFunction
 
 ; Saved quests enter this path through their existing menu registration after a script update.
 Function EnsurePlayerEventRegistrations()
   Actor player = Game.GetPlayer()
   If (player == None)
-    LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "PLAYER_EVENT_REGISTRATION_DEFERRED | Player=None | Events=OnLocationChange,OnPlayerLoadGame")
+    LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "PLAYER_EVENT_REGISTRATION_DEFERRED | Player=None | Event=OnPlayerLoadGame")
     Return
   EndIf
-  If (!LocationEventRegistered)
-    Bool locationRegistrationAccepted = RegisterForRemoteEvent(player, "OnLocationChange")
-    LocationEventRegistered = locationRegistrationAccepted
-    If (locationRegistrationAccepted)
-      LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=true | Player=" + player)
-    Else
-      LogUserWarning(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_REGISTRATION_RESULT | Event=OnLocationChange | Accepted=false | Player=" + player)
-    EndIf
-  Else
-    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_ALREADY_FLAGGED | Event=OnLocationChange | Player=" + player)
+  If (LocationEventRegistered)
+    UnregisterForRemoteEvent(player, "OnLocationChange")
+    LocationEventRegistered = False
+    LogUserInformational(ModuleName, "EnsurePlayerEventRegistrations", "REMOTE_EVENT_UNREGISTERED | Event=OnLocationChange | Player=" + player)
   EndIf
   If (!PlayerLoadEventRegistered)
     Bool playerLoadRegistrationAccepted = RegisterForRemoteEvent(player, "OnPlayerLoadGame")
@@ -378,22 +219,183 @@ Function EnsurePlayerEventRegistrations()
   EndIf
 EndFunction
 
-; Each timer ID is an attempt number, so retry exhaustion needs no cross-stack mutable counter.
+; Registration, effect refresh, reconciliation, and packet publication use disjoint timer IDs.
 Event OnTimer(Int aiTimerID)
-  LogUserInformational(ModuleName, "OnTimer", "EVENT_TRIGGERED | TimerId=" + aiTimerID + " | LocationRefreshPending=" + LocationRefreshPending)
   If (aiTimerID >= 1 && aiTimerID <= 20)
     ProcessAttempt(aiTimerID)
-  ElseIf (aiTimerID >= 21 && aiTimerID <= 30 && LocationRefreshPending)
-    String status = PublishPlayerCurrentLocation("OnTimer")
-    If (status == "EVENT_SUBMITTED")
-      LocationRefreshPending = False
-    ElseIf ((IsDeferred(status) || status == "DEFERRED_PLAYER_UNAVAILABLE" || status == "EVENT_CANCELLED_ACTIVATION") && aiTimerID < 30)
-      StartTimer(1.0, aiTimerID + 1)
-    ElseIf (aiTimerID == 30)
-      LogUserWarning(ModuleName, "OnTimer", "LOCATION_REFRESH_RETRY_EXHAUSTED | Later HUD opening can retry.")
-    EndIf
+  ElseIf (aiTimerID == 31 && EffectRefreshPending)
+    EffectRefreshPending = False
+    PrepareEffectSnapshot()
+  ElseIf (aiTimerID == 32)
+    RequestEffectRefresh(False)
+    ScheduleEffectPoll()
+  ElseIf (aiTimerID == 33)
+    PublishNextEffectPacket()
+  ElseIf (aiTimerID == 34)
+    RequestEffectRefresh(True)
   EndIf
 EndEvent
+
+; Re-register after each one-shot apply notification, then scan after the effect can become active.
+Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
+  LogUserInformational(ModuleName, "OnMagicEffectApply", "EVENT_TRIGGERED | Target=" + akTarget + " | Effect=" + akEffect)
+  EnsureMagicEffectRegistrations()
+  RequestEffectRefresh(False)
+EndEvent
+
+; The FormList filters avoid unrelated apply events and can be extended by another mod at runtime.
+Function EnsureMagicEffectRegistrations()
+  Actor player = Game.GetPlayer()
+  If (player == None || BuffEffects == None || DebuffEffects == None)
+    LogUserWarning(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION_DEFERRED | Player or catalog unavailable.")
+    Return
+  EndIf
+  UnregisterForAllMagicEffectApplyEvents(player)
+  RegisterForMagicEffectApplyEvent(player, akEffectFilter=BuffEffects)
+  RegisterForMagicEffectApplyEvent(player, akEffectFilter=DebuffEffects)
+  LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATIONS | Buffs=" + BuffEffects.GetSize() + " | Debuffs=" + DebuffEffects.GetSize())
+EndFunction
+
+; Coalesces load, HUD-ready, and apply requests while preserving a requested full resend.
+Function RequestEffectRefresh(Bool forceSnapshot)
+  If (forceSnapshot)
+    EffectForceRefresh = True
+  EndIf
+  EffectRefreshPending = True
+  StartTimer(0.5, 31)
+EndFunction
+
+; A single low-rate timer reconciles expirations and cures that do not dispatch an apply event.
+Function ScheduleEffectPoll()
+  CancelTimer(32)
+  If (LastActiveEffectCount > 0)
+    StartTimer(20.0, 32)
+  Else
+    StartTimer(60.0, 32)
+  EndIf
+EndFunction
+
+; Builds an immutable batch from the configured catalogs; the UI commits only after every part arrives.
+Function PrepareEffectSnapshot()
+  If (Registry == None || BuffEffects == None || DebuffEffects == None)
+    LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_DEFERRED | Registry or catalog unavailable.")
+    Return
+  EndIf
+  If (EffectPackets != None && EffectPacketIndex < EffectPackets.Length)
+    EffectChangedDuringPublication = True
+    Return
+  EndIf
+  Actor player = Game.GetPlayer()
+  If (player == None)
+    LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_DEFERRED | Player unavailable.")
+    Return
+  EndIf
+  String[] entries = new String[0]
+  entries = AppendActiveEffects(entries, player, BuffEffects, BuffLabels, "B")
+  Int buffCount = entries.Length
+  entries = AppendActiveEffects(entries, player, DebuffEffects, DebuffLabels, "D")
+  Int debuffCount = entries.Length - buffCount
+  LastActiveEffectCount = entries.Length
+  String signature = ""
+  Int index = 0
+  While (index < entries.Length)
+    signature += entries[index] + ";"
+    index += 1
+  EndWhile
+  Float now = Utility.GetCurrentRealTime()
+  If (!EffectForceRefresh && signature == LastEffectSignature && now >= LastEffectSnapshotAt && now - LastEffectSnapshotAt < 60.0)
+    Return
+  EndIf
+  EffectForceRefresh = False
+  EffectSnapshotSequence += 1
+  If (EffectSnapshotSequence > 1000000000)
+    EffectSnapshotSequence = 1
+  EndIf
+  String sequence = EffectSnapshotSequence as String
+  EffectPackets = new String[0]
+  EffectPackets.Add("S|" + sequence + "|" + buffCount + "|" + debuffCount)
+  String part = ""
+  Int partCount = 0
+  index = 0
+  While (index < entries.Length)
+    String item = entries[index] + ";"
+    String candidate = "P|" + sequence + "|" + partCount + "|" + part + item
+    If (Registry.GetCharacterCount(candidate) > 350 && part != "")
+      EffectPackets.Add("P|" + sequence + "|" + partCount + "|" + part)
+      partCount += 1
+      part = item
+    Else
+      part += item
+    EndIf
+    index += 1
+  EndWhile
+  If (part != "")
+    EffectPackets.Add("P|" + sequence + "|" + partCount + "|" + part)
+    partCount += 1
+  EndIf
+  EffectPackets.Add("C|" + sequence + "|" + partCount)
+  PendingEffectSignature = signature
+  EffectPacketIndex = 0
+  EffectRetryCount = 0
+  LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_QUEUED | Sequence=" + sequence + " | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Parts=" + partCount)
+  StartTimer(0.1, 33)
+EndFunction
+
+; Reads each configured MagicEffect once and falls back to an explicit identifier for a mod-added unlabeled entry.
+String[] Function AppendActiveEffects(String[] entries, Actor player, FormList catalog, String[] labels, String category)
+  Int index = 0
+  Int catalogSize = catalog.GetSize()
+  While (index < catalogSize)
+    MagicEffect effect = catalog.GetAt(index) as MagicEffect
+    If (effect != None && player.HasMagicEffect(effect))
+      String label = "EFFECT " + effect.GetFormID()
+      If (labels != None && index < labels.Length && labels[index] != "")
+        label = labels[index]
+      EndIf
+      entries.Add(category + ":" + label)
+    EndIf
+    index += 1
+  EndWhile
+  Return entries
+EndFunction
+
+; The registry rate-limits to one lossy native submission per second, so each timer sends at most one part.
+Function PublishNextEffectPacket()
+  If (Registry == None || EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
+    Return
+  EndIf
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", EffectPackets[EffectPacketIndex])
+  If (result.Status == "EVENT_SUBMITTED")
+    EffectPacketIndex += 1
+    EffectRetryCount = 0
+    If (EffectPacketIndex < EffectPackets.Length)
+      StartTimer(1.1, 33)
+    Else
+      LastEffectSignature = PendingEffectSignature
+      LastEffectSnapshotAt = Utility.GetCurrentRealTime()
+      EffectPackets = None
+      If (EffectChangedDuringPublication)
+        EffectChangedDuringPublication = False
+        RequestEffectRefresh(False)
+      EndIf
+    EndIf
+  ElseIf (result.Status == "REJECTED_EVENT_INACTIVE")
+    LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_WAITING_FOR_HUD | Packet=" + EffectPacketIndex)
+  ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
+    EffectRetryCount += 1
+    If (EffectRetryCount <= 20)
+      StartTimer(1.0, 33)
+    Else
+      LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_RETRY_EXHAUSTED | Status=" + result.Status)
+      EffectPackets = None
+      EffectForceRefresh = True
+    EndIf
+  Else
+    LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
+    EffectPackets = None
+    EffectForceRefresh = True
+  EndIf
+EndFunction
 
 ; Compatibility entry point. A positive result acknowledges only the expected Papyrus result, never UI readiness.
 Bool Function RegisterWithRetry()
