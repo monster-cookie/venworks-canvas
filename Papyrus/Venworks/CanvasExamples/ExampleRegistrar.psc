@@ -37,6 +37,7 @@ Int EffectPacketIndex = 0
 Int EffectRetryCount = 0
 Int LastActiveEffectCount = 0
 Float LastEffectSnapshotAt = 0.0
+Float LastHudOpenAt = 0.0
 String LastEffectSignature = ""
 String PendingEffectSignature = ""
 String[] EffectPackets
@@ -164,6 +165,7 @@ EndEvent
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   LogUserInformational(ModuleName, "OnMenuOpenCloseEvent", "EVENT_TRIGGERED | Menu=" + menuName + " | Opening=" + opening)
   If (opening)
+    LastHudOpenAt = Utility.GetCurrentRealTime()
     EnsurePlayerEventRegistrations()
     EnsureMagicEffectRegistrations()
     Float delay = InitialDelaySeconds
@@ -364,7 +366,20 @@ Function PublishNextEffectPacket()
   If (Registry == None || EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
     Return
   EndIf
-  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", EffectPackets[EffectPacketIndex])
+  String packet = EffectPackets[EffectPacketIndex]
+  String packetKind = "PART"
+  If (EffectPacketIndex == 0)
+    packetKind = "START"
+  ElseIf (EffectPacketIndex == EffectPackets.Length - 1)
+    packetKind = "COMMIT"
+  EndIf
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", packet)
+  Float elapsed = -1.0
+  Float now = Utility.GetCurrentRealTime()
+  If (LastHudOpenAt > 0.0 && now >= LastHudOpenAt)
+    elapsed = now - LastHudOpenAt
+  EndIf
+  LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_PACKET_ATTEMPT | Sequence=" + EffectSnapshotSequence + " | Kind=" + packetKind + " | Index=" + EffectPacketIndex + "/" + EffectPackets.Length + " | Length=" + Registry.GetCharacterCount(packet) + " | Status=" + result.Status + " | SinceHudOpen=" + elapsed)
   If (result.Status == "EVENT_SUBMITTED")
     EffectPacketIndex += 1
     EffectRetryCount = 0

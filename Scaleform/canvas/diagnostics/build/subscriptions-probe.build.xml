@@ -15,6 +15,7 @@
     <token>SUBSCRIPTIONS-PROBE-TEST-ONLY</token>
     <token>CanvasSubscriptions</token>
     <token>SHARED REPLAY FANOUT</token>
+    <token>EVENT DROP DIAGNOSTICS</token>
     <token>REQUEST PREFLIGHT</token>
     <token>SUBSCRIBE ROLLBACK</token>
     <token>UNSUBSCRIBE RECOVERY</token>

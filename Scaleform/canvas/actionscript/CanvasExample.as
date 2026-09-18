@@ -40,6 +40,9 @@ package
       private var pendingBuffCount:int = 0;
       private var pendingDebuffCount:int = 0;
       private var pendingParts:Array = [];
+      private var receivedPacketCount:int = 0;
+      private var receivedPartCount:int = 0;
+      private var packetStatus:String = "";
 
       public function CanvasExample()
       {
@@ -153,18 +156,25 @@ package
 
       private function acceptEffectPacket(body:String) : void
       {
+         this.receivedPacketCount++;
          if(body == null || body.length > 400)
          {
+            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED SIZE";
+            this.renderEffects();
             return;
          }
          var fields:Array = body.split("|");
          if(fields.length < 3)
          {
+            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED FORMAT";
+            this.renderEffects();
             return;
          }
          var sequence:int = this.parseUnsigned(fields[1],1,1000000000);
          if(sequence < 0)
          {
+            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED SEQUENCE";
+            this.renderEffects();
             return;
          }
          if(fields[0] == "S" && fields.length == 4)
@@ -173,12 +183,16 @@ package
             var debuffCount:int = this.parseUnsigned(fields[3],0,2000);
             if(buffCount < 0 || debuffCount < 0 || buffCount + debuffCount > 2000)
             {
+               this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED COUNTS";
+               this.renderEffects();
                return;
             }
             this.pendingSequence = sequence;
             this.pendingBuffCount = buffCount;
             this.pendingDebuffCount = debuffCount;
             this.pendingParts = [];
+            this.receivedPartCount = 0;
+            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " START";
          }
          else if(fields[0] == "P" && fields.length == 4 && sequence == this.pendingSequence)
          {
@@ -186,6 +200,16 @@ package
             if(partIndex >= 0 && this.pendingParts[partIndex] === undefined)
             {
                this.pendingParts[partIndex] = fields[3];
+               this.receivedPartCount++;
+               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " PARTS " + this.receivedPartCount;
+            }
+            else if(partIndex >= 0)
+            {
+               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " DUPLICATE PART " + partIndex;
+            }
+            else
+            {
+               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " REJECTED PART INDEX";
             }
          }
          else if(fields[0] == "C" && fields.length == 3 && sequence == this.pendingSequence)
@@ -195,9 +219,18 @@ package
             {
                this.commitEffectSnapshot(partCount);
             }
+            else
+            {
+               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " REJECTED COMMIT";
+            }
             this.pendingSequence = -1;
             this.pendingParts = [];
          }
+         else
+         {
+            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + (fields[0] == "P" ? " PART WITHOUT START" : fields[0] == "C" ? " COMMIT WITHOUT START" : " REJECTED ORDER");
+         }
+         this.renderEffects();
       }
 
       private function commitEffectSnapshot(partCount:int) : void
@@ -208,6 +241,7 @@ package
          {
             if(this.pendingParts[partIndex] === undefined)
             {
+               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " MISSING PART " + partIndex;
                return;
             }
             var encoded:Array = String(this.pendingParts[partIndex]).split(";");
@@ -220,6 +254,7 @@ package
                }
                if(item.length < 3 || item.charAt(1) != ":")
                {
+                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM";
                   return;
                }
                if(item.charAt(0) == "B")
@@ -232,19 +267,21 @@ package
                }
                else
                {
+                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED TYPE";
                   return;
                }
             }
          }
          if(buffs.length != this.pendingBuffCount || debuffs.length != this.pendingDebuffCount)
          {
+            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " COUNT MISMATCH";
             return;
          }
          this.activeBuffs = buffs;
          this.activeDebuffs = debuffs;
          this.hasSnapshot = true;
          this.currentPage = 0;
-         this.renderEffects();
+         this.packetStatus = "";
       }
 
       private function advancePage(event:TimerEvent) : void
@@ -275,13 +312,13 @@ package
          this.panel.graphics.endFill();
          if(!this.hasSnapshot)
          {
-            this.setText(this.summaryField,"ACTIVE EFFECTS",this.clockFormat);
-            this.setText(this.pageField,"WAITING FOR DATA-LAYER SNAPSHOT",this.clockFormat);
+            this.setText(this.summaryField,"ACTIVE EFFECTS | RX " + this.receivedPacketCount,this.clockFormat);
+            this.setText(this.pageField,this.packetStatus == "" ? "WAITING FOR DATA-LAYER SNAPSHOT" : this.packetStatus,this.clockFormat);
          }
          else
          {
-            this.setText(this.summaryField,"BUFFS " + this.activeBuffs.length + "   DEBUFFS " + this.activeDebuffs.length,this.clockFormat);
-            this.setText(this.pageField,total == 0 ? "NO ACTIVE EFFECTS" : "PAGE " + (this.currentPage + 1) + " / " + pageCount,this.clockFormat);
+            this.setText(this.summaryField,"BUFFS " + this.activeBuffs.length + "   DEBUFFS " + this.activeDebuffs.length + " | RX " + this.receivedPacketCount,this.clockFormat);
+            this.setText(this.pageField,this.packetStatus != "" ? this.packetStatus : total == 0 ? "NO ACTIVE EFFECTS" : "PAGE " + (this.currentPage + 1) + " / " + pageCount,this.clockFormat);
          }
          for(var index:int = 0; index < PAGE_SIZE; index++)
          {

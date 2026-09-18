@@ -673,6 +673,10 @@ package
                {
                   this.consumerSubscriptions.publishEvent(String(canvasEvent.topic),String(canvasEvent.body));
                }
+               else
+               {
+                  this.appendDiagnostic("CANVAS EVENT REJECTED | SUBSCRIPTIONS UNAVAILABLE | " + canvasEvent.topic);
+               }
             }
             catch(eventCommandError:*)
             {

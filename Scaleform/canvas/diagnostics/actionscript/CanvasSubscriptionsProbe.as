@@ -15,6 +15,7 @@ package
       {
          this.marker = new CanvasDiagnosticMarker(this,"VWCANVAS SUBSCRIPTIONS PROBE",65280);
          this.runCase("SHARED REPLAY FANOUT",this.testSharedReplayFanout);
+         this.runCase("EVENT DROP DIAGNOSTICS",this.testEventDropDiagnostics);
          this.runCase("REQUEST PREFLIGHT",this.testRequestPreflight);
          this.runCase("SUBSCRIBE ROLLBACK",this.testSubscribeRollback);
          this.runCase("UNSUBSCRIBE RECOVERY",this.testUnsubscribeRecovery);
@@ -121,6 +122,31 @@ package
             "HudJetpackData","HUDStarbornPowersData","FavoritesData","ControlMapData","EnvironmentEffectsData","PersonalEffectsData",
             "StarmapSystemBodyInfoProvider","HudCompassData","HudCrosshairData","HUDStealthData","HUDVehicleData","HUDOpacityData","PlayerData"
          ],[],"over-limit channel request");
+      }
+
+      private function testEventDropDiagnostics() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var context:CanvasSubscriptionsTestContext = new CanvasSubscriptionsTestContext();
+         var registry:Object = this.createRegistry(manager,context);
+         var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         var loader:Object = {};
+         this.addConsumer(registry,context,"effect-consumer",bridge,loader,1,[],["venworks.canvas.test"]);
+         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         this.assertTrue(bridge.eventTopics.length == 0,"event escaped readiness");
+         this.assertTrue(context.diagnostics.length == 1 && String(context.diagnostics[0]).indexOf("EVENT REJECTED | NOT_READY") == 0,"not-ready drop was not reported once");
+         registry["markReady"]("effect-consumer");
+         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         this.assertTrue(bridge.eventTopics.length == 1,"ready member missed event");
+         registry["publishEvent"]("venworks.canvas.other","S|1|0|0");
+         this.assertTrue(context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | NO_TOPIC_MEMBER") == 0,"missing topic membership was not reported");
+         context.deactivate("effect-consumer");
+         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         this.assertTrue(bridge.eventTopics.length == 1,"stale member received event");
+         this.assertTrue(context.diagnostics.length == 3 && String(context.diagnostics[2]).indexOf("EVENT REJECTED | STALE_MEMBERSHIP") == 0,"stale membership drop was not reported");
+         registry["removeConsumer"]("effect-consumer");
+         registry["dispose"]();
       }
 
       private function testSubscribeRollback() : void
@@ -305,7 +331,7 @@ package
          {
             return;
          }
-         var lines:Array = ["PASS " + this.passed + " / 5 | FAIL " + this.failures.length];
+         var lines:Array = ["PASS " + this.passed + " / 6 | FAIL " + this.failures.length];
          var index:int = 0;
          while(index < this.failures.length && index < 3)
          {

@@ -10,6 +10,8 @@ package
 
       private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
 
+      private static const MAX_EVENT_DROP_REPORTS:int = 32;
+
       private var dataManager:Object;
 
       private var currentConsumer:Function;
@@ -21,6 +23,10 @@ package
       private var channelMembers:Object = {};
 
       private var topicMembers:Object = {};
+
+      private var eventDropReported:Object = {};
+
+      private var eventDropReportCount:int = 0;
 
       private var channelCallbacks:Object = {};
 
@@ -144,8 +150,9 @@ package
             return;
          }
          var registered:Array = this.topicMembers[param1] as Array;
-         if(registered == null)
+         if(registered == null || registered.length == 0)
          {
+            this.reportEventDrop("NO_TOPIC_MEMBER",param1,"");
             return;
          }
          var recipients:Array = registered.concat();
@@ -251,6 +258,8 @@ package
          this.memberships = {};
          this.channelMembers = {};
          this.topicMembers = {};
+         this.eventDropReported = {};
+         this.eventDropReportCount = 0;
          this.channelCallbacks = {};
          this.channelSubscribed = {};
          this.channelCleanupCallbacks = {};
@@ -440,8 +449,14 @@ package
 
       private function deliverEvent(param1:Object, param2:String, param3:String) : void
       {
-         if(!this.isMembershipCurrent(param1) || param1.ready !== true)
+         if(!this.isMembershipCurrent(param1))
          {
+            this.reportEventDrop("STALE_MEMBERSHIP",param2,param1 == null ? "" : String(param1.consumerId));
+            return;
+         }
+         if(param1.ready !== true)
+         {
+            this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
             return;
          }
          try
@@ -452,6 +467,18 @@ package
          {
             this.report("EVENT CALLBACK ERROR | " + param1.consumerId + " | " + param2);
          }
+      }
+
+      private function reportEventDrop(reason:String, topic:String, consumerId:String) : void
+      {
+         var key:String = reason + "|" + topic + "|" + consumerId;
+         if(this.eventDropReported[key] === true || this.eventDropReportCount >= MAX_EVENT_DROP_REPORTS)
+         {
+            return;
+         }
+         this.eventDropReported[key] = true;
+         this.eventDropReportCount++;
+         this.report("EVENT REJECTED | " + reason + " | " + topic + (consumerId == "" ? "" : " | " + consumerId));
       }
 
       private function isMembershipCurrent(param1:Object) : Boolean
