@@ -51,9 +51,7 @@ package
 
       private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
 
-      private static const MAX_EVENT_BODY_CHARACTERS:int = 400;
-
-      private static const MAX_CANVAS_EVENT_CHARACTERS:int = 512;
+      private static const MAX_CANVAS_EVENT_CHARACTERS:int = 4096;
 
       private static const PROVIDER:String = "CustomAlertsData";
 
@@ -744,7 +742,7 @@ package
          }
          var topic:Object = this.readFrame(packet,cursor,MAX_EVENT_TOPIC_CHARACTERS);
          cursor = int(topic.next);
-         var body:Object = this.readFrame(packet,cursor,MAX_EVENT_BODY_CHARACTERS);
+         var body:Object = this.readFrame(packet,cursor,MAX_CANVAS_EVENT_CHARACTERS);
          cursor = int(body.next);
          if(cursor != packet.length)
          {

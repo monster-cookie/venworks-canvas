@@ -25,7 +25,7 @@
       'StarmapSystemBodyInfoProvider', 'HudCompassData', 'HudCrosshairData', 'HUDStealthData', 'HUDVehicleData', 'HUDOpacityData'
     )
   }
-  CanvasEventTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 2; Wire = 'canvas.event' }; Version = 1; MaxTopicCharacters = 96; MaxBodyCharacters = 400; MaxCharacters = 512; MinimumIntervalSeconds = 1; Target = 'PlayerHud' }
+  CanvasEventTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 2; Wire = 'canvas.event' }; Version = 1; MaxTopicCharacters = 96; MaxCharacters = 4096; MinimumIntervalSeconds = 1; Target = 'PlayerHud' }
   ParserCases = @(
     @{ Id = 'delimiter-display-name'; Expected = 'accepted' }
     @{ Id = 'maximum-valid-descriptor'; Expected = 'accepted' }

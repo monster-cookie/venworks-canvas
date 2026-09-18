@@ -157,7 +157,7 @@ package
       private function acceptEffectPacket(body:String) : void
       {
          this.receivedPacketCount++;
-         if(body == null || body.length > 400)
+         if(body == null)
          {
             this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED SIZE";
             this.renderEffects();

@@ -322,7 +322,7 @@ Function PrepareEffectSnapshot()
   While (index < entries.Length)
     String item = entries[index] + ";"
     String candidate = "P|" + sequence + "|" + partCount + "|" + part + item
-    If (Registry.GetCharacterCount(candidate) > 350 && part != "")
+    If (Registry.GetCharacterCount(Registry.BuildCanvasEventPacket("venworks.canvas.example.effects.snapshot", candidate)) > 4096 && part != "")
       EffectPackets.Add("P|" + sequence + "|" + partCount + "|" + part)
       partCount += 1
       part = item
