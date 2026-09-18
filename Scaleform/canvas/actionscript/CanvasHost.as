@@ -193,6 +193,7 @@ package
             this.ownerLabel = this.resolveOwnerUrl(param1);
             this.hostKind = context.hostKind;
             this.displayMode = context.displayMode;
+            this.chronomarkLayout = context.layout;
             this.createDiagnostics();
             this.htmlEngine = new CanvasHtmlEngine();
             this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
@@ -230,6 +231,7 @@ package
 
       public function reapplyVanillaPlacements(param1:Object = null) : void
       {
+         var rightEdge:Number = 0;
          if(param1 != null)
          {
             try
@@ -246,7 +248,8 @@ package
          }
          if(this.diagnostics != null)
          {
-            this.diagnostics.x = 24;
+            rightEdge = this.chronomarkLayout != null ? Number(this.chronomarkLayout.visibleX) + Number(this.chronomarkLayout.visibleWidth) - Number(this.chronomarkLayout.safeX) : (stage != null ? stage.stageWidth : 1920);
+            this.diagnostics.x = Math.max(24,rightEdge - this.diagnostics.width - 24);
             this.diagnostics.y = 24;
          }
       }
