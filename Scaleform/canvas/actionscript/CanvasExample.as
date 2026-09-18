@@ -258,13 +258,29 @@ package
                   this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM";
                   return;
                }
+               var label:String = item.substring(2);
+               if(label.charAt(0) == "#")
+               {
+                  var identityEnd:int = label.indexOf(":");
+                  if(identityEnd < 2 || !/^-?[0-9]+$/.test(label.substring(1,identityEnd)))
+                  {
+                     this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM ID";
+                     return;
+                  }
+                  label = label.substring(identityEnd + 1);
+               }
+               if(label == "")
+               {
+                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM LABEL";
+                  return;
+               }
                if(item.charAt(0).toUpperCase() == "B")
                {
-                  buffs.push(item.substring(2));
+                  buffs.push(label);
                }
                else if(item.charAt(0).toUpperCase() == "D")
                {
-                  debuffs.push(item.substring(2));
+                  debuffs.push(label);
                }
                else
                {

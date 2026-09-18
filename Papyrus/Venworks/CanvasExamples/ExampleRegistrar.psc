@@ -321,8 +321,9 @@ Function PrepareEffectSnapshot()
     signature += entries[index] + ";"
     index += 1
   EndWhile
+  Bool entriesChanged = signature != LastEffectSignature
   Float now = Utility.GetCurrentRealTime()
-  If (!EffectForceRefresh && signature == LastEffectSignature && now >= LastEffectSnapshotAt && now - LastEffectSnapshotAt < 60.0)
+  If (!EffectForceRefresh && !entriesChanged && now >= LastEffectSnapshotAt && now - LastEffectSnapshotAt < 60.0)
     EffectSnapshotBuilding = False
     If (EffectChangedDuringPublication)
       EffectChangedDuringPublication = False
@@ -372,10 +373,17 @@ Function PrepareEffectSnapshot()
   EffectPackets = packets
   EffectSnapshotBuilding = False
   LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_QUEUED | Sequence=" + sequence + " | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Parts=" + partCount)
+  If (entriesChanged)
+    index = 0
+    While (index < entries.Length)
+      LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_ACTIVE | Sequence=" + sequence + " | Entry=" + entries[index])
+      index += 1
+    EndWhile
+  EndIf
   StartTimer(0.1, 33)
 EndFunction
 
-; Reads each configured MagicEffect once and falls back to an explicit identifier for a mod-added unlabeled entry.
+; Retains each configured MagicEffect identity in the snapshot while leaving the display label separate.
 String[] Function AppendActiveEffects(String[] entries, Actor player, FormList catalog, String[] labels, String category)
   Int index = 0
   Int catalogSize = catalog.GetSize()
@@ -386,7 +394,7 @@ String[] Function AppendActiveEffects(String[] entries, Actor player, FormList c
       If (labels != None && index < labels.Length && labels[index] != "")
         label = labels[index]
       EndIf
-      entries.Add(category + ":" + label)
+      entries.Add(category + ":#" + effect.GetFormID() + ":" + label)
     EndIf
     index += 1
   EndWhile
