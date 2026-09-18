@@ -57,7 +57,6 @@ Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
 Int MaxCanvasEventTopicCharacters = 96
-Int MaxCanvasEventPacketCharacters = 4096
 
 ; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
 String Function ConsoleResolve() Global
@@ -365,7 +364,8 @@ OperationResult Function TryPublishCanvasEvent(String eventTopic, String body)
     Return result
   EndIf
   result.Packet = BuildCanvasEventPacket(eventTopic, body)
-  If (!IsPrintableAscii(result.Packet, 1, MaxCanvasEventPacketCharacters))
+  ; Keep this limit in compiled code: saved Registry instances may retain an older field value.
+  If (!IsPrintableAscii(result.Packet, 1, 4096))
     result.Status = "REJECTED_EVENT_PACKET"
     result.Packet = ""
     Return result
@@ -723,7 +723,7 @@ String Function GetCanvasEventRejectionReason(String eventTopic, String body)
     Return ""
   EndIf
   ; The complete framed packet is bounded separately; no additional body-only cap is needed.
-  Return GetPrintableAsciiRejectionReason(body, 0, MaxCanvasEventPacketCharacters, "body")
+  Return GetPrintableAsciiRejectionReason(body, 0, 4096, "body")
 EndFunction
 
 ; Requires at least two dot-separated ASCII segments with alphanumeric boundaries and rejects Canvas-owned topics.

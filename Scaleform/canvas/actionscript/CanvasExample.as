@@ -177,7 +177,8 @@ package
             this.renderEffects();
             return;
          }
-         if(fields[0] == "S" && fields.length == 4)
+         var kind:String = String(fields[0]).toUpperCase();
+         if(kind == "S" && fields.length == 4)
          {
             var buffCount:int = this.parseUnsigned(fields[2],0,2000);
             var debuffCount:int = this.parseUnsigned(fields[3],0,2000);
@@ -194,7 +195,7 @@ package
             this.receivedPartCount = 0;
             this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " START";
          }
-         else if(fields[0] == "P" && fields.length == 4 && sequence == this.pendingSequence)
+         else if(kind == "P" && fields.length == 4 && sequence == this.pendingSequence)
          {
             var partIndex:int = this.parseUnsigned(fields[2],0,2000);
             if(partIndex >= 0 && this.pendingParts[partIndex] === undefined)
@@ -212,7 +213,7 @@ package
                this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " REJECTED PART INDEX";
             }
          }
-         else if(fields[0] == "C" && fields.length == 3 && sequence == this.pendingSequence)
+         else if(kind == "C" && fields.length == 3 && sequence == this.pendingSequence)
          {
             var partCount:int = this.parseUnsigned(fields[2],0,2000);
             if(partCount >= 0)
@@ -228,7 +229,7 @@ package
          }
          else
          {
-            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + (fields[0] == "P" ? " PART WITHOUT START" : fields[0] == "C" ? " COMMIT WITHOUT START" : " REJECTED ORDER");
+            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + (kind == "P" ? " PART WITHOUT START" : kind == "C" ? " COMMIT WITHOUT START" : " REJECTED " + kind + "/" + fields.length);
          }
          this.renderEffects();
       }
@@ -257,11 +258,11 @@ package
                   this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM";
                   return;
                }
-               if(item.charAt(0) == "B")
+               if(item.charAt(0).toUpperCase() == "B")
                {
                   buffs.push(item.substring(2));
                }
-               else if(item.charAt(0) == "D")
+               else if(item.charAt(0).toUpperCase() == "D")
                {
                   debuffs.push(item.substring(2));
                }

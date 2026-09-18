@@ -18,6 +18,7 @@ String ModuleName = "CanvasExamples:ExampleRegistrar"
 ; Retained for saved-script compatibility only; this flag is never consulted as a lock or scheduling gate.
 Bool RegistrationAttemptActive = False
 Guard AttemptGuard ProtectsFunctionLogic
+Guard EffectSnapshotGuard ProtectsFunctionLogic
 String ActiveDisplayName
 String ActiveNormalMovieUrl
 String ActiveLargeMovieUrl
@@ -32,6 +33,7 @@ Bool PlayerLoadEventRegistered = False
 Bool EffectRefreshPending = False
 Bool EffectForceRefresh = False
 Bool EffectChangedDuringPublication = False
+Bool EffectSnapshotBuilding = False
 Int EffectSnapshotSequence = 0
 Int EffectPacketIndex = 0
 Int EffectRetryCount = 0
@@ -191,6 +193,8 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
   EffectPackets = None
   EffectPacketIndex = 0
+  EffectSnapshotBuilding = False
+  EffectChangedDuringPublication = False
   EnsureMagicEffectRegistrations()
   RequestEffectRefresh(True)
   ScheduleEffectPoll()
@@ -283,13 +287,26 @@ Function PrepareEffectSnapshot()
     LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_DEFERRED | Registry or catalog unavailable.")
     Return
   EndIf
-  If (EffectPackets != None && EffectPacketIndex < EffectPackets.Length)
-    EffectChangedDuringPublication = True
-    Return
-  EndIf
   Actor player = Game.GetPlayer()
   If (player == None)
     LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_DEFERRED | Player unavailable.")
+    Return
+  EndIf
+  Bool snapshotClaimed = False
+  Bool snapshotGuardAcquired = False
+  TryLockGuard EffectSnapshotGuard
+    snapshotGuardAcquired = True
+    If (EffectSnapshotBuilding || (EffectPackets != None && EffectPacketIndex < EffectPackets.Length))
+      EffectChangedDuringPublication = True
+    Else
+      EffectSnapshotBuilding = True
+      snapshotClaimed = True
+    EndIf
+  EndTryLockGuard
+  If (!snapshotClaimed)
+    If (!snapshotGuardAcquired)
+      RequestEffectRefresh(False)
+    EndIf
     Return
   EndIf
   String[] entries = new String[0]
@@ -306,6 +323,11 @@ Function PrepareEffectSnapshot()
   EndWhile
   Float now = Utility.GetCurrentRealTime()
   If (!EffectForceRefresh && signature == LastEffectSignature && now >= LastEffectSnapshotAt && now - LastEffectSnapshotAt < 60.0)
+    EffectSnapshotBuilding = False
+    If (EffectChangedDuringPublication)
+      EffectChangedDuringPublication = False
+      RequestEffectRefresh(False)
+    EndIf
     Return
   EndIf
   EffectForceRefresh = False
@@ -314,8 +336,9 @@ Function PrepareEffectSnapshot()
     EffectSnapshotSequence = 1
   EndIf
   String sequence = EffectSnapshotSequence as String
-  EffectPackets = new String[0]
-  EffectPackets.Add("S|" + sequence + "|" + buffCount + "|" + debuffCount)
+  ; Build off to the side so a timer cannot publish or clear a partially assembled batch.
+  String[] packets = new String[0]
+  packets.Add("S|" + sequence + "|" + buffCount + "|" + debuffCount)
   String part = ""
   Int partCount = 0
   index = 0
@@ -323,7 +346,7 @@ Function PrepareEffectSnapshot()
     String item = entries[index] + ";"
     String candidate = "P|" + sequence + "|" + partCount + "|" + part + item
     If (Registry.GetCharacterCount(Registry.BuildCanvasEventPacket("venworks.canvas.example.effects.snapshot", candidate)) > 4096 && part != "")
-      EffectPackets.Add("P|" + sequence + "|" + partCount + "|" + part)
+      packets.Add("P|" + sequence + "|" + partCount + "|" + part)
       partCount += 1
       part = item
     Else
@@ -332,13 +355,22 @@ Function PrepareEffectSnapshot()
     index += 1
   EndWhile
   If (part != "")
-    EffectPackets.Add("P|" + sequence + "|" + partCount + "|" + part)
+    packets.Add("P|" + sequence + "|" + partCount + "|" + part)
     partCount += 1
   EndIf
-  EffectPackets.Add("C|" + sequence + "|" + partCount)
+  packets.Add("C|" + sequence + "|" + partCount)
+  If (EffectPackets != None && EffectPacketIndex < EffectPackets.Length)
+    EffectChangedDuringPublication = True
+    EffectSnapshotBuilding = False
+    Return
+  EndIf
+  ; Publish the array last, after every field used by the send timer is ready.
+  EffectPackets = None
   PendingEffectSignature = signature
   EffectPacketIndex = 0
   EffectRetryCount = 0
+  EffectPackets = packets
+  EffectSnapshotBuilding = False
   LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_QUEUED | Sequence=" + sequence + " | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Parts=" + partCount)
   StartTimer(0.1, 33)
 EndFunction
@@ -366,11 +398,14 @@ Function PublishNextEffectPacket()
   If (Registry == None || EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
     Return
   EndIf
-  String packet = EffectPackets[EffectPacketIndex]
+  String[] packets = EffectPackets
+  Int packetIndex = EffectPacketIndex
+  Int sequence = EffectSnapshotSequence
+  String packet = packets[packetIndex]
   String packetKind = "PART"
-  If (EffectPacketIndex == 0)
+  If (packetIndex == 0)
     packetKind = "START"
-  ElseIf (EffectPacketIndex == EffectPackets.Length - 1)
+  ElseIf (packetIndex == packets.Length - 1)
     packetKind = "COMMIT"
   EndIf
   OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", packet)
@@ -379,7 +414,10 @@ Function PublishNextEffectPacket()
   If (LastHudOpenAt > 0.0 && now >= LastHudOpenAt)
     elapsed = now - LastHudOpenAt
   EndIf
-  LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_PACKET_ATTEMPT | Sequence=" + EffectSnapshotSequence + " | Kind=" + packetKind + " | Index=" + EffectPacketIndex + "/" + EffectPackets.Length + " | Length=" + Registry.GetCharacterCount(packet) + " | Status=" + result.Status + " | SinceHudOpen=" + elapsed)
+  LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_PACKET_ATTEMPT | Sequence=" + sequence + " | Kind=" + packetKind + " | Index=" + packetIndex + "/" + packets.Length + " | Length=" + Registry.GetCharacterCount(packet) + " | Status=" + result.Status + " | SinceHudOpen=" + elapsed)
+  If (EffectPackets == None || EffectSnapshotSequence != sequence || EffectPacketIndex != packetIndex)
+    Return
+  EndIf
   If (result.Status == "EVENT_SUBMITTED")
     EffectPacketIndex += 1
     EffectRetryCount = 0
