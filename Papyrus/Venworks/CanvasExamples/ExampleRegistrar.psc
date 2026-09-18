@@ -383,22 +383,75 @@ Function PrepareEffectSnapshot()
   StartTimer(0.1, 33)
 EndFunction
 
-; Retains each configured MagicEffect identity in the snapshot while leaving the display label separate.
+; Only cataloged statuses are published. Multiple active sustenance modifiers describe one player-facing condition.
 String[] Function AppendActiveEffects(String[] entries, Actor player, FormList catalog, String[] labels, String category)
   Int index = 0
   Int catalogSize = catalog.GetSize()
   While (index < catalogSize)
     MagicEffect effect = catalog.GetAt(index) as MagicEffect
     If (effect != None && player.HasMagicEffect(effect))
-      String label = "EFFECT " + effect.GetFormID()
-      If (labels != None && index < labels.Length && labels[index] != "")
+      String label = ""
+      Bool grouped = False
+      If (IsSustenanceFoodEffect(effect))
+        label = "Malnourished"
+        grouped = True
+      ElseIf (IsSustenanceDrinkEffect(effect))
+        label = "Dehydrated"
+        grouped = True
+      ElseIf (labels != None && labels.Length == catalogSize && index < labels.Length && labels[index] != "")
         label = labels[index]
+      Else
+        ; Existing saves can retain the old broad VMAD label arrays after the FormLists are updated.
+        label = ResolveKnownBuffLabel(effect)
       EndIf
-      entries.Add(category + ":#" + effect.GetFormID() + ":" + label)
+      If (label == "")
+        label = "EFFECT " + effect.GetFormID()
+      EndIf
+      String entry = category + ":#" + effect.GetFormID() + ":" + label
+      If (grouped)
+        entry = category + ":" + label
+      EndIf
+      If (!grouped || !ContainsEffectEntry(entries, entry))
+        entries.Add(entry)
+      EndIf
     EndIf
     index += 1
   EndWhile
   Return entries
+EndFunction
+
+String Function ResolveKnownBuffLabel(MagicEffect effect)
+  If (effect == Game.GetFormFromFile(0x05C527, "Starfield.esm"))
+    Return "Well Rested"
+  ElseIf (effect == Game.GetFormFromFile(0x0738B0, "Starfield.esm"))
+    Return "Companion Affinity Increases Faster"
+  ElseIf (effect == Game.GetFormFromFile(0x0738B1, "Starfield.esm"))
+    Return "Improved Research Crit Chance"
+  ElseIf (effect == Game.GetFormFromFile(0x0738B3, "Starfield.esm"))
+    Return "Reduced Research Cost"
+  ElseIf (effect == Game.GetFormFromFile(0x2D88C4, "Starfield.esm"))
+    Return "Fortify Persuasion"
+  EndIf
+  Return ""
+EndFunction
+
+Bool Function ContainsEffectEntry(String[] entries, String candidate)
+  Int index = 0
+  While (index < entries.Length)
+    If (entries[index] == candidate)
+      Return True
+    EndIf
+    index += 1
+  EndWhile
+  Return False
+EndFunction
+
+Bool Function IsSustenanceFoodEffect(MagicEffect effect)
+  Return effect == Game.GetFormFromFile(0x31326D, "Starfield.esm") || effect == Game.GetFormFromFile(0x31326E, "Starfield.esm") || effect == Game.GetFormFromFile(0x31326F, "Starfield.esm")
+EndFunction
+
+Bool Function IsSustenanceDrinkEffect(MagicEffect effect)
+  Return effect == Game.GetFormFromFile(0x31327B, "Starfield.esm") || effect == Game.GetFormFromFile(0x31329B, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EDFDA, "Starfield.esm")
 EndFunction
 
 ; The registry rate-limits to one lossy native submission per second, so each timer sends at most one part.
