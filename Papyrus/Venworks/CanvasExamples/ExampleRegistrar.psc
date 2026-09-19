@@ -309,6 +309,7 @@ Function PrepareEffectSnapshot()
     EndIf
     Return
   EndIf
+  LogEnvironmentalStatusSources(player)
   String[] entries = new String[0]
   entries = AppendActiveEffects(entries, player, BuffEffects, BuffLabels, "B")
   Int buffCount = entries.Length
@@ -382,6 +383,26 @@ Function PrepareEffectSnapshot()
     EndWhile
   EndIf
   StartTimer(0.1, 33)
+EndFunction
+
+; Compare the named status spells with their constituent effects before expanding the catalog.
+; The latter can be shared by unrelated hazards and must not be treated as a status by themselves.
+Function LogEnvironmentalStatusSources(Actor player)
+  Spell rainSpell = Game.GetFormFromFile(0x281ECB, "Starfield.esm") as Spell
+  Spell corrosiveSpell = Game.GetFormFromFile(0x08CB51, "Starfield.esm") as Spell
+  Spell toxicGasSpell = Game.GetFormFromFile(0x245B6B, "Starfield.esm") as Spell
+  MagicEffect rainWarning = Game.GetFormFromFile(0x131E77, "Starfield.esm") as MagicEffect
+  MagicEffect corrosiveSoak = Game.GetFormFromFile(0x08CB47, "Starfield.esm") as MagicEffect
+  MagicEffect toxicGasSoak = Game.GetFormFromFile(0x245B6E, "Starfield.esm") as MagicEffect
+  MagicEffect toxicGasDamage = Game.GetFormFromFile(0x245B6F, "Starfield.esm") as MagicEffect
+  Bool rainSpellActive = rainSpell != None && player.HasSpell(rainSpell)
+  Bool corrosiveSpellActive = corrosiveSpell != None && player.HasSpell(corrosiveSpell)
+  Bool toxicGasSpellActive = toxicGasSpell != None && player.HasSpell(toxicGasSpell)
+  Bool rainWarningActive = rainWarning != None && player.HasMagicEffect(rainWarning)
+  Bool corrosiveSoakActive = corrosiveSoak != None && player.HasMagicEffect(corrosiveSoak)
+  Bool toxicGasSoakActive = toxicGasSoak != None && player.HasMagicEffect(toxicGasSoak)
+  Bool toxicGasDamageActive = toxicGasDamage != None && player.HasMagicEffect(toxicGasDamage)
+  LogUserInformational(ModuleName, "LogEnvironmentalStatusSources", "STATUS_SOURCE_PROBE | RainSpell=" + rainSpellActive + " | RainWarning=" + rainWarningActive + " | CorrosiveSpell=" + corrosiveSpellActive + " | CorrosiveSoak=" + corrosiveSoakActive + " | ToxicGasSpell=" + toxicGasSpellActive + " | ToxicGasSoak=" + toxicGasSoakActive + " | ToxicGasDamage=" + toxicGasDamageActive)
 EndFunction
 
 ; SQ_ENV owns injuries and infections separately from the magic-effect catalog. Its spells
