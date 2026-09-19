@@ -313,6 +313,7 @@ Function PrepareEffectSnapshot()
   entries = AppendActiveEffects(entries, player, BuffEffects, BuffLabels, "B")
   Int buffCount = entries.Length
   entries = AppendActiveEffects(entries, player, DebuffEffects, DebuffLabels, "D")
+  entries = AppendActiveAfflictions(entries, player)
   Int debuffCount = entries.Length - buffCount
   LastActiveEffectCount = entries.Length
   String signature = ""
@@ -381,6 +382,90 @@ Function PrepareEffectSnapshot()
     EndWhile
   EndIf
   StartTimer(0.1, 33)
+EndFunction
+
+; SQ_ENV owns injuries and infections separately from the magic-effect catalog. Its spells
+; are the status-menu source of truth even when a console-applied spell did not set Active.
+String[] Function AppendActiveAfflictions(String[] entries, Actor player)
+  SQ_ENV_AfflictionsScript afflictionQuest = Game.GetFormFromFile(0x00248D20, "Starfield.esm") as SQ_ENV_AfflictionsScript
+  If (afflictionQuest == None || afflictionQuest.AfflictionData == None)
+    Return entries
+  EndIf
+  ENV_AfflictionScript[] afflictions = afflictionQuest.AfflictionData
+  Int index = 0
+  While (index < afflictions.Length)
+    ENV_AfflictionScript affliction = afflictions[index]
+    If (affliction != None && affliction.AfflictionSpellList != None)
+      FormList spellList = affliction.AfflictionSpellList
+      Int spellIndex = 0
+      Bool hasAffliction = False
+      While (spellIndex < spellList.GetSize() && !hasAffliction)
+        Spell rankSpell = spellList.GetAt(spellIndex) as Spell
+        If (rankSpell != None && player.HasSpell(rankSpell))
+          hasAffliction = True
+        EndIf
+        spellIndex += 1
+      EndWhile
+      If (hasAffliction)
+        String label = ResolveAfflictionLabel(affliction.ID)
+        entries.Add("D:#" + affliction.GetFormID() + ":" + label)
+      EndIf
+    EndIf
+    index += 1
+  EndWhile
+  Return entries
+EndFunction
+
+; The activator has no Papyrus display-name getter, so keep vanilla IDs and labels paired here.
+String Function ResolveAfflictionLabel(String afflictionId)
+  If (afflictionId == "BoneInfection")
+    Return "Bone Infection"
+  ElseIf (afflictionId == "BrainInfection")
+    Return "Brain Infection"
+  ElseIf (afflictionId == "IntestinalInfection")
+    Return "Intestinal Infection"
+  ElseIf (afflictionId == "LungInfection")
+    Return "Lung Infection"
+  ElseIf (afflictionId == "TissueInfection")
+    Return "Tissue Infection"
+  ElseIf (afflictionId == "BrainInjury")
+    Return "Brain Injury"
+  ElseIf (afflictionId == "Burns")
+    Return "Burns"
+  ElseIf (afflictionId == "Concussion")
+    Return "Concussion"
+  ElseIf (afflictionId == "Contusions")
+    Return "Contusions"
+  ElseIf (afflictionId == "DislocatedLimb")
+    Return "Dislocated Limb"
+  ElseIf (afflictionId == "FracturedLimb")
+    Return "Fractured Limb"
+  ElseIf (afflictionId == "FracturedSkull")
+    Return "Fractured Skull"
+  ElseIf (afflictionId == "Frostbite")
+    Return "Frostbite"
+  ElseIf (afflictionId == "Heatstroke")
+    Return "Heatstroke"
+  ElseIf (afflictionId == "Hernia")
+    Return "Hernia"
+  ElseIf (afflictionId == "Hypothermia")
+    Return "Hypothermia"
+  ElseIf (afflictionId == "Lacerations")
+    Return "Lacerations"
+  ElseIf (afflictionId == "LungDamage")
+    Return "Lung Damage"
+  ElseIf (afflictionId == "Poisoning")
+    Return "Poisoning"
+  ElseIf (afflictionId == "PunctureWounds")
+    Return "Puncture Wounds"
+  ElseIf (afflictionId == "RadiationPoisoning")
+    Return "Radiation Poisoning"
+  ElseIf (afflictionId == "Sprain")
+    Return "Sprain"
+  ElseIf (afflictionId == "TornMuscle")
+    Return "Torn Muscle"
+  EndIf
+  Return afflictionId
 EndFunction
 
 ; Only cataloged statuses are published. Multiple active sustenance modifiers describe one player-facing condition.
