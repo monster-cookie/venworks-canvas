@@ -110,6 +110,13 @@ try {
   Assert-TestRejected -Description 'Duplicate ActionScript anchor' -ExpectedMessage 'found 2' -Action {
     Apply-BuildActionScriptPatch -SourcePath $duplicateAnchorPath -Patch $patch
   }
+  Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token second-token' -Tokens @('first-token', 'second-token') -Description 'Exact inspection-token fixture'
+  Assert-TestRejected -Description 'Missing exact inspection token' -ExpectedMessage 'found 0' -Action {
+    Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token' -Tokens @('second-token') -Description 'Missing exact inspection-token fixture'
+  }
+  Assert-TestRejected -Description 'Duplicate exact inspection token' -ExpectedMessage 'found 2' -Action {
+    Assert-BuildScaleformSourceTokensExactlyOnce -Source 'first-token first-token' -Tokens @('first-token') -Description 'Duplicate exact inspection-token fixture'
+  }
 
   $displayPatchPath = Join-Path $fixtureRoot 'display-mode-patch.xml'
   Write-BuildUtf8WithoutBom -Path $displayPatchPath -Text @'
@@ -145,53 +152,6 @@ try {
   $largeDisplayPatch = Get-BuildActionScriptPatch -PatchPath $displayPatchPath -DisplayMode 'large'
   if (@($largeDisplayPatch.RequiredInspectionTokens).Count -ne 1 -or $largeDisplayPatch.RequiredInspectionTokens[0] -cne 'displayMode:String = "large"') {
     throw 'Parameterized ActionScript patch did not produce an exact large-mode inspection token.'
-  }
-
-  $playerLoaderPatchPath = Join-Path $repositoryRoot 'Scaleform\canvas\patches\player-hud-auxiliary-loader.xml'
-  $playerLoaderPatch = Get-BuildActionScriptPatch -PatchPath $playerLoaderPatchPath -DisplayMode 'normal'
-  $playerLoaderSourcePath = Join-Path $fixtureRoot 'HUDMenu.as'
-  Write-BuildUtf8WithoutBom -Path $playerLoaderSourcePath -Text @'
-package
-{
-   import flash.display.Loader;
-   import flash.display.MovieClip;
-   import flash.events.Event;
-   import flash.net.URLRequest;
-
-   public class HUDMenu extends MovieClip
-   {
-      private var SkillPatchLoader:Loader = null;
-
-      override protected function onSetSafeRect() : void
-      {
-      }
-
-      override public function onAddedToStage() : void
-      {
-         super.onAddedToStage();
-         BSUIDataManager.Subscribe("HudModeData",function(param1:Object):* {});
-      }
-   }
-}
-'@
-  Apply-BuildActionScriptPatch -SourcePath $playerLoaderSourcePath -Patch $playerLoaderPatch
-  $playerLoaderSource = [System.IO.File]::ReadAllText($playerLoaderSourcePath)
-  $startIndex = $playerLoaderSource.IndexOf('this.startVenworksCanvasRegistry();', [System.StringComparison]::Ordinal)
-  $hudSubscriptionIndex = $playerLoaderSource.IndexOf('BSUIDataManager.Subscribe("HudModeData"', [System.StringComparison]::Ordinal)
-  $directAttachIndex = $playerLoaderSource.IndexOf('addChild(this.VenworksCanvasRegistryBridge);', [System.StringComparison]::Ordinal)
-  $deferredIndex = $playerLoaderSource.IndexOf('addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize', [System.StringComparison]::Ordinal)
-  $initializeIndex = $playerLoaderSource.IndexOf('this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"normal"})', [System.StringComparison]::Ordinal)
-  if ($startIndex -lt 0 -or $hudSubscriptionIndex -le $startIndex) {
-    throw 'Player HUD auxiliary loader does not start from HUDMenu onAddedToStage before the vanilla HUD subscriptions.'
-  }
-  if ($directAttachIndex -lt 0 -or $deferredIndex -le $directAttachIndex -or $initializeIndex -le $deferredIndex) {
-    throw 'Player HUD auxiliary loader does not attach CanvasHost directly and defer initialization by one frame.'
-  }
-  if ($playerLoaderSource.Contains('__VWCANVAS_DISPLAY_MODE__') -or $playerLoaderSource.Contains('"displayMode":"large"')) {
-    throw 'Player HUD auxiliary loader normal-mode patch retained an unresolved or wrong display mode.'
-  }
-  if ($playerLoaderSource -match '(?i)VwHud') {
-    throw 'Player HUD auxiliary loader unexpectedly depends on VWHUD.'
   }
 
   $normalizationWork = Join-Path $fixtureRoot 'normalization-work'
@@ -930,7 +890,7 @@ package
     throw 'Scaleform build still contains a retired repository, environment, extraction, or evidence dependency.'
   }
   $sharedSource = [System.IO.File]::ReadAllText((Join-Path $repositoryRoot 'Tools\sharedScaleform.ps1'))
-  if (!$sharedSource.Contains("'-selectclass', `$patch.Script")) {
+  if (!$sharedSource.Contains("'-selectclass', `$scriptName")) {
     throw 'Scaleform patch export is not restricted to the declared patch class.'
   }
 

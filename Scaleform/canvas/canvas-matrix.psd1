@@ -1,7 +1,13 @@
 @{
   Version = 1
-  WatchPresentation = 'DisabledAfterSubscriptionsRestored'
-  WatchBuild = 'build/player-hud-watch.build.psd1'
+  WatchPresentation = 'CanvasOwnedChronomarkWithNativeWatchStructurallyAbsent'
+  Chronomark = @{
+    Ownership = 'CanvasProceduralVectorAndText'
+    Providers = @('LocalEnvironmentData', 'LocalEnvData_Frequent', 'PlayerData', 'PlayerFrequentData', 'HudCompassData', 'PersonalEffectsData', 'PersonalAlertsData', 'EnvironmentEffectsData', 'EnvironmentAlertsData', 'HUDOpacityData')
+    VisibilitySource = 'HUDMenu.HudModeData.BottomLeftGroup'
+    CustomAlerts = 'DataLayerOnlyNotRendered'
+    Capacities = @{ GeneralAndHazardMarkers = 48; MissionMarkers = 16; EnemyMarkers = 16; PersonalEffects = 5; EnvironmentEffects = 4; AlertTransactions = 16 }
+  }
   Protocol = 'VWCANVAS_REGISTRY/1'
   TestMode = 'ExplicitConsumerUiLoad'
   UiLoadResult = 'UI_LOAD_QUEUED'
@@ -19,7 +25,7 @@
       'StarmapSystemBodyInfoProvider', 'HudCompassData', 'HudCrosshairData', 'HUDStealthData', 'HUDVehicleData', 'HUDOpacityData'
     )
   }
-  CanvasEventTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 2; Wire = 'canvas.event' }; Version = 1; MaxTopicCharacters = 96; MaxBodyCharacters = 400; MaxCharacters = 512; MinimumIntervalSeconds = 1; Target = 'PlayerHud' }
+  CanvasEventTransport = @{ EventHeader = @{ Selector = 1; Wire = 'VWC_EVT/1|' }; PacketType = @{ Selector = 2; Wire = 'canvas.event' }; Version = 1; MaxTopicCharacters = 96; MaxCharacters = 4096; MinimumIntervalSeconds = 1; Target = 'PlayerHud' }
   ParserCases = @(
     @{ Id = 'delimiter-display-name'; Expected = 'accepted' }
     @{ Id = 'maximum-valid-descriptor'; Expected = 'accepted' }
@@ -40,11 +46,11 @@
   RegistrationRuntimeCases = @(
     @{ Id = 'pc-console-echo'; Packages = @('Canvas'); Expected = 'Core Utilities:Console.ConsoleEcho visibly echoes the supplied label with the RM> prefix under the PC debug-logging configuration; ConsoleOutputTests.Run exercises ordered block, blank, None/empty, and rejected LF entries. CR/CRLF VM coverage remains pending. These diagnostics are not needed for UI loading.' }
     @{ Id = 'pc-console-result-output'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Each Canvas ConsoleResolve/action CGF prints exactly one final VWCANVAS-labeled status matching its Papyrus return/log path, including resolution failure. Busy remains inconclusive. Resolution and check-only commands do not use transport; Example ConsolePing explicitly makes one named-event publication attempt.' }
-    @{ Id = 'pc-example-ping-pong'; Packages = @('Canvas', 'Example'); Expected = 'After Example is visibly ready and UI loads settle, ExampleRegistrar.ConsolePing publishes venworks.canvas.example.ping through Registry. Record the actual receipt and require visible lowercase pong after closing the console; EVENT_SUBMITTED alone is insufficient. Subsequent PlayerData updates do not erase pong. No constructor, readiness or provider update displays pong before the first received ping.' }
-    @{ Id = 'pc-example-ping-pong-reload'; Packages = @('Canvas', 'Example'); Expected = 'After a received ping displays pong, unload/reopen the HUD. The newly loaded Example has no pong until another ping is received. A new explicit ConsolePing invocation restores pong after delivery; there is no automatic event replay or retry.' }
+    @{ Id = 'pc-example-location-clock'; Packages = @('Canvas', 'Example'); Expected = 'The upper-left Example clock renders universal time, local planetary time, and the time remaining until the next sunrise or sunset from LocalEnvironmentData and LocalEnvData_Frequent. With no valid surface coordinates it shows only those three rows in a compact panel; with coordinates it shows latitude/longitude and the orbital estimate as two additional rows. A player OnLocationChange publishes the location identity, including encoded surface latitude and longitude when present, through venworks.canvas.example.location.changed as a bounded refresh notification without using CustomAlertsData.' }
+    @{ Id = 'pc-example-location-clock-reload'; Packages = @('Canvas', 'Example'); Expected = 'After HUD unload/reopen and save reload, the Example clock recreates exactly once with current provider values. The registrar registers player OnLocationChange and OnPlayerLoadGame notifications, publishes Game.GetPlayer().GetCurrentLocation() on load, and refreshes the current location after HUD opening so an early lossy event need not reach an unloaded consumer.' }
     @{ Id = 'pc-console-resolution'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'ComponentGalleryRegistrar.ConsoleResolve invoked with cgf logs VWCANVAS_CONSOLE/1 CONSOLE_BEGIN and CONSOLE_RESOLVED with its runtime form; missing form or script binding stops without forwarding work. No external load-order prefix or quest title is used.' }
     @{ Id = 'pc-console-host-recovery'; Packages = @('Canvas'); Expected = 'Registry.ConsoleResolve changes no registry state; explicit ConsoleEnsureStorage restores callbacks on an affected host-only save and logs REGISTRY_READY or a distinct inconclusive busy result without resetting valid records.' }
-    @{ Id = 'pc-registration-host-only'; Packages = @('Canvas'); Expected = 'Host logs zero consumers and submits no load packets; all vanilla Watch subscriptions are restored before its presentation is detached and gameplay remains responsive.' }
+    @{ Id = 'pc-registration-host-only'; Packages = @('Canvas'); Expected = 'Host logs zero consumers and submits no load packets; the native Watch symbol is absent while the Canvas-owned Chronomark receives ordinary HUD providers, and gameplay remains responsive.' }
     @{ Id = 'pc-registration-example'; Packages = @('Canvas', 'Example'); Expected = 'Example logs REGISTRATION_ACK then a separate UI_LOAD_QUEUED/UI_LOAD_SUBMITTED; readiness requires the visible panel.' }
     @{ Id = 'pc-registration-two-consumers'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Example and Component Gallery each acknowledge registration and validate RequestUiLoad ownership; registry count is two.' }
     @{ Id = 'pc-component-gallery-cheatsheet-rendering'; Packages = @('Canvas', 'ComponentGallery'); Expected = 'Selecting CANVAS COMPONENT GALLERY in the Pause Menu loads index.html without linking Canvas HTML, CSS, or rendering classes into the Gallery. CanvasHost reports HTML PARSED with exactly six resources, then HTML RENDERED and READY. The visible Gallery shows grouped rows with Tag, Syntax, and Rendered Result columns; each syntax cell shows literal markup while each result cell is a separate Canvas-rendered display tree. Local PNG, local SVG, and inline SVG path examples render distinctly.' }
@@ -62,8 +68,8 @@
   )
   # Player HUD cases are the current PC gate; ship/pilot and package-removal cases remain later controlled acceptance.
   RuntimeCases = @(
-    @{ Id = 'pc-archive-host-only'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST, WATCH SUBSCRIPTIONS RESTORED and WATCH PRESENTATION DISABLED, submits no consumer load command and remains responsive. Provider subscription is not callback or delivery proof.' }
-    @{ Id = 'pc-archive-example'; Packages = @('Canvas', 'Example'); Expected = 'Player HUD visibly reports Example READY from its namespaced normal movie.' }
+    @{ Id = 'pc-archive-host-only'; Packages = @('Canvas'); Expected = 'Player HUD identifies EXPLICIT UI LOAD TEST and CANVAS CHRONOMARK READY, submits no consumer load command, contains no native Watch instance, and remains responsive. Provider subscription is not callback or delivery proof.' }
+    @{ Id = 'pc-archive-example'; Packages = @('Canvas', 'Example'); Expected = 'Player HUD visibly renders the namespaced Example clock in the upper-left with readable Bethesda-font glyphs. At a coordinate-less outpost or after a load without coordinates, the compact panel shows universal time, local time, and the time-only solar estimate without LAT/LON or ORBIT EST placeholders. Fast travel to a coordinate-bearing landing site restores all five rows; returning to the outpost restores the compact three-row layout without stale coordinates. Repeat across HUD reopen, save/load, and normal/large variants.' }
     @{ Id = 'pc-archive-two-consumers'; Packages = @('Canvas', 'Example', 'ComponentGallery'); Expected = 'Player HUD visibly reports both independently registered consumers READY with no static slot.' }
     @{ Id = 'pc-archive-reversed-consumer-order'; Packages = @('Canvas', 'ComponentGallery', 'Example'); Expected = 'Both consumers register regardless of consumer load order; Host remains their explicit master.' }
     @{ Id = 'pc-archive-remove-component-gallery'; Packages = @('Canvas', 'Example'); Expected = 'After saving with both consumers, removing the Component Gallery package, and loading the save, the registry prunes Component Gallery and reports only Example.' }

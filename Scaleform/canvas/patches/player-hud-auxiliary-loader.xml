@@ -1,9 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <actionScriptPatch name="vwcanvas-player-hud-auxiliary-loader" version="1" script="HUDMenu">
   <validation>
+    <idempotenceTokens>
+      <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
+      <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()})]]></token>
+      <token><![CDATA[private function disposeVenworksCanvasRegistry() : void]]></token>
+    </idempotenceTokens>
+    <exactInspectionTokens>
+      <token><![CDATA[private var VenworksCanvasRegistryLoader:Loader = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryBridge:MovieClip = null;]]></token>
+      <token><![CDATA[private var VenworksCanvasRegistryDisposed:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.startVenworksCanvasRegistry();]]></token>
+      <token><![CDATA[private function startVenworksCanvasRegistry() : void]]></token>
+      <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
+      <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{]]></token>
+      <token><![CDATA[private function disposeVenworksCanvasRegistry() : void]]></token>
+    </exactInspectionTokens>
     <requiredSourceTokens>
       <token><![CDATA[new URLRequest("venworkscui.swf")]]></token>
-      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__"})]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()})]]></token>
+      <token><![CDATA[public function getVenworksCanvasDataManager() : Object]]></token>
+      <token><![CDATA[public function getVenworksCanvasHudLayout() : Object]]></token>
+      <token><![CDATA[public function playVenworksCanvasSound(param1:String) : Boolean]]></token>
+      <token><![CDATA[GlobalFunc.PlayMenuSound(param1)]]></token>
+      <token><![CDATA[private var VenworksCanvasBottomLeftVisible:Boolean = false;]]></token>
+      <token><![CDATA[VenworksCanvasBottomLeftVisible = Boolean(param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible);]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](this.VenworksCanvasBottomLeftVisible);]]></token>
+      <token><![CDATA[private var VenworksCanvasHudOpacity:Number = 1;]]></token>
+      <token><![CDATA[this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;]]></token>
+      <token><![CDATA[VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;]]></token>
       <token><![CDATA[this.VenworksCanvasRegistryBridge["dispose"]()]]></token>
       <token><![CDATA[addChild(this.VenworksCanvasRegistryBridge)]]></token>
       <token><![CDATA[removeChild(this.VenworksCanvasRegistryBridge)]]></token>
@@ -19,8 +55,42 @@
       <token><![CDATA[initialize]]></token>
       <token><![CDATA[dispose]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
+      <token><![CDATA[getVenworksCanvasDataManager]]></token>
+      <token><![CDATA[getVenworksCanvasHudLayout]]></token>
+      <token><![CDATA[playVenworksCanvasSound]]></token>
+      <token><![CDATA[VOC_Player_O2_Min]]></token>
+      <token><![CDATA[VenworksCanvasBottomLeftVisible]]></token>
+      <token><![CDATA[updateVanillaHudModeVisibility]]></token>
+      <token><![CDATA[VenworksCanvasHudOpacity]]></token>
+      <token><![CDATA[VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;]]></token>
     </requiredInspectionTokens>
+    <forbiddenInspectionTokens>
+      <token>BottomLeftGroup_mc</token>
+    </forbiddenInspectionTokens>
   </validation>
+  <exactRemovals>
+    <removal><![CDATA[      public var __animFactory_BottomLeftGroup_mcaf1:AnimatorFactory3D;]]></removal>
+    <removal><![CDATA[      public var __animArray_BottomLeftGroup_mcaf1:Array;]]></removal>
+    <removal><![CDATA[      public var ____motion_BottomLeftGroup_mcaf1_mat3DVec__:Vector.<Number>;]]></removal>
+    <removal><![CDATA[      public var ____motion_BottomLeftGroup_mcaf1_matArray__:Array;]]></removal>
+    <removal><![CDATA[      public var __motion_BottomLeftGroup_mcaf1:MotionBase;]]></removal>
+    <removal><![CDATA[      public var BottomLeftGroup_mc:MovieClip;]]></removal>
+    <removal><![CDATA[         GlobalFunc.LockToSafeRect(this.BottomLeftGroup_mc,"BL",SafeX,SafeY,true);]]></removal>
+    <removal><![CDATA[               BottomLeftGroup_mc.visible = param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible;]]></removal>
+  </exactRemovals>
+  <rangeReplacements>
+    <replacement>
+      <startAnchor><![CDATA[         if(this.__animFactory_BottomLeftGroup_mcaf1 == null)]]></startAnchor>
+      <endAnchor><![CDATA[      public function __setPerspectiveProjection_(param1:Event) : void]]></endAnchor>
+      <expectedSpanSha256>
+        <hash>211BFDC5E748A9671968A588A650ADEFB90B54E69A6E8AA3B3D8AD3B55D5832F</hash>
+        <hash>67EBEB089CF483EBC54D43DCBCDBD2235B7EB637B506D2C533F10668BC0DD1F2</hash>
+      </expectedSpanSha256>
+      <content><![CDATA[      }
+
+]]></content>
+    </replacement>
+  </rangeReplacements>
   <insertions>
     <insertion position="after"><anchor><![CDATA[   import flash.events.Event;]]></anchor><content><![CDATA[
    import flash.events.IOErrorEvent;
@@ -31,10 +101,73 @@
 
       private var VenworksCanvasRegistryBridge:MovieClip = null;
 
-      private var VenworksCanvasRegistryDisposed:Boolean = false;]]></content></insertion>
+      private var VenworksCanvasRegistryDisposed:Boolean = false;
+
+      private var VenworksCanvasBottomLeftVisible:Boolean = false;
+
+      private var VenworksCanvasHudOpacity:Number = 1;]]></content></insertion>
     <insertion position="after"><anchor><![CDATA[         super.onAddedToStage();]]></anchor><content><![CDATA[
          this.startVenworksCanvasRegistry();]]></content></insertion>
-    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      private function startVenworksCanvasRegistry() : void
+    <insertion position="before"><anchor><![CDATA[      override protected function onSetSafeRect() : void]]></anchor><content><![CDATA[      public function getVenworksCanvasDataManager() : Object
+      {
+         return BSUIDataManager;
+      }
+
+      public function getVenworksCanvasHudLayout() : Object
+      {
+         var visibleRect:Object = Extensions.visibleRect;
+         return {
+            "visibleX":Number(visibleRect.x),
+            "visibleY":Number(visibleRect.y),
+            "visibleWidth":Number(visibleRect.width),
+            "visibleHeight":Number(visibleRect.height),
+            "safeX":Number(SafeX),
+            "safeY":Number(SafeY),
+            "ownerAppliesOpacity":true
+         };
+      }
+
+      public function playVenworksCanvasSound(param1:String) : Boolean
+      {
+         switch(param1)
+         {
+            case "VOC_Player_O2_Min":
+            case "VOC_Player_CO2_Cleared":
+            case "VOC_Player_CO2_Max":
+            case "UIAfflictionPainWarningScreenOn":
+            case "UIAfflictionPainWarningScreenOff":
+            case "UIHazardRadiationWarningScreen":
+            case "UIHazardThermalWarningScreen":
+            case "UIHazardAirborneWarningScreen":
+            case "UIHazardCorrosiveWarningScreen":
+            case "UIHazardSuitSoakRestore_WarningScreen":
+            case "UIHazardDamagePermanent":
+            case "UIHazardRadiationWarningIcon":
+            case "UIHazardThermalWarningIcon":
+            case "UIHazardAirborneWarningIcon":
+            case "UIHazardCorrosiveWarningIcon":
+            case "UIHazardSuitSoakRestore_Icon":
+               GlobalFunc.PlayMenuSound(param1);
+               return true;
+         }
+         return false;
+      }
+
+      private function refreshVenworksCanvasLayout() : void
+      {
+         if(!this.VenworksCanvasRegistryDisposed && this.VenworksCanvasRegistryBridge != null && "reapplyVanillaPlacements" in this.VenworksCanvasRegistryBridge)
+         {
+            try
+            {
+               this.VenworksCanvasRegistryBridge["reapplyVanillaPlacements"](this.getVenworksCanvasHudLayout());
+            }
+            catch(venworksCanvasLayoutError:*)
+            {
+            }
+         }
+      }
+
+      private function startVenworksCanvasRegistry() : void
       {
          if(this.VenworksCanvasRegistryLoader != null || this.VenworksCanvasRegistryDisposed)
          {
@@ -97,6 +230,7 @@
             {
                addChild(this.VenworksCanvasRegistryBridge);
             }
+            this.VenworksCanvasRegistryBridge.alpha = this.VenworksCanvasHudOpacity;
             addEventListener(Event.ENTER_FRAME,this.onVenworksCanvasRegistryDeferredInitialize,false,0,true);
          }
          catch(venworksCanvasCompleteError:Error)
@@ -115,10 +249,15 @@
          }
          try
          {
-            if(this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__"}) !== true)
+            if(this.VenworksCanvasRegistryBridge["initialize"](this,{"protocol":"VWCANVAS_HOST/1","hostKind":"player","displayMode":"__VWCANVAS_DISPLAY_MODE__","layout":this.getVenworksCanvasHudLayout()}) !== true)
             {
                throw new Error("Canvas registry auxiliary rejected host initialization");
             }
+            if(!("updateVanillaHudModeVisibility" in this.VenworksCanvasRegistryBridge))
+            {
+               throw new Error("Canvas registry auxiliary does not expose HUD mode visibility");
+            }
+            this.VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](this.VenworksCanvasBottomLeftVisible);
          }
          catch(venworksCanvasInitError:*)
          {
@@ -192,5 +331,26 @@
       }
 
 ]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[               TopCenterGroup_mc.visible = param1.data.ModeVisibilityA[HUDUtils.TOP_CENTER_GROUP].bVisible;]]></anchor><content><![CDATA[
+               VenworksCanvasBottomLeftVisible = Boolean(param1.data.ModeVisibilityA[HUDUtils.BOTTOM_LEFT_GROUP].bVisible);
+               if(VenworksCanvasRegistryBridge != null && "updateVanillaHudModeVisibility" in VenworksCanvasRegistryBridge)
+               {
+                  try
+                  {
+                     VenworksCanvasRegistryBridge["updateVanillaHudModeVisibility"](VenworksCanvasBottomLeftVisible);
+                  }
+                  catch(venworksCanvasHudModeError:*)
+                  {
+                  }
+               }]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[            var _loc3_:MovieClip = null;]]></anchor><content><![CDATA[
+            var venworksCanvasOpacity:Number = Number(param1.data.fHUDOpacity);
+            VenworksCanvasHudOpacity = isFinite(venworksCanvasOpacity) ? Math.max(0,Math.min(1,venworksCanvasOpacity)) : 1;
+            if(VenworksCanvasRegistryBridge != null)
+            {
+               VenworksCanvasRegistryBridge.alpha = VenworksCanvasHudOpacity;
+            }]]></content></insertion>
+    <insertion position="after"><anchor><![CDATA[         CENTER_GROUP_POINT.y = this.CenterGroup_mc.y;]]></anchor><content><![CDATA[
+         this.refreshVenworksCanvasLayout();]]></content></insertion>
   </insertions>
 </actionScriptPatch>
