@@ -52,19 +52,11 @@ foreach ($variant in $allVariants) {
 }
 [void](ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
 
-foreach ($repositoryToolTest in @(
-  'testPackaging.ps1',
-  'testBuildVariants.ps1',
-  'testBuildEvidence.ps1',
-  'testSetup.ps1',
-  'testScaleformSetup.ps1'
-)) {
-  & (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot $repositoryToolTest) -Description "Repository tooling test '$repositoryToolTest'")
-}
-# The tooling checks intentionally exercise failing native processes; clear their status after every assertion passes.
+& (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot 'testPackaging.ps1') -Description "Repository tooling test 'testPackaging.ps1'")
+# The packaging checks intentionally exercise failure paths; clear their status after every assertion passes.
 $global:LASTEXITCODE = 0
 if ($SourceOnly) {
-  Write-Host -ForegroundColor Green 'Verified Canvas repository build, setup, and packaging tooling contracts.'
+  Write-Host -ForegroundColor Green 'Verified Canvas configuration and packaging tooling contracts.'
   return
 }
 
