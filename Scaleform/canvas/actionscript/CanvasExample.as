@@ -40,6 +40,8 @@ package
       private var pendingBuffCount:int = 0;
       private var pendingDebuffCount:int = 0;
       private var pendingParts:Array = [];
+      private var removedEntries:Object = {};
+      private var committedSequence:int = -1;
       private var receivedPacketCount:int = 0;
       private var receivedPartCount:int = 0;
       private var packetStatus:String = "";
@@ -119,6 +121,7 @@ package
          this.pendingParts = [];
          this.activeBuffs = [];
          this.activeDebuffs = [];
+         this.removedEntries = {};
          this.panel = null;
       }
 
@@ -178,7 +181,22 @@ package
             return;
          }
          var kind:String = String(fields[0]).toUpperCase();
-         if(kind == "S" && fields.length == 4)
+         if(kind == "R" && fields.length == 3)
+         {
+            var removed:Object = this.parseEffectEntry(String(fields[2]));
+            if(removed == null || sequence < this.committedSequence)
+            {
+               this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED REMOVAL";
+            }
+            else
+            {
+               this.removedEntries[removed.key] = sequence;
+               this.activeBuffs = this.withoutEntry(this.activeBuffs,removed.key);
+               this.activeDebuffs = this.withoutEntry(this.activeDebuffs,removed.key);
+               this.packetStatus = "";
+            }
+         }
+         else if(kind == "S" && fields.length == 4)
          {
             var buffCount:int = this.parseUnsigned(fields[2],0,2000);
             var debuffCount:int = this.parseUnsigned(fields[3],0,2000);
@@ -253,34 +271,19 @@ package
                {
                   continue;
                }
-               if(item.length < 3 || item.charAt(1) != ":")
+               var parsed:Object = this.parseEffectEntry(item);
+               if(parsed == null)
                {
                   this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM";
                   return;
                }
-               var label:String = item.substring(2);
-               if(label.charAt(0) == "#")
+               if(parsed.category == "B")
                {
-                  var identityEnd:int = label.indexOf(":");
-                  if(identityEnd < 2 || !/^-?[0-9]+$/.test(label.substring(1,identityEnd)))
-                  {
-                     this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM ID";
-                     return;
-                  }
-                  label = label.substring(identityEnd + 1);
+                  buffs.push(parsed);
                }
-               if(label == "")
+               else if(parsed.category == "D")
                {
-                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM LABEL";
-                  return;
-               }
-               if(item.charAt(0).toUpperCase() == "B")
-               {
-                  buffs.push(label);
-               }
-               else if(item.charAt(0).toUpperCase() == "D")
-               {
-                  debuffs.push(label);
+                  debuffs.push(parsed);
                }
                else
                {
@@ -294,8 +297,9 @@ package
             this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " COUNT MISMATCH";
             return;
          }
-         this.activeBuffs = buffs;
-         this.activeDebuffs = debuffs;
+         this.activeBuffs = this.withoutRemovedEntries(buffs,this.pendingSequence);
+         this.activeDebuffs = this.withoutRemovedEntries(debuffs,this.pendingSequence);
+         this.committedSequence = this.pendingSequence;
          this.hasSnapshot = true;
          this.currentPage = 0;
          this.packetStatus = "";
@@ -309,6 +313,56 @@ package
             this.currentPage = (this.currentPage + 1) % pageCount;
             this.renderEffects();
          }
+      }
+
+      private function parseEffectEntry(item:String) : Object
+      {
+         if(item == null || item.length < 3 || item.charAt(1) != ":")
+         {
+            return null;
+         }
+         var category:String = item.charAt(0).toUpperCase();
+         if(category != "B" && category != "D")
+         {
+            return null;
+         }
+         var label:String = item.substring(2);
+         if(label.charAt(0) == "#")
+         {
+            var identityEnd:int = label.indexOf(":");
+            if(identityEnd < 2 || !/^-?[0-9]+$/.test(label.substring(1,identityEnd)))
+            {
+               return null;
+            }
+            label = label.substring(identityEnd + 1);
+         }
+         return label == "" ? null : {"key":item,"category":category,"label":label};
+      }
+
+      private function withoutEntry(entries:Array, key:String) : Array
+      {
+         var remaining:Array = [];
+         for each(var entry:Object in entries)
+         {
+            if(entry.key != key)
+            {
+               remaining.push(entry);
+            }
+         }
+         return remaining;
+      }
+
+      private function withoutRemovedEntries(entries:Array, sequence:int) : Array
+      {
+         var remaining:Array = [];
+         for each(var entry:Object in entries)
+         {
+            if(this.removedEntries[entry.key] === undefined || int(this.removedEntries[entry.key]) < sequence)
+            {
+               remaining.push(entry);
+            }
+         }
+         return remaining;
       }
 
       private function renderClock() : void
@@ -345,11 +399,11 @@ package
             var format:TextFormat = this.buffFormat;
             if(this.hasSnapshot && effectIndex < this.activeBuffs.length)
             {
-               text = "+ " + this.activeBuffs[effectIndex];
+               text = "+ " + this.activeBuffs[effectIndex].label;
             }
             else if(this.hasSnapshot && effectIndex < total)
             {
-               text = "- " + this.activeDebuffs[effectIndex - this.activeBuffs.length];
+               text = "- " + this.activeDebuffs[effectIndex - this.activeBuffs.length].label;
                format = this.debuffFormat;
             }
             field.visible = text != "";

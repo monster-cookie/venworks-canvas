@@ -43,6 +43,14 @@ Float LastHudOpenAt = 0.0
 String LastEffectSignature = ""
 String PendingEffectSignature = ""
 String[] EffectPackets
+String[] ObservedEffectEntries
+MagicEffect[] ActiveSourceEffects
+String[] ActiveSourceEffectEntries
+ENV_AfflictionScript[] ActiveSourceAfflictions
+String[] ActiveSourceAfflictionEntries
+Spell[] ActiveSourceSpells
+String[] ActiveSourceSpellEntries
+String[] PendingEffectRemovals
 
 ; Reports this packaged script's runtime quest binding only; does not register or request UI work.
 String Function ConsoleResolve() Global
@@ -160,7 +168,6 @@ Event OnInit()
   EnsurePlayerEventRegistrations()
   EnsureMagicEffectRegistrations()
   RequestEffectRefresh(True)
-  ScheduleEffectPoll()
 EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
@@ -180,7 +187,7 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
     StartTimer(delay + 1.5, 31)
     StartTimer(delay + 8.0, 34)
     StartTimer(delay + 1.5, 33)
-    ScheduleEffectPoll()
+    ScheduleActiveEffectCheck()
   EndIf
 EndEvent
 
@@ -195,9 +202,17 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   EffectPacketIndex = 0
   EffectSnapshotBuilding = False
   EffectChangedDuringPublication = False
+  ObservedEffectEntries = None
+  ActiveSourceEffects = None
+  ActiveSourceEffectEntries = None
+  ActiveSourceAfflictions = None
+  ActiveSourceAfflictionEntries = None
+  ActiveSourceSpells = None
+  ActiveSourceSpellEntries = None
+  PendingEffectRemovals = None
   EnsureMagicEffectRegistrations()
   RequestEffectRefresh(True)
-  ScheduleEffectPoll()
+  ScheduleActiveEffectCheck()
 EndEvent
 
 ; Saved quests enter this path through their existing menu registration after a script update.
@@ -233,8 +248,8 @@ Event OnTimer(Int aiTimerID)
     EffectRefreshPending = False
     PrepareEffectSnapshot()
   ElseIf (aiTimerID == 32)
-    RequestEffectRefresh(False)
-    ScheduleEffectPoll()
+    CheckActiveEffectSources()
+    ScheduleActiveEffectCheck()
   ElseIf (aiTimerID == 33)
     PublishNextEffectPacket()
   ElseIf (aiTimerID == 34)
@@ -246,20 +261,21 @@ EndEvent
 Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
   LogUserInformational(ModuleName, "OnMagicEffectApply", "EVENT_TRIGGERED | Target=" + akTarget + " | Effect=" + akEffect)
   EnsureMagicEffectRegistrations()
-  RequestEffectRefresh(False)
+  If (akTarget == Game.GetPlayer())
+    RequestEffectRefresh(False)
+  EndIf
 EndEvent
 
-; The FormList filters avoid unrelated apply events and can be extended by another mod at runtime.
+; This one-shot registration is unfiltered so newly applied, cataloged effects cannot be missed.
 Function EnsureMagicEffectRegistrations()
   Actor player = Game.GetPlayer()
-  If (player == None || BuffEffects == None || DebuffEffects == None)
-    LogUserWarning(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION_DEFERRED | Player or catalog unavailable.")
+  If (player == None)
+    LogUserWarning(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION_DEFERRED | Player unavailable.")
     Return
   EndIf
   UnregisterForAllMagicEffectApplyEvents(player)
-  RegisterForMagicEffectApplyEvent(player, akEffectFilter=BuffEffects)
-  RegisterForMagicEffectApplyEvent(player, akEffectFilter=DebuffEffects)
-  LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATIONS | Buffs=" + BuffEffects.GetSize() + " | Debuffs=" + DebuffEffects.GetSize())
+  RegisterForMagicEffectApplyEvent(player)
+  LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION | Target=Player | Filter=None")
 EndFunction
 
 ; Coalesces load, HUD-ready, and apply requests while preserving a requested full resend.
@@ -271,13 +287,78 @@ Function RequestEffectRefresh(Bool forceSnapshot)
   StartTimer(0.5, 31)
 EndFunction
 
-; A single low-rate timer reconciles expirations and cures that do not dispatch an apply event.
-Function ScheduleEffectPoll()
+; No removal deadline is available from the quest's base-effect event. Check only known-active sources.
+Function ScheduleActiveEffectCheck()
   CancelTimer(32)
-  If (LastActiveEffectCount > 0)
-    StartTimer(20.0, 32)
-  Else
-    StartTimer(60.0, 32)
+  If (ObservedEffectEntries != None && ObservedEffectEntries.Length > 0)
+    StartTimer(1.0, 32)
+  EndIf
+EndFunction
+
+; An expiry or cure has no quest-level finish event. Never send a removal from a guessed timer alone.
+Function CheckActiveEffectSources()
+  If (ObservedEffectEntries == None || ObservedEffectEntries.Length == 0)
+    Return
+  EndIf
+  Actor player = Game.GetPlayer()
+  If (player == None)
+    Return
+  EndIf
+  String[] stillActive = new String[0]
+  Int index = 0
+  While (ActiveSourceEffects != None && index < ActiveSourceEffects.Length)
+    If (ActiveSourceEffects[index] != None && player.HasMagicEffect(ActiveSourceEffects[index]) && !ContainsEffectEntry(stillActive, ActiveSourceEffectEntries[index]))
+      stillActive.Add(ActiveSourceEffectEntries[index])
+    EndIf
+    index += 1
+  EndWhile
+  index = 0
+  While (ActiveSourceAfflictions != None && index < ActiveSourceAfflictions.Length)
+    If (HasAfflictionSpell(player, ActiveSourceAfflictions[index]) && !ContainsEffectEntry(stillActive, ActiveSourceAfflictionEntries[index]))
+      stillActive.Add(ActiveSourceAfflictionEntries[index])
+    EndIf
+    index += 1
+  EndWhile
+  index = 0
+  While (ActiveSourceSpells != None && index < ActiveSourceSpells.Length)
+    Bool namedStatusActive = ActiveSourceSpells[index] != None && player.HasSpell(ActiveSourceSpells[index])
+    If (namedStatusActive && ActiveSourceSpells[index] == Game.GetFormFromFile(0x08CB51, "Starfield.esm"))
+      MagicEffect corrosiveSoak = Game.GetFormFromFile(0x08CB47, "Starfield.esm") as MagicEffect
+      namedStatusActive = corrosiveSoak != None && player.HasMagicEffect(corrosiveSoak)
+    EndIf
+    If (namedStatusActive && !ContainsEffectEntry(stillActive, ActiveSourceSpellEntries[index]))
+      stillActive.Add(ActiveSourceSpellEntries[index])
+    EndIf
+    index += 1
+  EndWhile
+  String[] remaining = new String[0]
+  Bool removed = False
+  index = 0
+  While (index < ObservedEffectEntries.Length)
+    String entry = ObservedEffectEntries[index]
+    If (ContainsEffectEntry(stillActive, entry))
+      remaining.Add(entry)
+    Else
+      QueueEffectRemoval(entry)
+      removed = True
+    EndIf
+    index += 1
+  EndWhile
+  If (removed)
+    ObservedEffectEntries = remaining
+    RequestEffectRefresh(False)
+    LogUserInformational(ModuleName, "CheckActiveEffectSources", "EFFECT_REMOVAL_DETECTED | Remaining=" + remaining.Length)
+  EndIf
+EndFunction
+
+Function QueueEffectRemoval(String entry)
+  If (PendingEffectRemovals == None)
+    PendingEffectRemovals = new String[0]
+  EndIf
+  String removal = "R|" + EffectSnapshotSequence + "|" + entry
+  If (!ContainsEffectEntry(PendingEffectRemovals, removal))
+    PendingEffectRemovals.Add(removal)
+    StartTimer(0.1, 33)
   EndIf
 EndFunction
 
@@ -310,13 +391,32 @@ Function PrepareEffectSnapshot()
     Return
   EndIf
   LogEnvironmentalStatusSources(player)
+  String[] previousEntries = ObservedEffectEntries
+  ActiveSourceEffects = new MagicEffect[0]
+  ActiveSourceEffectEntries = new String[0]
+  ActiveSourceAfflictions = new ENV_AfflictionScript[0]
+  ActiveSourceAfflictionEntries = new String[0]
+  ActiveSourceSpells = new Spell[0]
+  ActiveSourceSpellEntries = new String[0]
   String[] entries = new String[0]
   entries = AppendActiveEffects(entries, player, BuffEffects, BuffLabels, "B")
   Int buffCount = entries.Length
   entries = AppendActiveEffects(entries, player, DebuffEffects, DebuffLabels, "D")
   entries = AppendActiveAfflictions(entries, player)
+  entries = AppendActiveEnvironmentalStatuses(entries, player)
   Int debuffCount = entries.Length - buffCount
   LastActiveEffectCount = entries.Length
+  If (previousEntries != None)
+    Int previousIndex = 0
+    While (previousIndex < previousEntries.Length)
+      If (!ContainsEffectEntry(entries, previousEntries[previousIndex]))
+        QueueEffectRemoval(previousEntries[previousIndex])
+      EndIf
+      previousIndex += 1
+    EndWhile
+  EndIf
+  ObservedEffectEntries = entries
+  ScheduleActiveEffectCheck()
   String signature = ""
   Int index = 0
   While (index < entries.Length)
@@ -416,24 +516,58 @@ String[] Function AppendActiveAfflictions(String[] entries, Actor player)
   Int index = 0
   While (index < afflictions.Length)
     ENV_AfflictionScript affliction = afflictions[index]
-    If (affliction != None && affliction.AfflictionSpellList != None)
-      FormList spellList = affliction.AfflictionSpellList
-      Int spellIndex = 0
-      Bool hasAffliction = False
-      While (spellIndex < spellList.GetSize() && !hasAffliction)
-        Spell rankSpell = spellList.GetAt(spellIndex) as Spell
-        If (rankSpell != None && player.HasSpell(rankSpell))
-          hasAffliction = True
-        EndIf
-        spellIndex += 1
-      EndWhile
-      If (hasAffliction)
-        String label = ResolveAfflictionLabel(affliction.ID)
-        entries.Add("D:#" + affliction.GetFormID() + ":" + label)
-      EndIf
+    If (HasAfflictionSpell(player, affliction))
+      String label = ResolveAfflictionLabel(affliction.ID)
+      String entry = "D:#" + affliction.GetFormID() + ":" + label
+      entries.Add(entry)
+      ActiveSourceAfflictions.Add(affliction)
+      ActiveSourceAfflictionEntries.Add(entry)
     EndIf
     index += 1
   EndWhile
+  Return entries
+EndFunction
+
+Bool Function HasAfflictionSpell(Actor player, ENV_AfflictionScript affliction)
+  If (player == None || affliction == None || affliction.AfflictionSpellList == None)
+    Return False
+  EndIf
+  FormList spellList = affliction.AfflictionSpellList
+  Int index = 0
+  While (index < spellList.GetSize())
+    Spell rankSpell = spellList.GetAt(index) as Spell
+    If (rankSpell != None && player.HasSpell(rankSpell))
+      Return True
+    EndIf
+    index += 1
+  EndWhile
+  Return False
+EndFunction
+
+; Only named source spells are used; shared airborne-hazard effects cannot identify toxic gas.
+String[] Function AppendActiveEnvironmentalStatuses(String[] entries, Actor player)
+  Spell corrosiveEnvironment = Game.GetFormFromFile(0x08CB51, "Starfield.esm") as Spell
+  MagicEffect corrosiveSoak = Game.GetFormFromFile(0x08CB47, "Starfield.esm") as MagicEffect
+  Spell corrosiveRain = Game.GetFormFromFile(0x281ECB, "Starfield.esm") as Spell
+  Spell toxicGas = Game.GetFormFromFile(0x245B6B, "Starfield.esm") as Spell
+  If (corrosiveEnvironment != None && corrosiveSoak != None && player.HasSpell(corrosiveEnvironment) && player.HasMagicEffect(corrosiveSoak))
+    String entry = "D:#" + corrosiveEnvironment.GetFormID() + ":Corrosive Environment"
+    entries.Add(entry)
+    ActiveSourceSpells.Add(corrosiveEnvironment)
+    ActiveSourceSpellEntries.Add(entry)
+  EndIf
+  If (corrosiveRain != None && player.HasSpell(corrosiveRain))
+    String entry = "D:#" + corrosiveRain.GetFormID() + ":Corrosive Rain"
+    entries.Add(entry)
+    ActiveSourceSpells.Add(corrosiveRain)
+    ActiveSourceSpellEntries.Add(entry)
+  EndIf
+  If (toxicGas != None && player.HasSpell(toxicGas))
+    String entry = "D:#" + toxicGas.GetFormID() + ":Toxic Gas Hazard"
+    entries.Add(entry)
+    ActiveSourceSpells.Add(toxicGas)
+    ActiveSourceSpellEntries.Add(entry)
+  EndIf
   Return entries
 EndFunction
 
@@ -504,6 +638,12 @@ String[] Function AppendActiveEffects(String[] entries, Actor player, FormList c
       ElseIf (IsSustenanceDrinkEffect(effect))
         label = "Dehydrated"
         grouped = True
+      ElseIf (IsSustenanceHydratedEffect(effect))
+        label = "Hydrated"
+        grouped = True
+      ElseIf (IsSustenanceFedEffect(effect))
+        label = "Fed"
+        grouped = True
       ElseIf (labels != None && labels.Length == catalogSize && index < labels.Length && labels[index] != "")
         label = labels[index]
       Else
@@ -520,6 +660,8 @@ String[] Function AppendActiveEffects(String[] entries, Actor player, FormList c
       If (!grouped || !ContainsEffectEntry(entries, entry))
         entries.Add(entry)
       EndIf
+      ActiveSourceEffects.Add(effect)
+      ActiveSourceEffectEntries.Add(entry)
     EndIf
     index += 1
   EndWhile
@@ -537,6 +679,8 @@ String Function ResolveKnownBuffLabel(MagicEffect effect)
     Return "Reduced Research Cost"
   ElseIf (effect == Game.GetFormFromFile(0x2D88C4, "Starfield.esm"))
     Return "Fortify Persuasion"
+  ElseIf (effect == Game.GetFormFromFile(0x0B92EB, "Starfield.esm"))
+    Return "Heart+"
   EndIf
   Return ""
 EndFunction
@@ -560,9 +704,24 @@ Bool Function IsSustenanceDrinkEffect(MagicEffect effect)
   Return effect == Game.GetFormFromFile(0x31327B, "Starfield.esm") || effect == Game.GetFormFromFile(0x31329B, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EDFDA, "Starfield.esm")
 EndFunction
 
-; The registry rate-limits to one lossy native submission per second, so each timer sends at most one part.
+Bool Function IsSustenanceHydratedEffect(MagicEffect effect)
+  Return effect == Game.GetFormFromFile(0x313260, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EDFDC, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EFD74, "Starfield.esm")
+EndFunction
+
+Bool Function IsSustenanceFedEffect(MagicEffect effect)
+  Return effect == Game.GetFormFromFile(0x2EDFE1, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EDFD5, "Starfield.esm") || effect == Game.GetFormFromFile(0x313251, "Starfield.esm")
+EndFunction
+
+; Removals take priority over a possibly stale multipart snapshot.
 Function PublishNextEffectPacket()
-  If (Registry == None || EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
+  If (Registry == None)
+    Return
+  EndIf
+  If (PendingEffectRemovals != None && PendingEffectRemovals.Length > 0)
+    PublishNextEffectRemoval()
+    Return
+  EndIf
+  If (EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
     Return
   EndIf
   String[] packets = EffectPackets
@@ -614,6 +773,32 @@ Function PublishNextEffectPacket()
     LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
     EffectPackets = None
     EffectForceRefresh = True
+  EndIf
+EndFunction
+
+; The consumer applies R packets immediately and suppresses the removed key in an older in-flight snapshot.
+Function PublishNextEffectRemoval()
+  String removal = PendingEffectRemovals[0]
+  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", removal)
+  LogUserInformational(ModuleName, "PublishNextEffectRemoval", "EFFECT_REMOVAL_ATTEMPT | Entry=" + removal + " | Status=" + result.Status)
+  If (PendingEffectRemovals == None || PendingEffectRemovals.Length == 0 || PendingEffectRemovals[0] != removal)
+    Return
+  EndIf
+  If (result.Status == "EVENT_SUBMITTED")
+    PendingEffectRemovals.Remove(0)
+    If (PendingEffectRemovals.Length > 0 || (EffectPackets != None && EffectPacketIndex < EffectPackets.Length))
+      StartTimer(1.1, 33)
+    EndIf
+  ElseIf (result.Status == "REJECTED_EVENT_INACTIVE")
+    ; The next HUD opening forces a full snapshot and retries this removal first.
+    Return
+  ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
+    StartTimer(1.0, 33)
+  Else
+    LogUserWarning(ModuleName, "PublishNextEffectRemoval", "EFFECT_REMOVAL_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
+    PendingEffectRemovals.Remove(0)
+    EffectForceRefresh = True
+    RequestEffectRefresh(True)
   EndIf
 EndFunction
 

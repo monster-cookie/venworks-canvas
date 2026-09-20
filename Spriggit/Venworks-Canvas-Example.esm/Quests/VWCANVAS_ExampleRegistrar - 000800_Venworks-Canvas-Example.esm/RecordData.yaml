@@ -15,7 +15,14 @@ VirtualMachineAdapter:
       - Companion Affinity Increases Faster
       - Improved Research Crit Chance
       - Reduced Research Cost
+      - Heart+
       - Fortify Persuasion
+      - Fed
+      - Hydrated
+      - Fed
+      - Hydrated
+      - Fed
+      - Hydrated
     - MutagenObjectType: ScriptStringProperty
       Name: ConsumerId
       Data: a8098c1a-f86e-4b1e-9d7c-5a102bf38460
