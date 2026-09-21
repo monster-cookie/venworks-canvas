@@ -65,6 +65,10 @@
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
+    <token>queueEventsUntilReady</token>
+    <token>CanvasEventQueue</token>
+    <token>MAX_EVENTS</token>
+    <token>MAX_CHARACTERS</token>
     <token>PlayerData</token>
     <token>public function initialize(param1:DisplayObjectContainer, param2:Object) : Boolean</token>
     <token>public function reapplyVanillaPlacements</token>

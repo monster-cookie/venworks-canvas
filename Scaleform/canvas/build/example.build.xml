@@ -28,6 +28,7 @@
     <token>fLocalPlanetTime</token>
     <token>venworks.canvas.example.effects.snapshot</token>
     <token>CanvasExampleEffectsAdapter</token>
+    <token>queueEventsUntilReady</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>

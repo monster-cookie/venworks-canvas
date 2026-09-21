@@ -16,6 +16,7 @@ package
          this.marker = new CanvasDiagnosticMarker(this,"VWCANVAS SUBSCRIPTIONS PROBE",65280);
          this.runCase("SHARED REPLAY FANOUT",this.testSharedReplayFanout);
          this.runCase("EVENT DROP DIAGNOSTICS",this.testEventDropDiagnostics);
+         this.runCase("QUEUED EVENT REPLAY",this.testQueuedEventReplay);
          this.runCase("EVENT TOPIC CASE FOLD",this.testEventTopicCaseFold);
          this.runCase("REQUEST PREFLIGHT",this.testRequestPreflight);
          this.runCase("SUBSCRIBE ROLLBACK",this.testSubscribeRollback);
@@ -164,6 +165,64 @@ package
          this.assertTrue(bridge.eventTopics.length == 1 && bridge.eventTopics[0] == "venworks.canvas.test","case-folded event topic missed its canonical subscription");
          registry["removeConsumer"]("case-fold");
          context.deactivate("case-fold");
+         registry["dispose"]();
+      }
+
+      private function testQueuedEventReplay() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var context:CanvasSubscriptionsTestContext = new CanvasSubscriptionsTestContext();
+         var registry:Object = this.createRegistry(manager,context);
+         var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         var loader:Object = {};
+         this.addConsumer(registry,context,"queued",bridge,loader,1,[],["venworks.canvas.test"],true);
+         registry["publishEvent"]("venworks.canvas.test","S|1|0|1");
+         registry["publishEvent"]("venworks.canvas.test","P|1|0|D:TEST;");
+         registry["publishEvent"]("venworks.canvas.test","C|1|1");
+         this.assertTrue(bridge.eventBodies.length == 0,"queued event escaped readiness");
+         registry["markReady"]("queued");
+         this.assertTrue(bridge.eventBodies.join(",") == "S|1|0|1,P|1|0|D:TEST;,C|1|1","queued transaction replay order changed");
+         registry["removeConsumer"]("queued");
+         context.deactivate("queued");
+
+         bridge = new CanvasSubscriptionsTestBridge();
+         loader = {};
+         this.addConsumer(registry,context,"bounded",bridge,loader,2,[],["venworks.canvas.test"],true);
+         var index:int = 0;
+         while(index < 66)
+         {
+            registry["publishEvent"]("venworks.canvas.test",String(index));
+            index++;
+         }
+         registry["markReady"]("bounded");
+         this.assertTrue(bridge.eventBodies.length == 64 && bridge.eventBodies[0] == "2" && bridge.eventBodies[63] == "65","queued event count bound did not retain the newest events");
+         this.assertTrue(context.diagnostics.length == 1 && String(context.diagnostics[0]).indexOf("EVENT REJECTED | QUEUE_EVICTED") == 0,"queue eviction was not reported once");
+         registry["removeConsumer"]("bounded");
+         context.deactivate("bounded");
+
+         bridge = new CanvasSubscriptionsTestBridge();
+         loader = {};
+         this.addConsumer(registry,context,"character-bounded",bridge,loader,3,[],["venworks.canvas.test"],true);
+         var largeBody:String = new Array(4091).join("X");
+         index = 0;
+         while(index < 16)
+         {
+            registry["publishEvent"]("venworks.canvas.test",largeBody);
+            index++;
+         }
+         registry["markReady"]("character-bounded");
+         this.assertTrue(bridge.eventBodies.length == 15,"queued event character bound was not enforced");
+         this.assertTrue(context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | QUEUE_EVICTED") == 0,"character-bound eviction was not reported once");
+         registry["removeConsumer"]("character-bounded");
+         context.deactivate("character-bounded");
+
+         var replacement:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         loader = {};
+         this.addConsumer(registry,context,"character-bounded",replacement,loader,4,[],["venworks.canvas.test"],true);
+         registry["markReady"]("character-bounded");
+         this.assertTrue(replacement.eventBodies.length == 0,"removed membership leaked queued events into its replacement");
+         registry["removeConsumer"]("character-bounded");
+         context.deactivate("character-bounded");
          registry["dispose"]();
       }
 
@@ -316,10 +375,10 @@ package
          return new subscriptionsType(param1,param2.isCurrent,param2.report);
       }
 
-      private function addConsumer(param1:Object, param2:CanvasSubscriptionsTestContext, param3:String, param4:CanvasSubscriptionsTestBridge, param5:Object, param6:int, param7:Array, param8:Array) : void
+      private function addConsumer(param1:Object, param2:CanvasSubscriptionsTestContext, param3:String, param4:CanvasSubscriptionsTestBridge, param5:Object, param6:int, param7:Array, param8:Array, param9:Boolean = false) : void
       {
          param2.activate(param3,param5,param6);
-         param1["addConsumer"](param3,param4,param5,param6,param7,param8);
+         param1["addConsumer"](param3,param4,param5,param6,param7,param8,param9);
       }
 
       private function runCase(param1:String, param2:Function) : void
@@ -349,7 +408,7 @@ package
          {
             return;
          }
-         var lines:Array = ["PASS " + this.passed + " / 6 | FAIL " + this.failures.length];
+         var lines:Array = ["PASS " + this.passed + " / 8 | FAIL " + this.failures.length];
          var index:int = 0;
          while(index < this.failures.length && index < 3)
          {

@@ -16,6 +16,7 @@
     <token>CanvasSubscriptions</token>
     <token>SHARED REPLAY FANOUT</token>
     <token>EVENT DROP DIAGNOSTICS</token>
+    <token>QUEUED EVENT REPLAY</token>
     <token>REQUEST PREFLIGHT</token>
     <token>SUBSCRIBE ROLLBACK</token>
     <token>UNSUBSCRIBE RECOVERY</token>

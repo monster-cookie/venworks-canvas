@@ -49,7 +49,7 @@ package
          this.diagnostic = param3;
       }
 
-      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array) : void
+      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array, param7:Boolean = false) : void
       {
          if(this.disposed || this.dataManager == null || this.memberships[param1] != null || this.membershipCount >= MAX_CONSUMERS)
          {
@@ -72,6 +72,7 @@ package
             "generation":param4,
             "channels":channels,
             "topics":topics,
+            "eventQueue":param7 ? new CanvasEventQueue() : null,
             "ready":false
          };
          this.memberships[param1] = membership;
@@ -129,6 +130,15 @@ package
             return;
          }
          membership.ready = true;
+         var eventQueue:CanvasEventQueue = membership.eventQueue as CanvasEventQueue;
+         var queuedEvents:Array = eventQueue == null ? [] : eventQueue.drain();
+         var queuedIndex:int = 0;
+         while(queuedEvents != null && queuedIndex < queuedEvents.length && this.isMembershipCurrent(membership))
+         {
+            var queuedEvent:Object = queuedEvents[queuedIndex];
+            this.deliverEvent(membership,String(queuedEvent.topic),String(queuedEvent.body));
+            queuedIndex++;
+         }
          var channels:Array = membership.channels.concat();
          var index:int = 0;
          var channel:String = null;
@@ -223,6 +233,12 @@ package
             }
             index++;
          }
+         var eventQueue:CanvasEventQueue = param1.eventQueue as CanvasEventQueue;
+         if(eventQueue != null)
+         {
+            eventQueue.clear();
+         }
+         param1.eventQueue = null;
          param1.ready = false;
       }
 
@@ -459,6 +475,11 @@ package
          }
          if(param1.ready !== true)
          {
+            if(param1.eventQueue != null)
+            {
+               this.queueEvent(param1,param2,param3);
+               return;
+            }
             this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
             return;
          }
@@ -469,6 +490,25 @@ package
          catch(callbackError:*)
          {
             this.report("EVENT CALLBACK ERROR | " + param1.consumerId + " | " + param2);
+         }
+      }
+
+      private function queueEvent(param1:Object, param2:String, param3:String) : void
+      {
+         if(!this.isMembershipCurrent(param1))
+         {
+            this.reportEventDrop("STALE_MEMBERSHIP",param2,param1 == null ? "" : String(param1.consumerId));
+            return;
+         }
+         var eventQueue:CanvasEventQueue = param1.eventQueue as CanvasEventQueue;
+         if(eventQueue == null)
+         {
+            this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
+            return;
+         }
+         if(eventQueue.enqueue(param2,param3))
+         {
+            this.reportEventDrop("QUEUE_EVICTED",param2,String(param1.consumerId));
          }
       }
 

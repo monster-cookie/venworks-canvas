@@ -6,6 +6,8 @@ package
 
       public var eventTopics:Array = [];
 
+      public var eventBodies:Array = [];
+
       public var order:Array = [];
 
       public var throwData:Boolean = false;
@@ -31,6 +33,7 @@ package
       public function handleCanvasEvent(param1:String, param2:String) : void
       {
          this.eventTopics.push(param1);
+         this.eventBodies.push(param2);
          if(this.throwEvent)
          {
             throw new Error("SUBSCRIPTIONS PROBE EVENT FAILURE");

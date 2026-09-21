@@ -26,6 +26,7 @@ package
             "maximumContractVersion":2,
             "uiChannels":["LocalEnvironmentData","LocalEnvData_Frequent"],
             "eventTopics":["venworks.canvas.example.effects.snapshot"],
+            "queueEventsUntilReady":true,
             "marker":"EXAMPLE"
          };
       }

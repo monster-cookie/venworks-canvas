@@ -40,6 +40,8 @@ The Example sends only the current eight-row page to the HTML bridge. Its effect
 
 Canvas event topics are ASCII case insensitive and are delivered to consumers in lowercase. This accommodates the native Custom Watch alert transport changing ASCII casing while preserving the event body and topic identity.
 
+Canvas events remain lossy by default. A `VWCANVAS_CONSUMER/2` registration can set `queueEventsUntilReady` to `true` when its event protocol requires startup transactions to survive consumer loading. Canvas then retains the newest 64 events, bounded to 65,536 topic and body characters per consumer, and replays them in order after the lifecycle `ready` callback. Queue eviction is reported through Canvas diagnostics. Removal or HUD teardown discards the queue, and consumers must still validate transaction completeness and stale data when replay begins. Existing registrations that omit the field keep immediate not-ready event rejection.
+
 ## Current compatibility
 
 - Current work targets the Player HUD. Ship HUD and pilot-seat delivery are not accepted yet.

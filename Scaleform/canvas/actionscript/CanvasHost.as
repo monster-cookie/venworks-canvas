@@ -1094,7 +1094,8 @@ package
                "bridge":param3,
                "hostKinds":["player","ship","menu"],
                "uiChannels":[],
-               "eventTopics":[]
+               "eventTopics":[],
+               "queueEventsUntilReady":false
             };
          }
          if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL)
@@ -1119,6 +1120,15 @@ package
          }
          var uiChannels:Array = this.validateStringList(param1.uiChannels,MAX_UI_CHANNELS,true);
          var eventTopics:Array = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+         var queueEventsUntilReady:Boolean = false;
+         if("queueEventsUntilReady" in param1)
+         {
+            if(typeof param1.queueEventsUntilReady != "boolean")
+            {
+               throw new Error("queueEventsUntilReady must be a boolean");
+            }
+            queueEventsUntilReady = param1.queueEventsUntilReady === true;
+         }
          var hostKinds:Array = this.validateHostKinds("hostKinds" in param1 ? param1.hostKinds : null);
          if(!("handleUIData" in param3) || typeof param3["handleUIData"] != "function" || !("handleCanvasEvent" in param3) || typeof param3["handleCanvasEvent"] != "function" || !("handleLifecycle" in param3) || typeof param3["handleLifecycle"] != "function")
          {
@@ -1147,7 +1157,8 @@ package
             "htmlBridge":null,
             "hostKinds":hostKinds,
             "uiChannels":uiChannels,
-            "eventTopics":eventTopics
+            "eventTopics":eventTopics,
+            "queueEventsUntilReady":queueEventsUntilReady
          };
       }
 
@@ -1275,7 +1286,8 @@ package
             "hostKind":this.hostKind,
             "displayMode":this.displayMode,
             "uiChannels":param1.uiChannels.concat(),
-            "eventTopics":param1.eventTopics.concat()
+            "eventTopics":param1.eventTopics.concat(),
+            "queueEventsUntilReady":param1.queueEventsUntilReady === true
          };
          if(param1.htmlBridge != null)
          {
@@ -1423,7 +1435,7 @@ package
                }
                if(this.consumerSubscriptions != null)
                {
-                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics);
+                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics,contract.queueEventsUntilReady);
                }
                if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
                {

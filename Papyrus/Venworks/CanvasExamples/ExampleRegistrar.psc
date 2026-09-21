@@ -187,9 +187,6 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
     EffectRefreshPending = True
     StartTimer(delay + 1.5, 31)
     StartTimer(delay + 8.0, 34)
-    ; UI-load submission has no consumer-ready acknowledgement. A busy multi-consumer
-    ; startup can finish the earlier lossy snapshots before the HTML consumer is ready.
-    StartTimer(delay + 30.0, 35)
     StartTimer(delay + 1.5, 33)
     ScheduleActiveEffectCheck()
   EndIf
@@ -258,9 +255,6 @@ Event OnTimer(Int aiTimerID)
   ElseIf (aiTimerID == 33)
     PublishNextEffectPacket()
   ElseIf (aiTimerID == 34)
-    RequestEffectRefresh(True)
-  ElseIf (aiTimerID == 35)
-    LogUserInformational(ModuleName, "OnTimer", "EFFECT_LATE_RESYNC_REQUESTED | SinceHudOpen=" + (Utility.GetCurrentRealTime() - LastHudOpenAt))
     RequestEffectRefresh(True)
   EndIf
 EndEvent
