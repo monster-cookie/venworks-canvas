@@ -884,6 +884,13 @@ function Get-BuildScaleformMovieDefinition {
   if ($requiredTokens.Count -eq 0 -or $forbiddenTokens.Count -eq 0) {
     throw "Scaleform movie manifest must declare required and forbidden tokens: $resolvedManifestPath"
   }
+  $additionalSourceRoots = @($build.SelectNodes('sourceRoots/sourceRoot') | ForEach-Object {
+    $sourceRoot = [string]$_.InnerText
+    if ([string]::IsNullOrWhiteSpace($sourceRoot)) {
+      throw "Scaleform movie manifest contains an empty source root: $resolvedManifestPath"
+    }
+    Resolve-BuildRequiredDirectory -Path (Join-Path (Split-Path -Parent $resolvedManifestPath) $sourceRoot) -Description 'ActionScript source root'
+  })
   return [pscustomobject]@{
     Name = [string]$build.name
     Role = [string]$build.role
@@ -894,6 +901,7 @@ function Get-BuildScaleformMovieDefinition {
     StageWidth = [int]$build.stageWidth
     StageHeight = [int]$build.stageHeight
     FrameRate = [int]$build.frameRate
+    AdditionalSourceRoots = $additionalSourceRoots
     RequiredTokens = $requiredTokens
     ForbiddenTokens = $forbiddenTokens
   }
@@ -999,6 +1007,13 @@ function Invoke-BuildScaleformMovieBuild {
   if (!(Get-BuildNormalizedFullPath -Path $definition.SourcePath).StartsWith($sourceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Scaleform movie '$($definition.Name)' entrypoint is outside the configured Scaleform source root: $($definition.SourcePath)"
   }
+  foreach ($additionalSourceRoot in @($definition.AdditionalSourceRoots)) {
+    $normalizedAdditionalSourceRoot = Get-BuildNormalizedFullPath -Path $additionalSourceRoot
+    if (!(Test-BuildSamePath -Left $normalizedAdditionalSourceRoot -Right $resolvedScaleformSourceRoot) -and
+        !$normalizedAdditionalSourceRoot.StartsWith($sourceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Scaleform movie '$($definition.Name)' source root is outside the configured Scaleform source root: $additionalSourceRoot"
+    }
+  }
   $mxmlcJarPath = Resolve-BuildRequiredFile -Path (Join-Path $resolvedFlexSdkPath 'lib\mxmlc.jar') -Description 'Apache Flex mxmlc compiler'
   $flexFrameworksPath = Resolve-BuildRequiredDirectory -Path (Join-Path $resolvedFlexSdkPath 'frameworks') -Description 'Apache Flex frameworks directory'
   $flexConfigPath = Resolve-BuildRequiredFile -Path (Join-Path $flexFrameworksPath 'flex-config.xml') -Description 'Apache Flex compiler configuration'
@@ -1021,6 +1036,11 @@ function Invoke-BuildScaleformMovieBuild {
   $compilerSourceRoots = @($sourceRoot, $entrypointSourceRoot)
   if (!(Test-BuildSamePath -Left $entrypointSourceRoot -Right $resolvedScaleformSourceRoot)) {
     $compilerSourceRoots += $resolvedScaleformSourceRoot
+  }
+  foreach ($additionalSourceRoot in @($definition.AdditionalSourceRoots)) {
+    if (@($compilerSourceRoots | Where-Object { Test-BuildSamePath -Left $_ -Right $additionalSourceRoot }).Count -eq 0) {
+      $compilerSourceRoots += $additionalSourceRoot
+    }
   }
 
   try {

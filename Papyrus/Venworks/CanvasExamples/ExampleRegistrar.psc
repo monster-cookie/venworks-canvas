@@ -116,7 +116,10 @@ EndFunction
 
 ; Selects the packaged subscriptions diagnostic using a distinct descriptor version so the host replaces the Example movie.
 String Function SelectConsoleSubscriptionsProbe()
-  Return SubmitConsoleDescriptorUpdate("VWCANVAS Subscriptions Probe", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf", 2)
+  String result = SubmitConsoleDescriptorUpdate("VWCANVAS Subscriptions Probe", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf", "VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf", 2)
+  LogUserInformational(ModuleName, "SelectConsoleSubscriptionsProbe", "EFFECT_PROBE_REFRESH_REQUESTED")
+  RequestEffectRefresh(True)
+  Return result
 EndFunction
 
 ; Restores the authored Example descriptor after a diagnostic run.

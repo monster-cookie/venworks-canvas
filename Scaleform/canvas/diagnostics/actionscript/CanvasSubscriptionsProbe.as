@@ -11,6 +11,14 @@ package
 
       private var failures:Array = [];
 
+      private var liveEffects:CanvasExampleEffectsAdapter = new CanvasExampleEffectsAdapter();
+
+      private var livePacketCount:int = 0;
+
+      private var liveLastKind:String = "-";
+
+      private var liveLastLength:int = 0;
+
       public function CanvasSubscriptionsProbe()
       {
          this.marker = new CanvasDiagnosticMarker(this,"VWCANVAS SUBSCRIPTIONS PROBE",65280);
@@ -35,7 +43,8 @@ package
             "minimumContractVersion":2,
             "maximumContractVersion":2,
             "uiChannels":[],
-            "eventTopics":[],
+            "eventTopics":["venworks.canvas.example.effects.snapshot"],
+            "queueEventsUntilReady":true,
             "marker":"SUBSCRIPTIONS-PROBE-TEST-ONLY"
          };
       }
@@ -46,13 +55,30 @@ package
 
       public function handleCanvasEvent(param1:String, param2:String) : void
       {
+         if(param1 != "venworks.canvas.example.effects.snapshot")
+         {
+            return;
+         }
+         this.livePacketCount++;
+         this.liveLastKind = param2 == null || param2.length == 0 ? "?" : param2.charAt(0);
+         this.liveLastLength = param2 == null ? 0 : param2.length;
+         this.liveEffects.acceptPacket(param2);
+         this.updateMarker();
       }
 
       public function handleLifecycle(param1:String, param2:Object) : void
       {
          if(param1 == "ready")
          {
+            this.liveEffects.reset();
+            this.livePacketCount = 0;
+            this.liveLastKind = "-";
+            this.liveLastLength = 0;
             this.updateMarker();
+         }
+         else if(param1 == "unload")
+         {
+            this.liveEffects.reset();
          }
       }
 
@@ -409,6 +435,9 @@ package
             return;
          }
          var lines:Array = ["PASS " + this.passed + " / 8 | FAIL " + this.failures.length];
+         var liveView:Object = this.liveEffects.view();
+         lines.push("LIVE EFFECT RX " + this.livePacketCount + " | LAST " + this.liveLastKind + " LEN " + this.liveLastLength);
+         lines.push("LIVE SNAPSHOT " + (liveView.waiting === true ? "PENDING" : "COMMITTED") + " | B " + liveView.buffcount + " D " + liveView.debuffcount);
          var index:int = 0;
          while(index < this.failures.length && index < 3)
          {

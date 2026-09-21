@@ -7,6 +7,9 @@
                            stageWidth="1920"
                            stageHeight="1080"
                            frameRate="30">
+  <sourceRoots>
+    <sourceRoot>../../actionscript</sourceRoot>
+  </sourceRoots>
   <requiredTokens>
     <token>VWCANVAS_CONSUMER/2</token>
     <token>a8098c1a-f86e-4b1e-9d7c-5a102bf38460</token>
@@ -17,6 +20,10 @@
     <token>SHARED REPLAY FANOUT</token>
     <token>EVENT DROP DIAGNOSTICS</token>
     <token>QUEUED EVENT REPLAY</token>
+    <token>LIVE EFFECT RX</token>
+    <token>LIVE SNAPSHOT</token>
+    <token>CanvasExampleEffectsAdapter</token>
+    <token>queueEventsUntilReady</token>
     <token>REQUEST PREFLIGHT</token>
     <token>SUBSCRIBE ROLLBACK</token>
     <token>UNSUBSCRIBE RECOVERY</token>
