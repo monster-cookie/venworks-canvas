@@ -22,11 +22,21 @@ Start with a new or disposable save when evaluating a new Canvas build. Existing
 
 ## Optional examples
 
-The Example package demonstrates an independently installed Canvas consumer.
+The Example package demonstrates an independently installed Canvas consumer. Its Papyrus registrar publishes status-effect snapshots; a Canvas-side adapter commits complete snapshots, and the Example's packaged HTML/CSS renders the clock, buff and debuff counts, pending or empty states, and effect rows. When more than eight effects are active, the view rotates through every page every six seconds.
 
 The Component Gallery is a live cheatsheet and example UI rendered by Canvas from the Gallery's packaged HTML and CSS. Its `Tag | Syntax | Rendered Result` columns place literal HTML beside the result it produces. Examples cover text, lists, buttons, SVG images, reusable content, and sample data such as bound text, visibility, repeated items, and a meter.
 
 Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gallery. The current development build still needs in-game verification on PC and PS5; these examples describe Canvas's supported HTML/CSS subset and do not imply full web-browser compatibility.
+
+### HTML data binding for repeated rows
+
+Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and `li`. Give it the name of an array in `setData`; Canvas repeats the element for each item and resolves bindings inside it with the same item scope as `vw-repeat`. Object items expose their properties, while scalar items expose `item`. Missing arrays render no rows; non-array values and arrays over 256 items are rejected by the existing binding limits. `vw-repeat` remains supported for repeating a group of child elements.
+
+```html
+<div data-vw-for-each="effects" data-vw-text="label"></div>
+```
+
+The Example sends only the current eight-row page to the HTML bridge. Its effect arrays remain separate from clock values, and the bridge receives updates after complete effect snapshots, accepted removals, page changes, or a visible clock-minute change. A published Papyrus event and a compiled package still require an in-game display check.
 
 ## Current compatibility
 

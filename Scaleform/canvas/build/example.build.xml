@@ -12,6 +12,11 @@
     <token>venworks.canvas.example</token>
     <token>"version":1</token>
     <token>getCanvasRegistration</token>
+    <token>getCanvasHtmlRegistration</token>
+    <token>VWCANVAS_HTML/2</token>
+    <token>index.html</token>
+    <token>htmlRendering</token>
+    <token>setData</token>
     <token>minimumContractVersion</token>
     <token>maximumContractVersion</token>
     <token>handleUIData</token>
@@ -22,9 +27,7 @@
     <token>fGalacticStandardTime</token>
     <token>fLocalPlanetTime</token>
     <token>venworks.canvas.example.effects.snapshot</token>
-    <token>acceptEffectPacket</token>
-    <token>commitEffectSnapshot</token>
-    <token>renderEffects</token>
+    <token>CanvasExampleEffectsAdapter</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>
@@ -32,5 +35,8 @@
     <token>CustomAlertsData</token>
     <token>URLLoader</token>
     <token>ExternalInterface</token>
+    <token>TextField</token>
+    <token>TextFormat</token>
+    <token>Shape</token>
   </forbiddenTokens>
 </movieBuild>

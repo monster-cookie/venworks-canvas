@@ -1,0 +1,11 @@
+.example { display: flex; flex-direction: column; width: 500px; height: auto; margin: 28px 32px; padding: 12px 14px; gap: 10px; color: #e400ff; background-color: #141414d1; border-width: 1px; border-style: solid; border-color: #3aae7c; font-family: $MAIN_Font_Bold; font-size: 18px; line-height: 26px; }
+.clock { display: flex; flex-direction: column; gap: 3px; }
+.clock p { margin: 0px; }
+.effects { display: flex; flex-direction: column; gap: 4px; }
+.counts { display: flex; flex-direction: row; gap: 20px; }
+.counts span { color: #e400ff; }
+.status { margin: 0px; color: #a9bccb; font-size: 16px; line-height: 22px; }
+.page { margin: 0px; color: #a9bccb; font-size: 16px; line-height: 22px; }
+.effect-row { width: 464px; padding: 4px 6px; font-size: 16px; line-height: 22px; }
+.buff { color: #8cdaae; }
+.debuff { color: #e872d5; }

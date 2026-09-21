@@ -140,6 +140,7 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'large' }
+          @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
     )

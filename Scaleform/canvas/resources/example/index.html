@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Venworks Canvas Example</title>
+    <meta charset="utf-8"></meta>
+    <link rel="stylesheet" href="example.css"></link>
+  </head>
+  <body>
+    <main class="example">
+      <header class="clock">
+        <p data-vw-template="UNIVERSAL TIME   {universaltime}"></p>
+        <p data-vw-template="LOCAL TIME       {localtime}"></p>
+      </header>
+      <section class="effects">
+        <div class="counts">
+          <span data-vw-template="BUFFS {buffcount:integer}"></span>
+          <span data-vw-template="DEBUFFS {debuffcount:integer}"></span>
+        </div>
+        <vw-state when="waiting"><p class="status">WAITING FOR DATA-LAYER SNAPSHOT</p></vw-state>
+        <vw-state when="empty"><p class="status">NO ACTIVE EFFECTS</p></vw-state>
+        <vw-state when="showpages"><p class="page" data-vw-template="PAGE {page:integer} / {pagecount:integer}"></p></vw-state>
+        <vw-state when="hasbuffs">
+          <div class="effect-row buff" data-vw-for-each="buffrows"><span data-vw-template="+ {label}"></span></div>
+        </vw-state>
+        <vw-state when="hasdebuffs">
+          <div class="effect-row debuff" data-vw-for-each="debuffrows"><span data-vw-template="- {label}"></span></div>
+        </vw-state>
+      </section>
+    </main>
+  </body>
+</html>

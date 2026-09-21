@@ -194,27 +194,13 @@ package
          }
          if(source.name == "vw-repeat")
          {
-            var repeatValue:Object = CanvasHtmlData.resolve(scope,source.getAttribute("items"));
-            if(!repeatValue.found)
-            {
-               return;
-            }
-            if(!(repeatValue.value is Array) || (repeatValue.value as Array).length > CanvasHtmlLimits.MAX_REPEAT_ITEMS)
-            {
-               this.reject("invalid-binding",String(param1.resource));
-               return;
-            }
-            var items:Array = repeatValue.value as Array;
-            for(var itemIndex:int = items.length - 1; itemIndex >= 0; itemIndex--)
-            {
-               if(!this.consumeWork(String(param1.resource)))
-               {
-                  return;
-               }
-               var item:* = items[itemIndex];
-               var local:Object = item != null && typeof item == "object" && !(item is Array) ? item : {"item":item};
-               this.pushChildren(param2,source.children,param1.parent as CanvasHtmlNode,{"values":local,"parent":scope},int(param1.depth),param1.templateChain as Array,String(param1.resource));
-            }
+            this.expandRepeat(source,param1,param2,scope,source.getAttribute("items"),false);
+            return;
+         }
+         var eachName:String = source.getAttribute("data-vw-for-each");
+         if(eachName != null && param1.repeatInstance !== true)
+         {
+            this.expandRepeat(source,param1,param2,scope,eachName,true);
             return;
          }
          var visibleName:String = source.getAttribute("data-vw-visible");
@@ -296,6 +282,39 @@ package
                return;
             }
             param1.push({"source":param2[index],"parent":param3,"scope":param4,"depth":param5,"templateChain":param6,"resource":param7});
+         }
+      }
+
+      private function expandRepeat(source:CanvasHtmlNode, frame:Object, frames:Array, scope:Object, name:String, repeatElement:Boolean) : void
+      {
+         var value:Object = CanvasHtmlData.resolve(scope,name);
+         if(!value.found)
+         {
+            return;
+         }
+         if(!(value.value is Array) || (value.value as Array).length > CanvasHtmlLimits.MAX_REPEAT_ITEMS)
+         {
+            this.reject("invalid-binding",String(frame.resource));
+            return;
+         }
+         var items:Array = value.value as Array;
+         for(var index:int = items.length - 1; index >= 0; index--)
+         {
+            if(!this.consumeWork(String(frame.resource)))
+            {
+               return;
+            }
+            var item:* = items[index];
+            var local:Object = item != null && typeof item == "object" && !(item is Array) ? item : {"item":item};
+            var itemScope:Object = {"values":local,"parent":scope};
+            if(repeatElement)
+            {
+               frames.push({"source":source,"parent":frame.parent,"scope":itemScope,"depth":frame.depth,"templateChain":frame.templateChain,"resource":frame.resource,"repeatInstance":true});
+            }
+            else
+            {
+               this.pushChildren(frames,source.children,frame.parent as CanvasHtmlNode,itemScope,int(frame.depth),frame.templateChain as Array,String(frame.resource));
+            }
          }
       }
 

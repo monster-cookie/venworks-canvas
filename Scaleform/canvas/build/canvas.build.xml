@@ -41,6 +41,7 @@
     <token>composition-work</token>
     <token>data-vw-format</token>
     <token>data-vw-template</token>
+    <token>data-vw-for-each</token>
     <token>MAX_TEMPLATE_VARIABLES</token>
     <token>z-index</token>
     <token>svg-work</token>

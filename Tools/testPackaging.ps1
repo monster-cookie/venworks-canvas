@@ -118,9 +118,25 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
+$exampleResourceAssets = @($configuredExample.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
+if ($exampleResourceAssets.Count -ne 1 -or
+    [string]$exampleResourceAssets[0].Source -cne 'Scaleform/canvas/resources/example' -or
+    [string]$exampleResourceAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.example') {
+  throw 'Example HTML resource mapping changed.'
+}
+$exampleResourceRoot = Join-Path $PSScriptRoot '..\Scaleform\canvas\resources\example'
+$exampleResourceFiles = @(Get-ChildItem -LiteralPath $exampleResourceRoot -Recurse -File | ForEach-Object {
+  [IO.Path]::GetRelativePath($exampleResourceRoot, $_.FullName)
+})
+Assert-TestNames -Actual $exampleResourceFiles -Expected @('example.css', 'index.html') -Description 'Example packaged HTML resource inventory'
+$exampleResourceTargets = @($exampleResourceFiles | ForEach-Object { Join-Path ([string]$exampleResourceAssets[0].Target) $_ })
+Assert-TestNames -Actual $exampleResourceTargets -Expected @(
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.example/example.css'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.example/index.html'
+) -Description 'Example complete packaged HTML resource target inventory'
 $galleryPauseMenuAssets = @($configuredGallery.Archives[0].Assets | Where-Object { $_ -is [Collections.IDictionary] -and $_.Contains('HostMenu') -and [string]$_['HostMenu'] -ceq 'pausemenu' })
 Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
 Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch targets'

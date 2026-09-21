@@ -1,63 +1,19 @@
 package
 {
    import flash.display.MovieClip;
-   import flash.display.Shape;
    import flash.events.TimerEvent;
-   import flash.text.TextField;
-   import flash.text.TextFormat;
    import flash.utils.Timer;
 
    public final class CanvasExample extends MovieClip
    {
-      private static const TEXT_COLOR:uint = 14941695;
-      private static const BUFF_COLOR:uint = 9230318;
-      private static const DEBUFF_COLOR:uint = 15232341;
-      private static const ACCENT_COLOR:uint = 3845628;
-      private static const PANEL_X:Number = 32;
-      private static const PANEL_Y:Number = 28;
-      private static const PANEL_WIDTH:Number = 500;
-      private static const PAGE_SIZE:int = 8;
-      private static const ROW_HEIGHT:Number = 42;
-
-      private var panel:Shape;
-      private var clockFormat:TextFormat;
-      private var buffFormat:TextFormat;
-      private var debuffFormat:TextFormat;
-      private var universalTimeField:TextField;
-      private var localTimeField:TextField;
-      private var summaryField:TextField;
-      private var pageField:TextField;
-      private var effectFields:Array = [];
+      private var htmlBridge:Object;
+      private var effects:CanvasExampleEffectsAdapter = new CanvasExampleEffectsAdapter();
       private var pageTimer:Timer;
-      private var inSpaceship:Boolean = false;
+      private var inSpaceship:Boolean;
       private var localPlanetTime:Number = NaN;
       private var galacticStandardTime:Number = NaN;
-      private var activeBuffs:Array = [];
-      private var activeDebuffs:Array = [];
-      private var hasSnapshot:Boolean = false;
-      private var currentPage:int = 0;
-      private var pendingSequence:int = -1;
-      private var pendingBuffCount:int = 0;
-      private var pendingDebuffCount:int = 0;
-      private var pendingParts:Array = [];
-      private var removedEntries:Object = {};
-      private var committedSequence:int = -1;
-      private var receivedPacketCount:int = 0;
-      private var receivedPartCount:int = 0;
-      private var packetStatus:String = "";
-
-      public function CanvasExample()
-      {
-         this.clockFormat = new TextFormat("$MAIN_Font_Bold",18,TEXT_COLOR,true);
-         this.buffFormat = new TextFormat("$MAIN_Font_Bold",16,BUFF_COLOR,true);
-         this.debuffFormat = new TextFormat("$MAIN_Font_Bold",16,DEBUFF_COLOR,true);
-         this.createPanel();
-         this.pageTimer = new Timer(6000);
-         this.pageTimer.addEventListener(TimerEvent.TIMER,this.advancePage);
-         this.pageTimer.start();
-         this.renderClock();
-         this.renderEffects();
-      }
+      private var universalClock:String = "--:--";
+      private var localClock:String = "--:--";
 
       public function getCanvasRegistration() : Object
       {
@@ -74,25 +30,41 @@ package
          };
       }
 
+      public function getCanvasHtmlRegistration() : Object
+      {
+         return {"contract":"VWCANVAS_HTML/2","entryDocument":"index.html"};
+      }
+
       public function handleUIData(channel:String, data:Object) : void
       {
          if(channel == "LocalEnvironmentData")
          {
-            this.inSpaceship = this.booleanValue(data,"bInSpaceship",false);
+            this.inSpaceship = this.booleanValue(data,"bInSpaceship");
          }
          else if(channel == "LocalEnvData_Frequent")
          {
             this.localPlanetTime = this.numberValue(data,"fLocalPlanetTime",0,1);
             this.galacticStandardTime = this.numberValue(data,"fGalacticStandardTime",0,24);
          }
-         this.renderClock();
+         else
+         {
+            return;
+         }
+         var nextUniversal:String = this.formatClock(this.galacticStandardTime);
+         var nextLocal:String = this.inSpaceship ? "--:--" : this.formatClock(this.localPlanetTime * 24);
+         if(nextUniversal != this.universalClock || nextLocal != this.localClock)
+         {
+            this.universalClock = nextUniversal;
+            this.localClock = nextLocal;
+            this.publish();
+         }
       }
 
       public function handleCanvasEvent(topic:String, body:String) : void
       {
-         if(topic == "venworks.canvas.example.effects.snapshot")
+         if(topic == "venworks.canvas.example.effects.snapshot" && this.effects.acceptPacket(body))
          {
-            this.acceptEffectPacket(body);
+            this.publish();
          }
       }
 
@@ -100,12 +72,89 @@ package
       {
          if(state == "ready")
          {
-            this.renderClock();
-            this.renderEffects();
+            this.stopPageTimer();
+            this.effects.reset();
+            this.resetClock();
+            this.htmlBridge = this.resolveHtmlBridge(detail);
+            if(this.htmlBridge == null)
+            {
+               throw new Error("Canvas Example requires the Canvas HTML bridge");
+            }
+            if(stage != null && stage.stageWidth >= 64 && stage.stageHeight >= 64 && stage.stageWidth <= 8192 && stage.stageHeight <= 8192)
+            {
+               this.htmlBridge["setViewport"](stage.stageWidth,stage.stageHeight);
+            }
+            this.publish();
+            this.pageTimer = new Timer(6000);
+            this.pageTimer.addEventListener(TimerEvent.TIMER,this.advancePage);
+            this.pageTimer.start();
+         }
+         else if(state == "unload")
+         {
+            this.stopPageTimer();
+            this.htmlBridge = null;
+            this.effects.reset();
+            this.resetClock();
          }
       }
 
       public function dispose() : void
+      {
+         this.stopPageTimer();
+         this.htmlBridge = null;
+         this.effects.reset();
+         this.resetClock();
+      }
+
+      private function resetClock() : void
+      {
+         this.inSpaceship = false;
+         this.localPlanetTime = NaN;
+         this.galacticStandardTime = NaN;
+         this.universalClock = "--:--";
+         this.localClock = "--:--";
+      }
+
+      private function resolveHtmlBridge(detail:Object) : Object
+      {
+         if(detail == null || !("features" in detail) || !("html" in detail))
+         {
+            return null;
+         }
+         var features:Array = detail["features"] as Array;
+         var bridge:Object = detail["html"];
+         if(features == null || features.indexOf("htmlRendering") < 0 || bridge == null)
+         {
+            return null;
+         }
+         if(!("setData" in bridge) || typeof bridge["setData"] != "function" || !("setViewport" in bridge) || typeof bridge["setViewport"] != "function")
+         {
+            return null;
+         }
+         return bridge;
+      }
+
+      private function publish() : void
+      {
+         if(this.htmlBridge == null)
+         {
+            return;
+         }
+         var data:Object = this.effects.view();
+         data["universaltime"] = this.universalClock + " UT";
+         data["localtime"] = this.localClock;
+         this.htmlBridge["setData"](data);
+      }
+
+      private function advancePage(event:TimerEvent) : void
+      {
+         if(this.effects.advancePage())
+         {
+            this.publish();
+         }
+      }
+
+      private function stopPageTimer() : void
       {
          if(this.pageTimer != null)
          {
@@ -113,321 +162,6 @@ package
             this.pageTimer.removeEventListener(TimerEvent.TIMER,this.advancePage);
             this.pageTimer = null;
          }
-         while(numChildren > 0)
-         {
-            removeChildAt(numChildren - 1);
-         }
-         this.effectFields = [];
-         this.pendingParts = [];
-         this.activeBuffs = [];
-         this.activeDebuffs = [];
-         this.removedEntries = {};
-         this.panel = null;
-      }
-
-      private function createPanel() : void
-      {
-         this.panel = new Shape();
-         addChild(this.panel);
-         this.universalTimeField = this.createField(PANEL_Y + 9,26,this.clockFormat);
-         this.localTimeField = this.createField(PANEL_Y + 38,26,this.clockFormat);
-         this.summaryField = this.createField(PANEL_Y + 76,26,this.clockFormat);
-         this.pageField = this.createField(PANEL_Y + 104,24,this.clockFormat);
-         for(var index:int = 0; index < PAGE_SIZE; index++)
-         {
-            var field:TextField = this.createField(PANEL_Y + 136 + index * ROW_HEIGHT,ROW_HEIGHT - 2,this.buffFormat);
-            field.multiline = true;
-            field.wordWrap = true;
-            this.effectFields.push(field);
-         }
-      }
-
-      private function createField(y:Number, height:Number, format:TextFormat) : TextField
-      {
-         var field:TextField = new TextField();
-         field.x = PANEL_X + 14;
-         field.y = y;
-         field.width = PANEL_WIDTH - 28;
-         field.height = height;
-         field.embedFonts = true;
-         field.defaultTextFormat = format;
-         field.selectable = false;
-         field.mouseEnabled = false;
-         addChild(field);
-         return field;
-      }
-
-      private function acceptEffectPacket(body:String) : void
-      {
-         this.receivedPacketCount++;
-         if(body == null)
-         {
-            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED SIZE";
-            this.renderEffects();
-            return;
-         }
-         var fields:Array = body.split("|");
-         if(fields.length < 3)
-         {
-            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED FORMAT";
-            this.renderEffects();
-            return;
-         }
-         var sequence:int = this.parseUnsigned(fields[1],1,1000000000);
-         if(sequence < 0)
-         {
-            this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED SEQUENCE";
-            this.renderEffects();
-            return;
-         }
-         var kind:String = String(fields[0]).toUpperCase();
-         if(kind == "R" && fields.length == 3)
-         {
-            var removed:Object = this.parseEffectEntry(String(fields[2]));
-            if(removed == null || sequence < this.committedSequence)
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED REMOVAL";
-            }
-            else
-            {
-               this.removedEntries[removed.key] = sequence;
-               this.activeBuffs = this.withoutEntry(this.activeBuffs,removed.key);
-               this.activeDebuffs = this.withoutEntry(this.activeDebuffs,removed.key);
-               this.packetStatus = "";
-            }
-         }
-         else if(kind == "S" && fields.length == 4)
-         {
-            var buffCount:int = this.parseUnsigned(fields[2],0,2000);
-            var debuffCount:int = this.parseUnsigned(fields[3],0,2000);
-            if(buffCount < 0 || debuffCount < 0 || buffCount + debuffCount > 2000)
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " REJECTED COUNTS";
-               this.renderEffects();
-               return;
-            }
-            this.pendingSequence = sequence;
-            this.pendingBuffCount = buffCount;
-            this.pendingDebuffCount = debuffCount;
-            this.pendingParts = [];
-            this.receivedPartCount = 0;
-            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " START";
-         }
-         else if(kind == "P" && fields.length == 4 && sequence == this.pendingSequence)
-         {
-            var partIndex:int = this.parseUnsigned(fields[2],0,2000);
-            if(partIndex >= 0 && this.pendingParts[partIndex] === undefined)
-            {
-               this.pendingParts[partIndex] = fields[3];
-               this.receivedPartCount++;
-               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " PARTS " + this.receivedPartCount;
-            }
-            else if(partIndex >= 0)
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " DUPLICATE PART " + partIndex;
-            }
-            else
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " REJECTED PART INDEX";
-            }
-         }
-         else if(kind == "C" && fields.length == 3 && sequence == this.pendingSequence)
-         {
-            var partCount:int = this.parseUnsigned(fields[2],0,2000);
-            if(partCount >= 0)
-            {
-               this.commitEffectSnapshot(partCount);
-            }
-            else
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + " REJECTED COMMIT";
-            }
-            this.pendingSequence = -1;
-            this.pendingParts = [];
-         }
-         else
-         {
-            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + sequence + (kind == "P" ? " PART WITHOUT START" : kind == "C" ? " COMMIT WITHOUT START" : " REJECTED " + kind + "/" + fields.length);
-         }
-         this.renderEffects();
-      }
-
-      private function commitEffectSnapshot(partCount:int) : void
-      {
-         var buffs:Array = [];
-         var debuffs:Array = [];
-         for(var partIndex:int = 0; partIndex < partCount; partIndex++)
-         {
-            if(this.pendingParts[partIndex] === undefined)
-            {
-               this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " MISSING PART " + partIndex;
-               return;
-            }
-            var encoded:Array = String(this.pendingParts[partIndex]).split(";");
-            for(var itemIndex:int = 0; itemIndex < encoded.length; itemIndex++)
-            {
-               var item:String = String(encoded[itemIndex]);
-               if(item == "" && itemIndex == encoded.length - 1)
-               {
-                  continue;
-               }
-               var parsed:Object = this.parseEffectEntry(item);
-               if(parsed == null)
-               {
-                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED ITEM";
-                  return;
-               }
-               if(parsed.category == "B")
-               {
-                  buffs.push(parsed);
-               }
-               else if(parsed.category == "D")
-               {
-                  debuffs.push(parsed);
-               }
-               else
-               {
-                  this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " REJECTED TYPE";
-                  return;
-               }
-            }
-         }
-         if(buffs.length != this.pendingBuffCount || debuffs.length != this.pendingDebuffCount)
-         {
-            this.packetStatus = "RX " + this.receivedPacketCount + " SEQ " + this.pendingSequence + " COUNT MISMATCH";
-            return;
-         }
-         this.activeBuffs = this.withoutRemovedEntries(buffs,this.pendingSequence);
-         this.activeDebuffs = this.withoutRemovedEntries(debuffs,this.pendingSequence);
-         this.committedSequence = this.pendingSequence;
-         this.hasSnapshot = true;
-         this.currentPage = 0;
-         this.packetStatus = "";
-      }
-
-      private function advancePage(event:TimerEvent) : void
-      {
-         var pageCount:int = Math.max(1,Math.ceil((this.activeBuffs.length + this.activeDebuffs.length) / PAGE_SIZE));
-         if(pageCount > 1)
-         {
-            this.currentPage = (this.currentPage + 1) % pageCount;
-            this.renderEffects();
-         }
-      }
-
-      private function parseEffectEntry(item:String) : Object
-      {
-         if(item == null || item.length < 3 || item.charAt(1) != ":")
-         {
-            return null;
-         }
-         var category:String = item.charAt(0).toUpperCase();
-         if(category != "B" && category != "D")
-         {
-            return null;
-         }
-         var label:String = item.substring(2);
-         if(label.charAt(0) == "#")
-         {
-            var identityEnd:int = label.indexOf(":");
-            if(identityEnd < 2 || !/^-?[0-9]+$/.test(label.substring(1,identityEnd)))
-            {
-               return null;
-            }
-            label = label.substring(identityEnd + 1);
-         }
-         return label == "" ? null : {"key":item,"category":category,"label":label};
-      }
-
-      private function withoutEntry(entries:Array, key:String) : Array
-      {
-         var remaining:Array = [];
-         for each(var entry:Object in entries)
-         {
-            if(entry.key != key)
-            {
-               remaining.push(entry);
-            }
-         }
-         return remaining;
-      }
-
-      private function withoutRemovedEntries(entries:Array, sequence:int) : Array
-      {
-         var remaining:Array = [];
-         for each(var entry:Object in entries)
-         {
-            if(this.removedEntries[entry.key] === undefined || int(this.removedEntries[entry.key]) < sequence)
-            {
-               remaining.push(entry);
-            }
-         }
-         return remaining;
-      }
-
-      private function renderClock() : void
-      {
-         this.setText(this.universalTimeField,"UNIVERSAL TIME   " + this.formatClock(this.galacticStandardTime) + " UT",this.clockFormat);
-         this.setText(this.localTimeField,"LOCAL TIME       " + (this.inSpaceship ? "--:--" : this.formatClock(this.localPlanetTime * 24)),this.clockFormat);
-      }
-
-      private function renderEffects() : void
-      {
-         var total:int = this.activeBuffs.length + this.activeDebuffs.length;
-         var pageCount:int = Math.max(1,Math.ceil(total / PAGE_SIZE));
-         var visibleRows:int = this.hasSnapshot ? Math.min(PAGE_SIZE,Math.max(total,1)) : 1;
-         this.panel.graphics.clear();
-         this.panel.graphics.beginFill(1315860,0.82);
-         this.panel.graphics.lineStyle(1,ACCENT_COLOR,0.9);
-         this.panel.graphics.drawRect(PANEL_X,PANEL_Y,PANEL_WIDTH,138 + visibleRows * ROW_HEIGHT);
-         this.panel.graphics.endFill();
-         if(!this.hasSnapshot)
-         {
-            this.setText(this.summaryField,"ACTIVE EFFECTS | RX " + this.receivedPacketCount,this.clockFormat);
-            this.setText(this.pageField,this.packetStatus == "" ? "WAITING FOR DATA-LAYER SNAPSHOT" : this.packetStatus,this.clockFormat);
-         }
-         else
-         {
-            this.setText(this.summaryField,"BUFFS " + this.activeBuffs.length + "   DEBUFFS " + this.activeDebuffs.length + " | RX " + this.receivedPacketCount,this.clockFormat);
-            this.setText(this.pageField,this.packetStatus != "" ? this.packetStatus : total == 0 ? "NO ACTIVE EFFECTS" : "PAGE " + (this.currentPage + 1) + " / " + pageCount,this.clockFormat);
-         }
-         for(var index:int = 0; index < PAGE_SIZE; index++)
-         {
-            var field:TextField = this.effectFields[index];
-            var effectIndex:int = this.currentPage * PAGE_SIZE + index;
-            var text:String = "";
-            var format:TextFormat = this.buffFormat;
-            if(this.hasSnapshot && effectIndex < this.activeBuffs.length)
-            {
-               text = "+ " + this.activeBuffs[effectIndex].label;
-            }
-            else if(this.hasSnapshot && effectIndex < total)
-            {
-               text = "- " + this.activeDebuffs[effectIndex - this.activeBuffs.length].label;
-               format = this.debuffFormat;
-            }
-            field.visible = text != "";
-            this.setText(field,text,format);
-         }
-      }
-
-      private function setText(field:TextField, value:String, format:TextFormat) : void
-      {
-         if(field.text != value)
-         {
-            field.text = value;
-            field.setTextFormat(format);
-         }
-      }
-
-      private function parseUnsigned(value:String, minimum:int, maximum:int) : int
-      {
-         if(value == null || !/^[0-9]+$/.test(value))
-         {
-            return -1;
-         }
-         var number:Number = Number(value);
-         return isFinite(number) && number >= minimum && number <= maximum ? int(number) : -1;
       }
 
       private function formatClock(hours:Number) : String
@@ -469,19 +203,16 @@ package
          return NaN;
       }
 
-      private function booleanValue(data:Object, field:String, fallback:Boolean) : Boolean
+      private function booleanValue(data:Object, field:String) : Boolean
       {
          try
          {
-            if(data != null && field in data)
-            {
-               return data[field] === true;
-            }
+            return data != null && field in data && data[field] === true;
          }
          catch(valueError:*)
          {
          }
-         return fallback;
+         return false;
       }
    }
 }
