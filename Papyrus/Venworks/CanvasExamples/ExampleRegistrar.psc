@@ -124,7 +124,10 @@ EndFunction
 
 ; Restores the authored Example descriptor after a diagnostic run.
 String Function RestoreConsoleExample()
-  Return SubmitConsoleDescriptorUpdate(DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
+  String result = SubmitConsoleDescriptorUpdate(DisplayName, NormalMoviePath, LargeMoviePath, DescriptorVersion)
+  LogUserInformational(ModuleName, "RestoreConsoleExample", "EFFECT_RESTORE_REFRESH_REQUESTED")
+  RequestEffectRefresh(True)
+  Return result
 EndFunction
 
 ; Makes one explicit descriptor update and UI-load request; retained deferred input uses the registrar's existing timer reconciliation.
