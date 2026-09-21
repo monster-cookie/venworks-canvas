@@ -34,6 +34,7 @@ Bool EffectRefreshPending = False
 Bool EffectForceRefresh = False
 Bool EffectChangedDuringPublication = False
 Bool EffectSnapshotBuilding = False
+Int EffectSourceRevision = 0
 Int EffectSnapshotSequence = 0
 Int EffectPacketIndex = 0
 Int EffectRetryCount = 0
@@ -198,6 +199,7 @@ EndEvent
 ; A saved game can load with effects already active; HUD opening provides a second path when this event is skipped.
 Event Actor.OnPlayerLoadGame(Actor akSender)
   LogUserInformational(ModuleName, "Actor.OnPlayerLoadGame", "EVENT_TRIGGERED | Sender=" + akSender)
+  EffectSourceRevision += 1
   EffectPackets = None
   EffectPacketIndex = 0
   EffectSnapshotBuilding = False
@@ -297,7 +299,9 @@ EndFunction
 
 ; An expiry or cure has no quest-level finish event. Never send a removal from a guessed timer alone.
 Function CheckActiveEffectSources()
-  If (ObservedEffectEntries == None || ObservedEffectEntries.Length == 0)
+  Int sourceRevision = EffectSourceRevision
+  String[] observedEntries = ObservedEffectEntries
+  If (observedEntries == None || observedEntries.Length == 0 || EffectSnapshotBuilding)
     Return
   EndIf
   Actor player = Game.GetPlayer()
@@ -332,20 +336,31 @@ Function CheckActiveEffectSources()
     index += 1
   EndWhile
   String[] remaining = new String[0]
-  Bool removed = False
+  String[] removedEntries = new String[0]
   index = 0
-  While (index < ObservedEffectEntries.Length)
-    String entry = ObservedEffectEntries[index]
+  While (index < observedEntries.Length)
+    String entry = observedEntries[index]
     If (ContainsEffectEntry(stillActive, entry))
       remaining.Add(entry)
     Else
-      QueueEffectRemoval(entry)
-      removed = True
+      removedEntries.Add(entry)
     EndIf
     index += 1
   EndWhile
+  Bool removed = False
+  TryLockGuard EffectSnapshotGuard
+    If (!EffectSnapshotBuilding && EffectSourceRevision == sourceRevision && removedEntries.Length > 0)
+      index = 0
+      While (index < removedEntries.Length)
+        QueueEffectRemoval(removedEntries[index])
+        index += 1
+      EndWhile
+      ObservedEffectEntries = remaining
+      EffectSourceRevision += 1
+      removed = True
+    EndIf
+  EndTryLockGuard
   If (removed)
-    ObservedEffectEntries = remaining
     RequestEffectRefresh(False)
     LogUserInformational(ModuleName, "CheckActiveEffectSources", "EFFECT_REMOVAL_DETECTED | Remaining=" + remaining.Length)
   EndIf
@@ -381,6 +396,7 @@ Function PrepareEffectSnapshot()
       EffectChangedDuringPublication = True
     Else
       EffectSnapshotBuilding = True
+      EffectSourceRevision += 1
       snapshotClaimed = True
     EndIf
   EndTryLockGuard
