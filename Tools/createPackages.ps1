@@ -53,6 +53,10 @@ foreach ($variant in $selectedVariants) {
     throw "Package archive plan count differs for '$($variant.VariantKey)'."
   }
 }
+foreach ($operation in $operations) {
+  $variantPlans = @($plans | Where-Object { [string]$_.VariantKey -ceq [string]$operation.Key })
+  $operation | Add-Member -NotePropertyName LoosePayloadTargets -NotePropertyValue @(Get-BuildPackagePlanPayloadTargets -Plans $variantPlans) -Force
+}
 
 $transactionId = [guid]::NewGuid().ToString('N')
 $transactionBase = [IO.Path]::GetFullPath($ArchiveRootsDirectory)
@@ -134,6 +138,8 @@ try {
     Assert-BuildJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
     $backupPath = Join-Path $backupRoot $operation.Key
     New-Item -ItemType Directory -Path $backupPath | Out-Null
+    $looseBackupRoot = Join-Path $backupPath 'loose-payloads'
+    New-Item -ItemType Directory -Path $looseBackupRoot | Out-Null
     $originalNames = [Collections.Generic.List[string]]::new()
     $originalHashes = @{}
     foreach ($name in @($operation.ManagedNames)) {
@@ -144,9 +150,24 @@ try {
       $originalNames.Add($name)
       $originalHashes[$name] = $hash
     }
+    $originalLoosePayloadTargets = [Collections.Generic.List[string]]::new()
+    $originalLoosePayloadHashes = @{}
+    foreach ($target in @($operation.LoosePayloadTargets)) {
+      $installedPath = Resolve-BuildArchiveTarget -Root $operation.InstallPath -Target $target
+      $installedItem = Get-Item -LiteralPath $installedPath -Force -ErrorAction SilentlyContinue
+      if ($null -eq $installedItem) { continue }
+      if ($installedItem.PSIsContainer) { throw "$($operation.Key) loose package payload target is a directory: $installedPath" }
+      $hash = Get-BuildFileSha256 -Path $installedPath
+      $backupDestination = Resolve-BuildArchiveTarget -Root $looseBackupRoot -Target $target
+      Copy-BuildVerifiedFile -Source $installedPath -Destination $backupDestination -ExpectedSha256 $hash -Description "$($operation.Key) loose-payload backup '$target'"
+      $originalLoosePayloadTargets.Add($target)
+      $originalLoosePayloadHashes[$target] = $hash
+    }
     $operation | Add-Member -NotePropertyName BackupPath -NotePropertyValue $backupPath -Force
     $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue @($originalNames) -Force
     $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
+    $operation | Add-Member -NotePropertyName OriginalLoosePayloadTargets -NotePropertyValue @($originalLoosePayloadTargets) -Force
+    $operation | Add-Member -NotePropertyName OriginalLoosePayloadHashes -NotePropertyValue $originalLoosePayloadHashes -Force
     $installedOperations.Add($operation)
 
     Install-BuildVerifiedFile -Source $record.CandidateEsmPath -Destination (Join-Path $operation.InstallPath $operation.PluginName) -ExpectedSha256 $record.CandidateEsmSha256 -Description "$($operation.Key) candidate ESM"
@@ -154,7 +175,14 @@ try {
       Install-BuildVerifiedFile -Source $archiveRecord.CandidatePath -Destination (Join-Path $operation.InstallPath $archiveRecord.Plan.FileName) -ExpectedSha256 $archiveRecord.CandidateSha256 -Description "$($operation.Key) candidate archive '$($archiveRecord.Plan.FileName)'"
     }
     Assert-BuildJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
-    Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath
+    foreach ($target in @($operation.LoosePayloadTargets)) {
+      $installedPath = Resolve-BuildArchiveTarget -Root $operation.InstallPath -Target $target
+      $installedItem = Get-Item -LiteralPath $installedPath -Force -ErrorAction SilentlyContinue
+      if ($null -eq $installedItem) { continue }
+      if ($installedItem.PSIsContainer) { throw "$($operation.Key) loose package payload target is a directory: $installedPath" }
+      Remove-Item -LiteralPath $installedPath -Force
+    }
+    Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath -LoosePayloadTargets $operation.LoosePayloadTargets
   }
 
   Write-BuildPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Complete' -VariantKeys @($selectedVariants.VariantKey)

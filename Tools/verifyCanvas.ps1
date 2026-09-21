@@ -60,15 +60,17 @@ if ($SourceOnly) {
   return
 }
 
-[void](Get-BuildPackageArchivePlans -Variants $variants -RepositoryRoot $repositoryRoot `
-  -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot -ScriptsDirectory $ScriptsDirectory -ScaleformDirectory $ScaleformDirectory)
 if ($ArtifactsOnly) {
+  [void](Get-BuildPackageArchivePlans -Variants $variants -RepositoryRoot $repositoryRoot `
+    -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot -ScriptsDirectory $ScriptsDirectory -ScaleformDirectory $ScaleformDirectory)
   Write-Host -ForegroundColor Green "Verified current Canvas-owned build inputs for $($variants.VariantKey -join ', ')."
   return
 }
 
+$configuredPayloadTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants $variants -RepositoryRoot $repositoryRoot -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot)
 $operations = @(Get-BuildPackageInstallOperations -SelectedVariants $variants -AllVariants $allVariants)
 foreach ($operation in $operations) {
-  Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath
+  $operationTargets = @($configuredPayloadTargets | Where-Object { [string]$_.VariantKey -ceq [string]$operation.Key } | ForEach-Object { [string]$_.Target })
+  Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath -LoosePayloadTargets $operationTargets
 }
-Write-Host -ForegroundColor Green "Verified configured installed package files and headers for $($variants.VariantKey -join ', ')."
+Write-Host -ForegroundColor Green "Verified configured installed package files, headers, and absence of archive-shadowing loose payloads for $($variants.VariantKey -join ', ')."

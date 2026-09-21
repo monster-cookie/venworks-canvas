@@ -32,6 +32,7 @@ $sharedConfigurationLoaded = Get-Variable -Name SharedConfigurationLoaded -Scope
 if ($null -eq $sharedConfigurationLoaded -or $sharedConfigurationLoaded.Value -ne $true) {
   . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
 }
+. (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
 function Assert-BuildConfiguredStagingPath {
   param(
@@ -168,6 +169,7 @@ if (!$Committed) {
 }
 
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
+$configuredPayloadTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants $variants -RepositoryRoot $repositoryRoot -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot)
 foreach ($variant in $variants) {
   $stagingPath = Get-BuildNormalizedFullPath -Path $variant.StagingFolderPath
   if (!(Test-Path -LiteralPath $stagingPath -PathType Container)) {
@@ -205,8 +207,10 @@ foreach ($variant in $variants) {
     }
     Assert-BuildArtifactHeader -Path $artifactPath
   }
+  $variantPayloadTargets = @($configuredPayloadTargets | Where-Object { [string]$_.VariantKey -ceq [string]$variant.VariantKey } | ForEach-Object { [string]$_.Target })
+  Assert-BuildNoLoosePackagePayloads -VariantKey ([string]$variant.VariantKey) -InstallPath $artifactRoot -PayloadTargets $variantPayloadTargets
 
-  Write-Host -ForegroundColor Green "$($variant.VariantName) staging and configured artifacts are valid."
+  Write-Host -ForegroundColor Green "$($variant.VariantName) staging, configured artifacts, and archive payload isolation are valid."
 }
 
 Write-Host -ForegroundColor Cyan "`n`n"

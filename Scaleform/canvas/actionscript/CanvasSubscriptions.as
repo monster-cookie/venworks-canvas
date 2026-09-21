@@ -149,6 +149,9 @@ package
          {
             return;
          }
+         // CustomWatchAlert may change ASCII casing in transit. Event topics are
+         // identifiers, so canonicalize them before subscription lookup and delivery.
+         param1 = param1.toLowerCase();
          var registered:Array = this.topicMembers[param1] as Array;
          if(registered == null || registered.length == 0)
          {
@@ -533,6 +536,10 @@ package
                throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
             }
             value = String(param1[index]);
+            if(!param3)
+            {
+               value = value.toLowerCase();
+            }
             if(seen.hasOwnProperty("$" + value) || (param3 && !this.isAllowedUiChannel(value)) || (!param3 && !this.isEventTopicValid(value)))
             {
                throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");

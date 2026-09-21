@@ -16,6 +16,7 @@ package
          this.marker = new CanvasDiagnosticMarker(this,"VWCANVAS SUBSCRIPTIONS PROBE",65280);
          this.runCase("SHARED REPLAY FANOUT",this.testSharedReplayFanout);
          this.runCase("EVENT DROP DIAGNOSTICS",this.testEventDropDiagnostics);
+         this.runCase("EVENT TOPIC CASE FOLD",this.testEventTopicCaseFold);
          this.runCase("REQUEST PREFLIGHT",this.testRequestPreflight);
          this.runCase("SUBSCRIBE ROLLBACK",this.testSubscribeRollback);
          this.runCase("UNSUBSCRIBE RECOVERY",this.testUnsubscribeRecovery);
@@ -117,6 +118,7 @@ package
          this.assertRejectedBeforeProvider(["PlayerData","PlayerData"],[],"duplicate channel");
          this.assertRejectedBeforeProvider(["playerData"],[],"wrong-case channel");
          this.assertRejectedBeforeProvider(["PlayerData"],["invalid"],"invalid topic after valid channel");
+         this.assertRejectedBeforeProvider([],["Venworks.Canvas.Test","venworks.canvas.test"],"duplicate case-folded topic");
          this.assertRejectedBeforeProvider([
             "LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","PlayerInventoryData","WeaponData",
             "HudJetpackData","HUDStarbornPowersData","FavoritesData","ControlMapData","EnvironmentEffectsData","PersonalEffectsData",
@@ -146,6 +148,22 @@ package
          this.assertTrue(bridge.eventTopics.length == 1,"stale member received event");
          this.assertTrue(context.diagnostics.length == 3 && String(context.diagnostics[2]).indexOf("EVENT REJECTED | STALE_MEMBERSHIP") == 0,"stale membership drop was not reported");
          registry["removeConsumer"]("effect-consumer");
+         registry["dispose"]();
+      }
+
+      private function testEventTopicCaseFold() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var context:CanvasSubscriptionsTestContext = new CanvasSubscriptionsTestContext();
+         var registry:Object = this.createRegistry(manager,context);
+         var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         var loader:Object = {};
+         this.addConsumer(registry,context,"case-fold",bridge,loader,1,[],["Venworks.Canvas.Test"]);
+         registry["markReady"]("case-fold");
+         registry["publishEvent"]("VENWORKS.CANVAS.TEST","S|1|0|0");
+         this.assertTrue(bridge.eventTopics.length == 1 && bridge.eventTopics[0] == "venworks.canvas.test","case-folded event topic missed its canonical subscription");
+         registry["removeConsumer"]("case-fold");
+         context.deactivate("case-fold");
          registry["dispose"]();
       }
 

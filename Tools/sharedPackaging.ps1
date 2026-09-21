@@ -499,6 +499,105 @@ function Get-BuildPackageArchivePlans {
   return @($plans)
 }
 
+function Get-BuildPackagePlanPayloadTargets {
+  param([Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Plans)
+
+  $targets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($plan in @($Plans)) {
+    foreach ($payload in @($plan.Payloads)) {
+      $target = ([string]$payload.Target).Replace('/', '\')
+      if ([string]::IsNullOrWhiteSpace($target)) { throw 'Package plan contains an empty payload target.' }
+      [void]$targets.Add($target)
+    }
+  }
+  return @($targets | Sort-Object)
+}
+
+function Get-BuildConfiguredPackagePayloadTargets {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$Variants,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)][string]$PapyrusSourceRoot
+  )
+
+  $records = [Collections.Generic.List[object]]::new()
+  foreach ($variant in @($Variants)) {
+    $variantTargets = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($archive in @($variant.Archives)) {
+      foreach ($asset in @((Get-BuildPackagePropertyValue -InputObject $archive -Name 'Assets' -DefaultValue @()))) {
+        $rootName = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Root')
+        $target = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target' -DefaultValue '')
+        if ($rootName -ceq 'Scaleform') {
+          [void](Resolve-BuildArchiveTarget -Root $RepositoryRoot -Target $target)
+          if (Test-BuildArchivePayloadIncluded -Archive $archive -Target $target) {
+            [void]$variantTargets.Add($target.Replace('/', '\'))
+          }
+          continue
+        }
+
+        $resolved = Resolve-BuildPackageAssetSource -Asset $asset -Variant $variant -RepositoryRoot $RepositoryRoot
+        if ($resolved.Item.PSIsContainer) {
+          [void](Resolve-BuildArchiveTarget -Root $resolved.Item.FullName -Target $target -AllowRoot)
+          $relativeSource = [string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Source')
+          $allowRootReparsePoint = $resolved.Root -ceq 'Staging' -and $relativeSource -ceq '.'
+          foreach ($file in @(Get-BuildPackageDirectoryFiles -Directory $resolved.Item -AllowRootReparsePoint:$allowRootReparsePoint)) {
+            $relative = [IO.Path]::GetRelativePath($resolved.Item.FullName, $file)
+            $archiveTarget = if ([string]::IsNullOrWhiteSpace($target)) { $relative } else { Join-Path $target $relative }
+            $normalizedTarget = $archiveTarget.Replace('/', '\')
+            $includePapyrus = [bool](Get-BuildPackagePropertyValue -InputObject $archive -Name 'IncludePapyrus' -DefaultValue $false)
+            if ($includePapyrus -and $resolved.Root -ceq 'Staging' -and
+                ($normalizedTarget -ieq 'Scripts' -or $normalizedTarget.StartsWith('Scripts\', [StringComparison]::OrdinalIgnoreCase))) {
+              continue
+            }
+            if (Test-BuildArchivePayloadIncluded -Archive $archive -Target $archiveTarget) {
+              [void]$variantTargets.Add($normalizedTarget)
+            }
+          }
+        }
+        else {
+          [void](Resolve-BuildArchiveTarget -Root $RepositoryRoot -Target $target)
+          if (Test-BuildArchivePayloadIncluded -Archive $archive -Target $target) {
+            [void]$variantTargets.Add($target.Replace('/', '\'))
+          }
+        }
+      }
+
+      if ([bool](Get-BuildPackagePropertyValue -InputObject $archive -Name 'IncludePapyrus' -DefaultValue $false)) {
+        foreach ($script in @(Get-BuildPapyrusSources -Variant $variant -SourceRoot $PapyrusSourceRoot)) {
+          $archiveTarget = Join-Path 'Scripts' ([string]$script.RelativeOutput)
+          if (Test-BuildArchivePayloadIncluded -Archive $archive -Target $archiveTarget) {
+            [void]$variantTargets.Add($archiveTarget.Replace('/', '\'))
+          }
+        }
+      }
+    }
+    foreach ($target in @($variantTargets | Sort-Object)) {
+      $records.Add([pscustomobject]@{ VariantKey = [string]$variant.VariantKey; Target = $target })
+    }
+  }
+  return @($records)
+}
+
+function Assert-BuildNoLoosePackagePayloads {
+  param(
+    [Parameter(Mandatory = $true)][string]$VariantKey,
+    [Parameter(Mandatory = $true)][string]$InstallPath,
+    [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$PayloadTargets
+  )
+
+  $loose = [Collections.Generic.List[string]]::new()
+  foreach ($target in @($PayloadTargets)) {
+    $path = Resolve-BuildArchiveTarget -Root $InstallPath -Target $target
+    $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item) { continue }
+    if ($item.PSIsContainer) { throw "$VariantKey package payload target is a directory: $path" }
+    $loose.Add($target.Replace('/', '\'))
+  }
+  if ($loose.Count -ne 0) {
+    throw "$VariantKey installed package has archive-shadowing loose payloads: $([string]::Join(', ', @($loose | Sort-Object)))"
+  }
+}
+
 function Get-BuildPackageInstallOperations {
   param(
     [Parameter(Mandatory = $true)][object[]]$SelectedVariants,
@@ -659,6 +758,16 @@ function Restore-BuildPackageOperation {
       throw "$($Operation.Key) recovery backup failed preflight for '$name'."
     }
   }
+  $looseBackupRoot = Resolve-BuildRequiredDirectory -Path (Join-Path $Operation.BackupPath 'loose-payloads') -Description "$($Operation.Key) loose-payload recovery backup"
+  $looseBackupItems = @(Get-ChildItem -LiteralPath $looseBackupRoot -Recurse -File -Force)
+  $looseBackupTargets = @($looseBackupItems | ForEach-Object { [IO.Path]::GetRelativePath($looseBackupRoot, $_.FullName).Replace('/', '\') })
+  Assert-BuildExactNames -Actual $looseBackupTargets -Expected @($Operation.OriginalLoosePayloadTargets) -Description "$($Operation.Key) loose-payload recovery backup inventory"
+  foreach ($target in @($Operation.OriginalLoosePayloadTargets)) {
+    $backupPath = Resolve-BuildRequiredFile -Path (Resolve-BuildArchiveTarget -Root $looseBackupRoot -Target $target) -Description "$($Operation.Key) loose-payload recovery file '$target'"
+    if (!$Operation.OriginalLoosePayloadHashes.ContainsKey($target) -or (Get-BuildFileSha256 -Path $backupPath) -cne [string]$Operation.OriginalLoosePayloadHashes[$target]) {
+      throw "$($Operation.Key) loose-payload recovery backup failed preflight for '$target'."
+    }
+  }
   foreach ($name in @($Operation.CandidateNames)) {
     $installedPath = Join-Path $Operation.InstallPath $name
     if (Test-Path -LiteralPath $installedPath -PathType Leaf) { Remove-Item -LiteralPath $installedPath -Force }
@@ -678,12 +787,26 @@ function Restore-BuildPackageOperation {
       if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) { Remove-Item -LiteralPath $temporaryPath -Force }
     }
   }
+  foreach ($target in @($Operation.LoosePayloadTargets)) {
+    $destination = Resolve-BuildArchiveTarget -Root $Operation.InstallPath -Target $target
+    $item = Get-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
+    if ($null -eq $item) { continue }
+    if ($item.PSIsContainer) { throw "$($Operation.Key) loose-payload recovery target is a directory: $destination" }
+    Remove-Item -LiteralPath $destination -Force
+  }
+  foreach ($target in @($Operation.OriginalLoosePayloadTargets)) {
+    $backupPath = Resolve-BuildArchiveTarget -Root $looseBackupRoot -Target $target
+    $destination = Resolve-BuildArchiveTarget -Root $Operation.InstallPath -Target $target
+    $expectedHash = [string]$Operation.OriginalLoosePayloadHashes[$target]
+    Install-BuildVerifiedFile -Source $backupPath -Destination $destination -ExpectedSha256 $expectedHash -Description "$($Operation.Key) loose-payload recovery '$target'"
+  }
 }
 
 function Assert-BuildInstalledPackage {
   param(
     [Parameter(Mandatory = $true)][object]$Variant,
-    [Parameter(Mandatory = $true)][string]$InstallPath
+    [Parameter(Mandatory = $true)][string]$InstallPath,
+    [AllowEmptyCollection()][string[]]$LoosePayloadTargets = @()
   )
 
   $key = [string]$Variant.VariantKey
@@ -693,6 +816,7 @@ function Assert-BuildInstalledPackage {
     $path = Resolve-BuildRequiredFile -Path (Join-Path $directory $name) -Description "$key installed package file '$name'"
     Assert-BuildArtifactHeader -Path $path
   }
+  Assert-BuildNoLoosePackagePayloads -VariantKey $key -InstallPath $directory -PayloadTargets $LoosePayloadTargets
 }
 
 function Get-BuildArchive2Arguments {
