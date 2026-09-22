@@ -35,6 +35,7 @@ Bool EffectForceRefresh = False
 Bool EffectChangedDuringPublication = False
 Bool EffectSnapshotBuilding = False
 Int EffectSourceRevision = 0
+; Retained as inert saved-script fields from the multipart effect protocol.
 Int EffectSnapshotSequence = 0
 Int EffectPacketIndex = 0
 Int EffectRetryCount = 0
@@ -44,6 +45,7 @@ Float LastHudOpenAt = 0.0
 String LastEffectSignature = ""
 String PendingEffectSignature = ""
 String[] EffectPackets
+String PendingEffectPayload = ""
 String[] ObservedEffectEntries
 MagicEffect[] ActiveSourceEffects
 String[] ActiveSourceEffectEntries
@@ -208,6 +210,7 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   EffectSourceRevision += 1
   EffectPackets = None
   EffectPacketIndex = 0
+  PendingEffectPayload = ""
   EffectSnapshotBuilding = False
   EffectChangedDuringPublication = False
   ObservedEffectEntries = None
@@ -356,11 +359,6 @@ Function CheckActiveEffectSources()
   Bool removed = False
   TryLockGuard EffectSnapshotGuard
     If (!EffectSnapshotBuilding && EffectSourceRevision == sourceRevision && removedEntries.Length > 0)
-      index = 0
-      While (index < removedEntries.Length)
-        QueueEffectRemoval(removedEntries[index])
-        index += 1
-      EndWhile
       ObservedEffectEntries = remaining
       EffectSourceRevision += 1
       removed = True
@@ -372,18 +370,7 @@ Function CheckActiveEffectSources()
   EndIf
 EndFunction
 
-Function QueueEffectRemoval(String entry)
-  If (PendingEffectRemovals == None)
-    PendingEffectRemovals = new String[0]
-  EndIf
-  String removal = "R|" + EffectSnapshotSequence + "|" + entry
-  If (!ContainsEffectEntry(PendingEffectRemovals, removal))
-    PendingEffectRemovals.Add(removal)
-    StartTimer(0.1, 33)
-  EndIf
-EndFunction
-
-; Builds an immutable batch from the configured catalogs; the UI commits only after every part arrives.
+; Builds one complete state payload; every submitted datagram is independently valid.
 Function PrepareEffectSnapshot()
   If (Registry == None || BuffEffects == None || DebuffEffects == None)
     LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_DEFERRED | Registry or catalog unavailable.")
@@ -398,7 +385,7 @@ Function PrepareEffectSnapshot()
   Bool snapshotGuardAcquired = False
   TryLockGuard EffectSnapshotGuard
     snapshotGuardAcquired = True
-    If (EffectSnapshotBuilding || (EffectPackets != None && EffectPacketIndex < EffectPackets.Length))
+    If (EffectSnapshotBuilding || PendingEffectPayload != "")
       EffectChangedDuringPublication = True
     Else
       EffectSnapshotBuilding = True
@@ -432,7 +419,7 @@ Function PrepareEffectSnapshot()
     Int previousIndex = 0
     While (previousIndex < previousEntries.Length)
       If (!ContainsEffectEntry(entries, previousEntries[previousIndex]))
-        QueueEffectRemoval(previousEntries[previousIndex])
+        EffectForceRefresh = True
       EndIf
       previousIndex += 1
     EndWhile
@@ -456,51 +443,31 @@ Function PrepareEffectSnapshot()
     Return
   EndIf
   EffectForceRefresh = False
-  EffectSnapshotSequence += 1
-  If (EffectSnapshotSequence > 1000000000)
-    EffectSnapshotSequence = 1
+  String payload = buffCount + "|" + debuffCount + "|" + signature
+  String datagram = Registry.BuildCanvasDatagramBody("effects.state", 1, "ci-ascii", payload)
+  String framedPacket = Registry.BuildCanvasEventPacket("venworks.canvas.example.status", datagram)
+  Int framedLength = Registry.GetCharacterCount(framedPacket)
+  If (datagram == "" || framedLength > 4096)
+    EffectSnapshotBuilding = False
+    EffectForceRefresh = True
+    LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_DATAGRAM_REJECTED | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Length=" + framedLength + " | Limit=4096")
+    Return
   EndIf
-  String sequence = EffectSnapshotSequence as String
-  ; Build off to the side so a timer cannot publish or clear a partially assembled batch.
-  String[] packets = new String[0]
-  packets.Add("S|" + sequence + "|" + buffCount + "|" + debuffCount)
-  String part = ""
-  Int partCount = 0
-  index = 0
-  While (index < entries.Length)
-    String item = entries[index] + ";"
-    String candidate = "P|" + sequence + "|" + partCount + "|" + part + item
-    If (Registry.GetCharacterCount(Registry.BuildCanvasEventPacket("venworks.canvas.example.effects.snapshot", candidate)) > 4096 && part != "")
-      packets.Add("P|" + sequence + "|" + partCount + "|" + part)
-      partCount += 1
-      part = item
-    Else
-      part += item
-    EndIf
-    index += 1
-  EndWhile
-  If (part != "")
-    packets.Add("P|" + sequence + "|" + partCount + "|" + part)
-    partCount += 1
-  EndIf
-  packets.Add("C|" + sequence + "|" + partCount)
-  If (EffectPackets != None && EffectPacketIndex < EffectPackets.Length)
+  If (PendingEffectPayload != "")
     EffectChangedDuringPublication = True
     EffectSnapshotBuilding = False
     Return
   EndIf
-  ; Publish the array last, after every field used by the send timer is ready.
-  EffectPackets = None
+  ; Publish the payload last, after every field used by the send timer is ready.
   PendingEffectSignature = signature
-  EffectPacketIndex = 0
   EffectRetryCount = 0
-  EffectPackets = packets
+  PendingEffectPayload = payload
   EffectSnapshotBuilding = False
-  LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_SNAPSHOT_QUEUED | Sequence=" + sequence + " | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Parts=" + partCount)
+  LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_DATAGRAM_QUEUED | Type=effects.state | Schema=1 | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Length=" + framedLength)
   If (entriesChanged)
     index = 0
     While (index < entries.Length)
-      LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_ACTIVE | Sequence=" + sequence + " | Entry=" + entries[index])
+      LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_ACTIVE | Entry=" + entries[index])
       index += 1
     EndWhile
   EndIf
@@ -734,93 +701,50 @@ Bool Function IsSustenanceFedEffect(MagicEffect effect)
   Return effect == Game.GetFormFromFile(0x2EDFE1, "Starfield.esm") || effect == Game.GetFormFromFile(0x2EDFD5, "Starfield.esm") || effect == Game.GetFormFromFile(0x313251, "Starfield.esm")
 EndFunction
 
-; Removals take priority over a possibly stale multipart snapshot.
+; Publishes one complete state datagram. EVENT_SUBMITTED acknowledges native submission only.
 Function PublishNextEffectPacket()
   If (Registry == None)
     Return
   EndIf
-  If (PendingEffectRemovals != None && PendingEffectRemovals.Length > 0)
-    PublishNextEffectRemoval()
+  If (PendingEffectPayload == "")
     Return
   EndIf
-  If (EffectPackets == None || EffectPacketIndex >= EffectPackets.Length)
-    Return
-  EndIf
-  String[] packets = EffectPackets
-  Int packetIndex = EffectPacketIndex
-  Int sequence = EffectSnapshotSequence
-  String packet = packets[packetIndex]
-  String packetKind = "PART"
-  If (packetIndex == 0)
-    packetKind = "START"
-  ElseIf (packetIndex == packets.Length - 1)
-    packetKind = "COMMIT"
-  EndIf
-  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", packet)
+  String payload = PendingEffectPayload
+  String signature = PendingEffectSignature
+  OperationResult result = Registry.TryPublishCanvasDatagram("venworks.canvas.example.status", "effects.state", 1, "ci-ascii", payload)
   Float elapsed = -1.0
   Float now = Utility.GetCurrentRealTime()
   If (LastHudOpenAt > 0.0 && now >= LastHudOpenAt)
     elapsed = now - LastHudOpenAt
   EndIf
-  LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_PACKET_ATTEMPT | Sequence=" + sequence + " | Kind=" + packetKind + " | Index=" + packetIndex + "/" + packets.Length + " | Length=" + Registry.GetCharacterCount(packet) + " | Status=" + result.Status + " | SinceHudOpen=" + elapsed)
-  If (EffectPackets == None || EffectSnapshotSequence != sequence || EffectPacketIndex != packetIndex)
+  LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_ATTEMPT | Type=effects.state | Schema=1 | Length=" + Registry.GetCharacterCount(result.Packet) + " | Status=" + result.Status + " | SinceHudOpen=" + elapsed)
+  If (PendingEffectPayload != payload || PendingEffectSignature != signature)
     Return
   EndIf
   If (result.Status == "EVENT_SUBMITTED")
-    EffectPacketIndex += 1
     EffectRetryCount = 0
-    If (EffectPacketIndex < EffectPackets.Length)
-      StartTimer(1.1, 33)
-    Else
-      LastEffectSignature = PendingEffectSignature
-      LastEffectSnapshotAt = Utility.GetCurrentRealTime()
-      EffectPackets = None
-      If (EffectChangedDuringPublication)
-        EffectChangedDuringPublication = False
-        RequestEffectRefresh(False)
-      EndIf
+    LastEffectSignature = signature
+    LastEffectSnapshotAt = Utility.GetCurrentRealTime()
+    PendingEffectPayload = ""
+    If (EffectChangedDuringPublication)
+      EffectChangedDuringPublication = False
+      RequestEffectRefresh(False)
     EndIf
   ElseIf (result.Status == "REJECTED_EVENT_INACTIVE")
-    LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_WAITING_FOR_HUD | Packet=" + EffectPacketIndex)
+    LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_WAITING_FOR_HUD")
   ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
     EffectRetryCount += 1
     If (EffectRetryCount <= 20)
       StartTimer(1.0, 33)
     Else
-      LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_RETRY_EXHAUSTED | Status=" + result.Status)
-      EffectPackets = None
+      LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_RETRY_EXHAUSTED | Status=" + result.Status)
+      PendingEffectPayload = ""
       EffectForceRefresh = True
     EndIf
   Else
-    LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_SNAPSHOT_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
-    EffectPackets = None
+    LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
+    PendingEffectPayload = ""
     EffectForceRefresh = True
-  EndIf
-EndFunction
-
-; The consumer applies R packets immediately and suppresses the removed key in an older in-flight snapshot.
-Function PublishNextEffectRemoval()
-  String removal = PendingEffectRemovals[0]
-  OperationResult result = Registry.TryPublishCanvasEvent("venworks.canvas.example.effects.snapshot", removal)
-  LogUserInformational(ModuleName, "PublishNextEffectRemoval", "EFFECT_REMOVAL_ATTEMPT | Entry=" + removal + " | Status=" + result.Status)
-  If (PendingEffectRemovals == None || PendingEffectRemovals.Length == 0 || PendingEffectRemovals[0] != removal)
-    Return
-  EndIf
-  If (result.Status == "EVENT_SUBMITTED")
-    PendingEffectRemovals.Remove(0)
-    If (PendingEffectRemovals.Length > 0 || (EffectPackets != None && EffectPacketIndex < EffectPackets.Length))
-      StartTimer(1.1, 33)
-    EndIf
-  ElseIf (result.Status == "REJECTED_EVENT_INACTIVE")
-    ; The next HUD opening forces a full snapshot and retries this removal first.
-    Return
-  ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
-    StartTimer(1.0, 33)
-  Else
-    LogUserWarning(ModuleName, "PublishNextEffectRemoval", "EFFECT_REMOVAL_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
-    PendingEffectRemovals.Remove(0)
-    EffectForceRefresh = True
-    RequestEffectRefresh(True)
   EndIf
 EndFunction
 

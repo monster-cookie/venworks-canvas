@@ -49,14 +49,28 @@ package
          this.diagnostic = param3;
       }
 
-      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array, param7:Boolean = false) : void
+      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array, param7:Boolean = false, param8:Array = null) : void
       {
          if(this.disposed || this.dataManager == null || this.memberships[param1] != null || this.membershipCount >= MAX_CONSUMERS)
          {
             throw new Error("consumer subscription membership unavailable");
          }
          var channels:Array = this.preflightList(param5,MAX_UI_CHANNELS,true);
-         var topics:Array = this.preflightList(param6,MAX_EVENT_TOPICS,false);
+         var eventSubscriptions:Array = param8 == null ? this.legacyEventSubscriptions(param6,param7) : this.preflightEventSubscriptions(param8);
+         var datagramMode:Boolean = param8 != null;
+         var topics:Array = [];
+         var eventPolicies:Object = {};
+         var hasQueuedPolicy:Boolean = false;
+         var subscription:Object = null;
+         for each(subscription in eventSubscriptions)
+         {
+            topics.push(subscription.topic);
+            eventPolicies[subscription.topic] = subscription.startup;
+            if(subscription.startup != "drop")
+            {
+               hasQueuedPolicy = true;
+            }
+         }
          var index:int = 0;
          var name:String = null;
          while(index < channels.length)
@@ -72,7 +86,9 @@ package
             "generation":param4,
             "channels":channels,
             "topics":topics,
-            "eventQueue":param7 ? new CanvasEventQueue() : null,
+            "eventPolicies":eventPolicies,
+            "datagramMode":datagramMode,
+            "eventQueue":hasQueuedPolicy ? new CanvasEventQueue() : null,
             "ready":false
          };
          this.memberships[param1] = membership;
@@ -473,11 +489,26 @@ package
             this.reportEventDrop("STALE_MEMBERSHIP",param2,param1 == null ? "" : String(param1.consumerId));
             return;
          }
+         var coalesceKey:String = param2;
+         if(param1.datagramMode === true)
+         {
+            try
+            {
+               var datagram:Object = CanvasDatagramCodec.decode(param3);
+               coalesceKey += "|" + String(datagram.messageType) + "|" + int(datagram.schemaVersion) + "|" + String(datagram.encoding);
+            }
+            catch(datagramError:*)
+            {
+               this.reportEventDrop("INVALID_DATAGRAM",param2,String(param1.consumerId));
+               return;
+            }
+         }
          if(param1.ready !== true)
          {
-            if(param1.eventQueue != null)
+            var startupPolicy:String = String(param1.eventPolicies[param2]);
+            if(startupPolicy == "fifo" || startupPolicy == "latest")
             {
-               this.queueEvent(param1,param2,param3);
+               this.queueEvent(param1,param2,param3,startupPolicy,coalesceKey);
                return;
             }
             this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
@@ -493,7 +524,7 @@ package
          }
       }
 
-      private function queueEvent(param1:Object, param2:String, param3:String) : void
+      private function queueEvent(param1:Object, param2:String, param3:String, param4:String, param5:String) : void
       {
          if(!this.isMembershipCurrent(param1))
          {
@@ -506,7 +537,7 @@ package
             this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
             return;
          }
-         if(eventQueue.enqueue(param2,param3))
+         if(eventQueue.enqueue(param2,param3,param4,param5))
          {
             this.reportEventDrop("QUEUE_EVICTED",param2,String(param1.consumerId));
          }
@@ -587,6 +618,44 @@ package
             seen["$" + value] = true;
             result.push(value);
             index++;
+         }
+         return result;
+      }
+
+      private function legacyEventSubscriptions(param1:Array, param2:Boolean) : Array
+      {
+         var topics:Array = this.preflightList(param1,MAX_EVENT_TOPICS,false);
+         var result:Array = [];
+         var startup:String = param2 ? "fifo" : "drop";
+         for each(var topic:String in topics)
+         {
+            result.push({"topic":topic,"startup":startup});
+         }
+         return result;
+      }
+
+      private function preflightEventSubscriptions(param1:Array) : Array
+      {
+         if(param1 == null || param1.length > MAX_EVENT_TOPICS)
+         {
+            throw new Error("invalid event subscription request");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         for each(var candidate:Object in param1)
+         {
+            if(candidate == null || !("topic" in candidate) || !("startup" in candidate) || typeof candidate.topic != "string" || typeof candidate.startup != "string")
+            {
+               throw new Error("invalid event subscription request");
+            }
+            var topic:String = String(candidate.topic).toLowerCase();
+            var startup:String = String(candidate.startup).toLowerCase();
+            if(!this.isEventTopicValid(topic) || seen.hasOwnProperty("$" + topic) || startup != "drop" && startup != "latest" && startup != "fifo")
+            {
+               throw new Error("invalid event subscription request");
+            }
+            seen["$" + topic] = true;
+            result.push({"topic":topic,"startup":startup});
          }
          return result;
       }

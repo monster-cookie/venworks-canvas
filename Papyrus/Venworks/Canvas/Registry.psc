@@ -355,6 +355,25 @@ String Function BuildCanvasEventPacket(String eventTopic, String body)
   Return BuildEventPacket(headers.V1, packetTypes.CanvasEvent, payload)
 EndFunction
 
+; Frames one application-owned atomic datagram. Canvas validates the generic envelope and leaves payload semantics to consumers.
+String Function BuildCanvasDatagramBody(String messageType, Int schemaVersion, String encoding, String payload)
+  If (GetCanvasDatagramRejectionReason(messageType, schemaVersion, encoding, payload) != "")
+    Return ""
+  EndIf
+  Return "VWDG/1|" + EncodeField(messageType) + EncodeField(schemaVersion as String) + EncodeField(encoding) + EncodeField(payload)
+EndFunction
+
+; Publishes one complete datagram through the existing nonblocking, lossy Canvas event transport.
+OperationResult Function TryPublishCanvasDatagram(String streamTopic, String messageType, Int schemaVersion, String encoding, String payload)
+  String rejection = GetCanvasDatagramRejectionReason(messageType, schemaVersion, encoding, payload)
+  If (rejection != "")
+    OperationResult rejected = NewResult("REJECTED_DATAGRAM_ARGUMENTS")
+    rejected.Detail = rejection
+    Return rejected
+  EndIf
+  Return TryPublishCanvasEvent(streamTopic, BuildCanvasDatagramBody(messageType, schemaVersion, encoding, payload))
+EndFunction
+
 ; One nonblocking, lossy publish attempt. The receipt acknowledges native submission, never UI delivery.
 OperationResult Function TryPublishCanvasEvent(String eventTopic, String body)
   OperationResult result = NewResult("DEFERRED_EVENT_BUSY")
@@ -726,6 +745,25 @@ String Function GetCanvasEventRejectionReason(String eventTopic, String body)
   Return GetPrintableAsciiRejectionReason(body, 0, 4096, "body")
 EndFunction
 
+; Validates only the reusable datagram envelope. Message payload schemas remain application-owned.
+String Function GetCanvasDatagramRejectionReason(String messageType, Int schemaVersion, String encoding, String payload)
+  String rejection = GetCanvasEventTopicRejectionReason(messageType)
+  If (rejection != "")
+    Return "messageType " + rejection
+  EndIf
+  If (schemaVersion < 1 || schemaVersion > 9999)
+    Return "schemaVersion=" + schemaVersion + " | range=1..9999"
+  EndIf
+  rejection = GetPrintableAsciiRejectionReason(encoding, 1, 24, "encoding")
+  If (rejection != "")
+    Return rejection
+  EndIf
+  If (!AsciiEquals(encoding, "ci-ascii"))
+    Return "unsupported encoding"
+  EndIf
+  Return GetPrintableAsciiRejectionReason(payload, 0, 4096, "payload")
+EndFunction
+
 ; Requires at least two dot-separated ASCII segments with alphanumeric boundaries and rejects Canvas-owned topics.
 String Function GetCanvasEventTopicRejectionReason(String eventTopic)
   Int[] characters = Utility.SplitStringChars(eventTopic)
@@ -948,6 +986,23 @@ Int Function FoldAscii(Int character)
     Return character + 32
   EndIf
   Return character
+EndFunction
+
+; Compares printable ASCII identifiers without depending on transport-preserved letter case.
+Bool Function AsciiEquals(String leftValue, String rightValue)
+  Int[] leftCharacters = Utility.SplitStringChars(leftValue)
+  Int[] rightCharacters = Utility.SplitStringChars(rightValue)
+  If (leftCharacters == None || rightCharacters == None || leftCharacters.Length != rightCharacters.Length)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < leftCharacters.Length)
+    If (FoldAscii(leftCharacters[index]) != FoldAscii(rightCharacters[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  Return True
 EndFunction
 
 ; Validates both local loader paths independently of the UUID, and requires one identical asset namespace.

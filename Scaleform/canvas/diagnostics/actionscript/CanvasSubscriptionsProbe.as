@@ -5,6 +5,8 @@ package
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
+      private static const TEST_COUNT:int = 11;
+
       private var marker:CanvasDiagnosticMarker;
 
       private var passed:int = 0;
@@ -15,7 +17,7 @@ package
 
       private var livePacketCount:int = 0;
 
-      private var liveLastKind:String = "-";
+      private var liveLastType:String = "-";
 
       private var liveLastLength:int = 0;
 
@@ -30,21 +32,23 @@ package
          this.runCase("SUBSCRIBE ROLLBACK",this.testSubscribeRollback);
          this.runCase("UNSUBSCRIBE RECOVERY",this.testUnsubscribeRecovery);
          this.runCase("REPEAT DISPOSE",this.testRepeatAndDispose);
+         this.runCase("EVENT STARTUP POLICIES",this.testEventStartupPolicies);
+         this.runCase("DATAGRAM CODEC",this.testDatagramCodec);
+         this.runCase("ATOMIC EFFECT STATE",this.testAtomicEffectState);
          this.updateMarker();
       }
 
       public function getCanvasRegistration() : Object
       {
          return {
-            "protocol":"VWCANVAS_CONSUMER/2",
+            "protocol":"VWCANVAS_CONSUMER/3",
             "consumerId":"a8098c1a-f86e-4b1e-9d7c-5a102bf38460",
             "assetNamespace":"venworks.canvas.example.subscriptions-probe",
             "version":2,
-            "minimumContractVersion":2,
-            "maximumContractVersion":2,
+            "minimumContractVersion":3,
+            "maximumContractVersion":3,
             "uiChannels":[],
-            "eventTopics":["venworks.canvas.example.effects.snapshot"],
-            "queueEventsUntilReady":true,
+            "eventSubscriptions":[{"topic":"venworks.canvas.example.status","startup":"latest"}],
             "marker":"SUBSCRIPTIONS-PROBE-TEST-ONLY"
          };
       }
@@ -55,14 +59,21 @@ package
 
       public function handleCanvasEvent(param1:String, param2:String) : void
       {
-         if(param1 != "venworks.canvas.example.effects.snapshot")
+         if(param1 != "venworks.canvas.example.status")
          {
             return;
          }
          this.livePacketCount++;
-         this.liveLastKind = param2 == null || param2.length == 0 ? "?" : param2.charAt(0);
          this.liveLastLength = param2 == null ? 0 : param2.length;
-         this.liveEffects.acceptPacket(param2);
+         try
+         {
+            this.liveLastType = String(CanvasDatagramCodec.decode(param2).messageType);
+         }
+         catch(datagramError:*)
+         {
+            this.liveLastType = "REJECTED";
+         }
+         this.liveEffects.acceptDatagram(param2);
          this.updateMarker();
       }
 
@@ -72,7 +83,7 @@ package
          {
             this.liveEffects.reset();
             this.livePacketCount = 0;
-            this.liveLastKind = "-";
+            this.liveLastType = "-";
             this.liveLastLength = 0;
             this.updateMarker();
          }
@@ -161,17 +172,17 @@ package
          var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
          var loader:Object = {};
          this.addConsumer(registry,context,"effect-consumer",bridge,loader,1,[],["venworks.canvas.test"]);
-         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
-         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         registry["publishEvent"]("venworks.canvas.test","event-a");
+         registry["publishEvent"]("venworks.canvas.test","event-b");
          this.assertTrue(bridge.eventTopics.length == 0,"event escaped readiness");
          this.assertTrue(context.diagnostics.length == 1 && String(context.diagnostics[0]).indexOf("EVENT REJECTED | NOT_READY") == 0,"not-ready drop was not reported once");
          registry["markReady"]("effect-consumer");
-         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         registry["publishEvent"]("venworks.canvas.test","event-c");
          this.assertTrue(bridge.eventTopics.length == 1,"ready member missed event");
-         registry["publishEvent"]("venworks.canvas.other","S|1|0|0");
+         registry["publishEvent"]("venworks.canvas.other","event-d");
          this.assertTrue(context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | NO_TOPIC_MEMBER") == 0,"missing topic membership was not reported");
          context.deactivate("effect-consumer");
-         registry["publishEvent"]("venworks.canvas.test","S|1|0|0");
+         registry["publishEvent"]("venworks.canvas.test","event-e");
          this.assertTrue(bridge.eventTopics.length == 1,"stale member received event");
          this.assertTrue(context.diagnostics.length == 3 && String(context.diagnostics[2]).indexOf("EVENT REJECTED | STALE_MEMBERSHIP") == 0,"stale membership drop was not reported");
          registry["removeConsumer"]("effect-consumer");
@@ -187,7 +198,7 @@ package
          var loader:Object = {};
          this.addConsumer(registry,context,"case-fold",bridge,loader,1,[],["Venworks.Canvas.Test"]);
          registry["markReady"]("case-fold");
-         registry["publishEvent"]("VENWORKS.CANVAS.TEST","S|1|0|0");
+         registry["publishEvent"]("VENWORKS.CANVAS.TEST","event-a");
          this.assertTrue(bridge.eventTopics.length == 1 && bridge.eventTopics[0] == "venworks.canvas.test","case-folded event topic missed its canonical subscription");
          registry["removeConsumer"]("case-fold");
          context.deactivate("case-fold");
@@ -202,12 +213,12 @@ package
          var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
          var loader:Object = {};
          this.addConsumer(registry,context,"queued",bridge,loader,1,[],["venworks.canvas.test"],true);
-         registry["publishEvent"]("venworks.canvas.test","S|1|0|1");
-         registry["publishEvent"]("venworks.canvas.test","P|1|0|D:TEST;");
-         registry["publishEvent"]("venworks.canvas.test","C|1|1");
+         registry["publishEvent"]("venworks.canvas.test","event-1");
+         registry["publishEvent"]("venworks.canvas.test","event-2");
+         registry["publishEvent"]("venworks.canvas.test","event-3");
          this.assertTrue(bridge.eventBodies.length == 0,"queued event escaped readiness");
          registry["markReady"]("queued");
-         this.assertTrue(bridge.eventBodies.join(",") == "S|1|0|1,P|1|0|D:TEST;,C|1|1","queued transaction replay order changed");
+         this.assertTrue(bridge.eventBodies.join(",") == "event-1,event-2,event-3","queued event replay order changed");
          registry["removeConsumer"]("queued");
          context.deactivate("queued");
 
@@ -364,6 +375,91 @@ package
          this.assertTrue(finalBridge.dataChannels.length == 0,"disposed callback delivered data");
       }
 
+      private function testEventStartupPolicies() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var context:CanvasSubscriptionsTestContext = new CanvasSubscriptionsTestContext();
+         var registry:Object = this.createRegistry(manager,context);
+         var bridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         var loader:Object = {};
+         var subscriptions:Array = [
+            {"topic":"venworks.canvas.state","startup":"latest"},
+            {"topic":"venworks.canvas.hits","startup":"fifo"},
+            {"topic":"venworks.canvas.transient","startup":"drop"}
+         ];
+         this.addConsumerV3(registry,context,"policies",bridge,loader,1,[],subscriptions);
+         var alpha1:String = CanvasDatagramCodec.encode("state.alpha",1,"ci-ascii","alpha-1");
+         var beta1:String = CanvasDatagramCodec.encode("state.beta",1,"ci-ascii","beta-1");
+         var alpha2:String = CanvasDatagramCodec.encode("state.alpha",1,"ci-ascii","alpha-2");
+         var alphaV2:String = CanvasDatagramCodec.encode("state.alpha",2,"ci-ascii","alpha-v2");
+         var hit1:String = CanvasDatagramCodec.encode("hit.damage",1,"ci-ascii","hit-1");
+         var hit2:String = CanvasDatagramCodec.encode("hit.damage",1,"ci-ascii","hit-2");
+         var transient:String = CanvasDatagramCodec.encode("input.press",1,"ci-ascii","drop-1");
+         registry["publishEvent"]("venworks.canvas.state",alpha1);
+         registry["publishEvent"]("venworks.canvas.hits",hit1);
+         registry["publishEvent"]("venworks.canvas.state",beta1);
+         registry["publishEvent"]("venworks.canvas.state",alpha2);
+         registry["publishEvent"]("venworks.canvas.state",alphaV2);
+         registry["publishEvent"]("venworks.canvas.hits",hit2);
+         registry["publishEvent"]("venworks.canvas.transient",transient);
+         registry["markReady"]("policies");
+         this.assertTrue(bridge.eventBodies.length == 5,"startup policies changed replay count");
+         this.assertTrue(CanvasDatagramCodec.decode(String(bridge.eventBodies[0])).payload == "hit-1" && CanvasDatagramCodec.decode(String(bridge.eventBodies[1])).messageType == "state.beta" && CanvasDatagramCodec.decode(String(bridge.eventBodies[2])).payload == "alpha-2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[3])).payload == "alpha-v2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[4])).payload == "hit-2","latest did not coalesce independently by datagram message identity");
+         this.assertTrue(context.diagnostics.length == 1 && String(context.diagnostics[0]).indexOf("EVENT REJECTED | NOT_READY | venworks.canvas.transient") == 0,"drop policy did not report its startup rejection");
+         registry["publishEvent"]("venworks.canvas.state","not-a-datagram");
+         this.assertTrue(bridge.eventBodies.length == 5 && context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | INVALID_DATAGRAM | venworks.canvas.state") == 0,"invalid v3 datagram reached the consumer");
+         registry["removeConsumer"]("policies");
+         context.deactivate("policies");
+         registry["dispose"]();
+      }
+
+      private function testDatagramCodec() : void
+      {
+         var encoded:String = CanvasDatagramCodec.encode("gps.position",1,"ci-ascii","12.5|-44.25|label:alpha;beta");
+         var decoded:Object = CanvasDatagramCodec.decode(encoded.toUpperCase());
+         this.assertTrue(decoded.messageType == "gps.position" && decoded.schemaVersion == 1 && decoded.encoding == "ci-ascii","case-folded datagram header changed");
+         this.assertTrue(decoded.payload == "12.5|-44.25|LABEL:ALPHA;BETA","length-framed datagram payload changed");
+         var rejected:Boolean = false;
+         try
+         {
+            CanvasDatagramCodec.decode(encoded + "X");
+         }
+         catch(trailingError:*)
+         {
+            rejected = true;
+         }
+         this.assertTrue(rejected,"trailing datagram data was accepted");
+         rejected = false;
+         try
+         {
+            CanvasDatagramCodec.encode("gps.position",1,"unknown","0|0");
+         }
+         catch(encodingError:*)
+         {
+            rejected = true;
+         }
+         this.assertTrue(rejected,"unsupported datagram encoding was accepted");
+      }
+
+      private function testAtomicEffectState() : void
+      {
+         var adapter:CanvasExampleEffectsAdapter = new CanvasExampleEffectsAdapter();
+         var active:String = CanvasDatagramCodec.encode("effects.state",1,"ci-ascii","0|2|D:DEHYDRATED;D:MALNOURISHED;");
+         this.assertTrue(adapter.acceptDatagram(active),"complete effect datagram did not commit");
+         var view:Object = adapter.view();
+         this.assertTrue(view.waiting === false && view.buffcount == 0 && view.debuffcount == 2,"committed effect counts changed");
+         this.assertTrue(!adapter.acceptDatagram(active),"duplicate effect state triggered another commit");
+         var malformed:String = CanvasDatagramCodec.encode("effects.state",1,"ci-ascii","0|2|D:DEHYDRATED;");
+         this.assertTrue(!adapter.acceptDatagram(malformed),"incomplete effect state was accepted");
+         view = adapter.view();
+         this.assertTrue(view.debuffcount == 2,"rejected effect state changed the committed view");
+         var empty:String = CanvasDatagramCodec.encode("effects.state",1,"ci-ascii","0|0|");
+         this.assertTrue(adapter.acceptDatagram(empty),"empty effect state did not commit");
+         this.assertTrue(adapter.view().empty === true,"empty effect state changed");
+         adapter.reset();
+         this.assertTrue(adapter.view().waiting === true,"effect reset did not restore pending state");
+      }
+
       private function assertRejectedBeforeProvider(param1:Array, param2:Array, param3:String) : void
       {
          var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
@@ -407,6 +503,12 @@ package
          param1["addConsumer"](param3,param4,param5,param6,param7,param8,param9);
       }
 
+      private function addConsumerV3(param1:Object, param2:CanvasSubscriptionsTestContext, param3:String, param4:CanvasSubscriptionsTestBridge, param5:Object, param6:int, param7:Array, param8:Array) : void
+      {
+         param2.activate(param3,param5,param6);
+         param1["addConsumer"](param3,param4,param5,param6,param7,[],false,param8);
+      }
+
       private function runCase(param1:String, param2:Function) : void
       {
          try
@@ -434,9 +536,9 @@ package
          {
             return;
          }
-         var lines:Array = ["PASS " + this.passed + " / 8 | FAIL " + this.failures.length];
+         var lines:Array = ["PASS " + this.passed + " / " + TEST_COUNT + " | FAIL " + this.failures.length];
          var liveView:Object = this.liveEffects.view();
-         lines.push("LIVE EFFECT RX " + this.livePacketCount + " | LAST " + this.liveLastKind + " LEN " + this.liveLastLength);
+         lines.push("LIVE DATAGRAM RX " + this.livePacketCount + " | LAST " + this.liveLastType + " LEN " + this.liveLastLength);
          lines.push("LIVE SNAPSHOT " + (liveView.waiting === true ? "PENDING" : "COMMITTED") + " | B " + liveView.buffcount + " D " + liveView.debuffcount);
          var index:int = 0;
          while(index < this.failures.length && index < 3)

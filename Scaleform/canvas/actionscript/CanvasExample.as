@@ -18,15 +18,14 @@ package
       public function getCanvasRegistration() : Object
       {
          return {
-            "protocol":"VWCANVAS_CONSUMER/2",
+            "protocol":"VWCANVAS_CONSUMER/3",
             "consumerId":"a8098c1a-f86e-4b1e-9d7c-5a102bf38460",
             "assetNamespace":"venworks.canvas.example",
             "version":1,
-            "minimumContractVersion":2,
-            "maximumContractVersion":2,
+            "minimumContractVersion":3,
+            "maximumContractVersion":3,
             "uiChannels":["LocalEnvironmentData","LocalEnvData_Frequent"],
-            "eventTopics":["venworks.canvas.example.effects.snapshot"],
-            "queueEventsUntilReady":true,
+            "eventSubscriptions":[{"topic":"venworks.canvas.example.status","startup":"latest"}],
             "marker":"EXAMPLE"
          };
       }
@@ -63,7 +62,7 @@ package
 
       public function handleCanvasEvent(topic:String, body:String) : void
       {
-         if(topic == "venworks.canvas.example.effects.snapshot" && this.effects.acceptPacket(body))
+         if(topic == "venworks.canvas.example.status" && this.effects.acceptDatagram(body))
          {
             this.publish();
          }

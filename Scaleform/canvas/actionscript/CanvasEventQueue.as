@@ -10,10 +10,33 @@ package
 
       private var characterCount:int = 0;
 
-      public function enqueue(topic:String, body:String) : Boolean
+      public function enqueue(topic:String, body:String, policy:String = "fifo", coalesceKey:String = null) : Boolean
       {
          var eventCharacters:int = topic.length + body.length;
          if(eventCharacters > MAX_CHARACTERS)
+         {
+            return false;
+         }
+         if(policy == "latest")
+         {
+            if(coalesceKey == null || coalesceKey == "")
+            {
+               coalesceKey = topic;
+            }
+            var retained:Array = [];
+            var retainedCharacters:int = 0;
+            for each(var candidate:Object in this.events)
+            {
+               if(String(candidate.coalesceKey) != coalesceKey)
+               {
+                  retained.push(candidate);
+                  retainedCharacters += int(candidate.characters);
+               }
+            }
+            this.events = retained;
+            this.characterCount = retainedCharacters;
+         }
+         else if(policy != "fifo")
          {
             return false;
          }
@@ -24,7 +47,7 @@ package
             this.characterCount -= int(retired.characters);
             evicted = true;
          }
-         this.events.push({"topic":topic,"body":body,"characters":eventCharacters});
+         this.events.push({"topic":topic,"body":body,"characters":eventCharacters,"coalesceKey":coalesceKey == null ? "" : coalesceKey});
          this.characterCount += eventCharacters;
          return evicted;
       }

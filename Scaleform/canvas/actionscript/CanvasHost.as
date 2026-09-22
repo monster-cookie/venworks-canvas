@@ -33,6 +33,8 @@ package
 
       private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/2";
 
+      private static const DATAGRAM_CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/3";
+
       private static const HOST_PROTOCOL:String = "VWCANVAS_HOST/1";
 
       private static const HOST_STATE_NEW:String = "new";
@@ -43,7 +45,9 @@ package
 
       private static const HOST_STATE_DISPOSED:String = "disposed";
 
-      private static const HOST_CONTRACT_VERSION:int = 2;
+      private static const MIN_HOST_CONTRACT_VERSION:int = 2;
+
+      private static const MAX_HOST_CONTRACT_VERSION:int = 3;
 
       private static const MAX_UI_CHANNELS:int = 18;
 
@@ -1095,10 +1099,11 @@ package
                "hostKinds":["player","ship","menu"],
                "uiChannels":[],
                "eventTopics":[],
+               "eventSubscriptions":[],
                "queueEventsUntilReady":false
             };
          }
-         if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL)
+         if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL && protocol != DATAGRAM_CONSUMER_PROTOCOL)
          {
             throw new Error("unsupported consumer protocol");
          }
@@ -1114,25 +1119,41 @@ package
          }
          var minimumContractVersion:int = this.strictContractInteger(param1.minimumContractVersion,"minimumContractVersion");
          var maximumContractVersion:int = this.strictContractInteger(param1.maximumContractVersion,"maximumContractVersion");
-         if(minimumContractVersion > maximumContractVersion || minimumContractVersion > HOST_CONTRACT_VERSION || maximumContractVersion < HOST_CONTRACT_VERSION)
+         var protocolMaximum:int = protocol == CONSUMER_PROTOCOL ? 2 : MAX_HOST_CONTRACT_VERSION;
+         var contractVersion:int = Math.min(maximumContractVersion,protocolMaximum);
+         if(minimumContractVersion > maximumContractVersion || contractVersion < minimumContractVersion || contractVersion < MIN_HOST_CONTRACT_VERSION || protocol == DATAGRAM_CONSUMER_PROTOCOL && contractVersion != 3)
          {
             throw new Error("incompatible consumer contract range");
          }
          var uiChannels:Array = this.validateStringList(param1.uiChannels,MAX_UI_CHANNELS,true);
-         var eventTopics:Array = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+         var eventTopics:Array = [];
+         var eventSubscriptions:Array = [];
          var queueEventsUntilReady:Boolean = false;
-         if("queueEventsUntilReady" in param1)
+         if(protocol == CONSUMER_PROTOCOL)
          {
-            if(typeof param1.queueEventsUntilReady != "boolean")
+            eventTopics = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+            if("queueEventsUntilReady" in param1)
             {
-               throw new Error("queueEventsUntilReady must be a boolean");
+               if(typeof param1.queueEventsUntilReady != "boolean")
+               {
+                  throw new Error("queueEventsUntilReady must be a boolean");
+               }
+               queueEventsUntilReady = param1.queueEventsUntilReady === true;
             }
-            queueEventsUntilReady = param1.queueEventsUntilReady === true;
+            eventSubscriptions = this.eventSubscriptionsFromTopics(eventTopics,queueEventsUntilReady);
+         }
+         else
+         {
+            eventSubscriptions = this.validateEventSubscriptions(param1.eventSubscriptions);
+            for each(var eventSubscription:Object in eventSubscriptions)
+            {
+               eventTopics.push(eventSubscription.topic);
+            }
          }
          var hostKinds:Array = this.validateHostKinds("hostKinds" in param1 ? param1.hostKinds : null);
          if(!("handleUIData" in param3) || typeof param3["handleUIData"] != "function" || !("handleCanvasEvent" in param3) || typeof param3["handleCanvasEvent"] != "function" || !("handleLifecycle" in param3) || typeof param3["handleLifecycle"] != "function")
          {
-            throw new Error("consumer is missing fixed v2 callbacks");
+            throw new Error("consumer is missing fixed callbacks");
          }
          var htmlRegistration:Object = null;
          if("getCanvasHtmlRegistration" in param3)
@@ -1149,7 +1170,7 @@ package
          }
          return {
             "protocol":String(protocol),
-            "contractVersion":HOST_CONTRACT_VERSION,
+            "contractVersion":contractVersion,
             "bridge":param3,
             "assetNamespace":expectedNamespace,
             "htmlRegistration":htmlRegistration,
@@ -1158,6 +1179,7 @@ package
             "hostKinds":hostKinds,
             "uiChannels":uiChannels,
             "eventTopics":eventTopics,
+            "eventSubscriptions":eventSubscriptions,
             "queueEventsUntilReady":queueEventsUntilReady
          };
       }
@@ -1253,6 +1275,58 @@ package
          return result;
       }
 
+      private function eventSubscriptionsFromTopics(param1:Array, param2:Boolean) : Array
+      {
+         var result:Array = [];
+         var startup:String = param2 ? "fifo" : "drop";
+         for each(var topic:String in param1)
+         {
+            result.push({"topic":topic.toLowerCase(),"startup":startup});
+         }
+         return result;
+      }
+
+      private function validateEventSubscriptions(param1:Object) : Array
+      {
+         if(!(param1 is Array))
+         {
+            throw new Error("eventSubscriptions must be an array");
+         }
+         var source:Array = param1 as Array;
+         if(source.length > MAX_EVENT_TOPICS)
+         {
+            throw new Error("too many event subscriptions");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         for each(var candidate:Object in source)
+         {
+            if(candidate == null || !("topic" in candidate) || !("startup" in candidate) || typeof candidate.topic != "string" || typeof candidate.startup != "string")
+            {
+               throw new Error("invalid event subscription");
+            }
+            var topic:String = String(candidate.topic).toLowerCase();
+            var startup:String = String(candidate.startup).toLowerCase();
+            if(!this.isEventTopicValid(topic) || seen.hasOwnProperty("$" + topic) || startup != "drop" && startup != "latest" && startup != "fifo")
+            {
+               throw new Error("invalid or duplicate event subscription");
+            }
+            seen["$" + topic] = true;
+            result.push({"topic":topic,"startup":startup});
+         }
+         return result;
+      }
+
+      private function cloneEventSubscriptions(param1:Array) : Array
+      {
+         var result:Array = [];
+         for each(var subscription:Object in param1)
+         {
+            result.push({"topic":String(subscription.topic),"startup":String(subscription.startup)});
+         }
+         return result;
+      }
+
       private function isEventTopicValid(param1:String) : Boolean
       {
          if(param1 == null || param1.length < 3 || param1.length > MAX_EVENT_TOPIC_CHARACTERS || !/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)+$/.test(param1))
@@ -1275,6 +1349,11 @@ package
       private function createLifecycleContext(param1:Object) : Object
       {
          var features:Array = ["uiData","canvasEvents","lifecycle"];
+         if(int(param1.contractVersion) >= 3)
+         {
+            features.push("canvasDatagrams");
+            features.push("eventStartupPolicies");
+         }
          if(param1.htmlRegistration != null)
          {
             features.push("htmlDocuments");
@@ -1287,6 +1366,7 @@ package
             "displayMode":this.displayMode,
             "uiChannels":param1.uiChannels.concat(),
             "eventTopics":param1.eventTopics.concat(),
+            "eventSubscriptions":this.cloneEventSubscriptions(param1.eventSubscriptions),
             "queueEventsUntilReady":param1.queueEventsUntilReady === true
          };
          if(param1.htmlBridge != null)
@@ -1427,7 +1507,7 @@ package
                this.unloadConsumer(consumerId);
                return;
             }
-            if(contract.contractVersion == HOST_CONTRACT_VERSION)
+            if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
             {
                if((contract.uiChannels.length > 0 || contract.eventTopics.length > 0) && this.consumerSubscriptions == null)
                {
@@ -1435,7 +1515,7 @@ package
                }
                if(this.consumerSubscriptions != null)
                {
-                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics,contract.queueEventsUntilReady);
+                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics,contract.queueEventsUntilReady,contract.protocol == DATAGRAM_CONSUMER_PROTOCOL ? contract.eventSubscriptions : null);
                }
                if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
                {
@@ -1485,7 +1565,7 @@ package
             }
             return;
          }
-         if(contract.contractVersion == HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
+         if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
          {
             if(this.htmlEngine == null)
             {
@@ -1551,7 +1631,7 @@ package
             return;
          }
          this.loaderStates[consumerId] = "completing";
-         if(contract.contractVersion == HOST_CONTRACT_VERSION)
+         if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
          {
             try
             {
@@ -1635,7 +1715,7 @@ package
             return;
          }
          this.removeLoaderListeners(loader);
-         if(contract != null && contract.contractVersion == HOST_CONTRACT_VERSION)
+         if(contract != null && contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
          {
             try
             {

@@ -38,9 +38,11 @@ Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and 
 
 The Example sends only the current eight-row page to the HTML bridge. Its effect arrays remain separate from clock values, and the bridge receives updates after complete effect snapshots, accepted removals, page changes, or a visible clock-minute change. A published Papyrus event and a compiled package still require an in-game display check.
 
-Canvas event topics are ASCII case insensitive and are delivered to consumers in lowercase. This accommodates the native Custom Watch alert transport changing ASCII casing while preserving the event body and topic identity.
+Canvas event topics are ASCII case insensitive and are delivered to consumers in lowercase. The native Custom Watch alert transport can also change ASCII casing inside event bodies, so application protocols must use case-insensitive ASCII or a case-safe encoding.
 
-Canvas events remain lossy by default. A `VWCANVAS_CONSUMER/2` registration can set `queueEventsUntilReady` to `true` when its event protocol requires startup transactions to survive consumer loading. Canvas then retains the newest 64 events, bounded to 65,536 topic and body characters per consumer, and replays them in order after the lifecycle `ready` callback. Queue eviction is reported through Canvas diagnostics. Removal or HUD teardown discards the queue, and consumers must still validate transaction completeness and stale data when replay begins. Existing registrations that omit the field keep immediate not-ready event rejection.
+[Canvas datagrams](Documentation/CanvasDatagrams.md) provide a generic atomic envelope with a stream topic, application message type, independent schema version, encoding, and opaque payload. Canvas does not enumerate application packet types, add ordering metadata, or interpret payload semantics. A small number of subscribed streams can therefore carry any number of mod-owned message types such as status state, GPS samples, and combat occurrences.
+
+`VWCANVAS_CONSUMER/3` assigns a `drop`, `latest`, or `fifo` startup policy to each subscribed stream. `latest` retains one queued datagram per message type, schema version, and encoding in that stream, while `fifo` preserves bounded occurrence traffic. Existing `VWCANVAS_CONSUMER/2` registrations remain supported: `queueEventsUntilReady: false` maps to `drop`, and `true` maps to `fifo`.
 
 ## Current compatibility
 

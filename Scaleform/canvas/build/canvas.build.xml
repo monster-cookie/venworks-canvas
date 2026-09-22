@@ -10,6 +10,7 @@
   <requiredTokens>
     <token>VWC_EVT/1</token>
     <token>VWCANVAS_CONSUMER/2</token>
+    <token>VWCANVAS_CONSUMER/3</token>
     <token>canvas.event</token>
     <token>canvas.registry.snapshot</token>
     <token>CustomAlertsData</token>
@@ -66,7 +67,13 @@
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
     <token>queueEventsUntilReady</token>
+    <token>eventSubscriptions</token>
+    <token>eventStartupPolicies</token>
+    <token>CanvasDatagramCodec</token>
+    <token>INVALID_DATAGRAM</token>
     <token>CanvasEventQueue</token>
+    <token>latest</token>
+    <token>fifo</token>
     <token>MAX_EVENTS</token>
     <token>MAX_CHARACTERS</token>
     <token>PlayerData</token>
