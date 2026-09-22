@@ -90,6 +90,8 @@
     <token>SNAPSHOT REJECTED</token>
     <token>EXPLICIT UI LOAD TEST</token>
     <token>canvas.ui.load</token>
+    <token>canvas.ui.load.batch</token>
+    <token>MAX_UI_LOAD_BATCH_CHARACTERS</token>
     <token>MAX_UI_LOAD_CHARACTERS</token>
     <token>matchAsciiPrefix</token>
     <token>ASCII CASE-FOLDED</token>

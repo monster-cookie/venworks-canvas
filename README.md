@@ -42,7 +42,9 @@ Canvas event topics are ASCII case insensitive and are delivered to consumers in
 
 [Canvas datagrams](Documentation/CanvasDatagrams.md) provide a generic atomic envelope with a stream topic, application message type, independent schema version, encoding, and opaque payload. Canvas does not enumerate application packet types, add ordering metadata, or interpret payload semantics. A small number of subscribed streams can therefore carry any number of mod-owned message types such as status state, GPS samples, and combat occurrences.
 
-`VWCANVAS_CONSUMER/3` assigns a `drop`, `latest`, or `fifo` startup policy to each subscribed stream. `latest` retains one queued datagram per message type, schema version, and encoding in that stream, while `fifo` preserves bounded occurrence traffic. Existing `VWCANVAS_CONSUMER/2` registrations remain supported: `queueEventsUntilReady: false` maps to `drop`, and `true` maps to `fifo`.
+`VWCANVAS_CONSUMER/3` assigns a `drop`, `latest`, or `fifo` startup policy to each subscribed stream. `latest` retains one queued datagram per message type, schema version, and encoding in that stream, including valid state received before the consumer SWF establishes its membership. `fifo` preserves bounded occurrence traffic after membership exists. Existing `VWCANVAS_CONSUMER/2` registrations remain supported: `queueEventsUntilReady: false` maps to `drop`, and `true` maps to `fifo`.
+
+On Player HUD activation, Canvas replays saved consumer descriptors from its registry in bounded atomic load batches. The host validates the entire batch and begins loading its consumers concurrently. A newly installed or updated consumer still uses the existing individual load command after registration; consumer registrars should register without an arbitrary startup delay so later HUD recreations can use the central replay path.
 
 ## Current compatibility
 

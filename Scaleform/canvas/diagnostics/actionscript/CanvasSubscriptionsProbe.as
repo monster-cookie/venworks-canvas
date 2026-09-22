@@ -387,7 +387,7 @@ package
             {"topic":"venworks.canvas.hits","startup":"fifo"},
             {"topic":"venworks.canvas.transient","startup":"drop"}
          ];
-         this.addConsumerV3(registry,context,"policies",bridge,loader,1,[],subscriptions);
+         var early:String = CanvasDatagramCodec.encode("state.early",1,"ci-ascii","before-membership");
          var alpha1:String = CanvasDatagramCodec.encode("state.alpha",1,"ci-ascii","alpha-1");
          var beta1:String = CanvasDatagramCodec.encode("state.beta",1,"ci-ascii","beta-1");
          var alpha2:String = CanvasDatagramCodec.encode("state.alpha",1,"ci-ascii","alpha-2");
@@ -395,6 +395,9 @@ package
          var hit1:String = CanvasDatagramCodec.encode("hit.damage",1,"ci-ascii","hit-1");
          var hit2:String = CanvasDatagramCodec.encode("hit.damage",1,"ci-ascii","hit-2");
          var transient:String = CanvasDatagramCodec.encode("input.press",1,"ci-ascii","drop-1");
+         registry["publishEvent"]("venworks.canvas.state",early);
+         this.assertTrue(context.diagnostics.length == 0,"valid pre-membership datagram was rejected");
+         this.addConsumerV3(registry,context,"policies",bridge,loader,1,[],subscriptions);
          registry["publishEvent"]("venworks.canvas.state",alpha1);
          registry["publishEvent"]("venworks.canvas.hits",hit1);
          registry["publishEvent"]("venworks.canvas.state",beta1);
@@ -403,11 +406,18 @@ package
          registry["publishEvent"]("venworks.canvas.hits",hit2);
          registry["publishEvent"]("venworks.canvas.transient",transient);
          registry["markReady"]("policies");
-         this.assertTrue(bridge.eventBodies.length == 5,"startup policies changed replay count");
-         this.assertTrue(CanvasDatagramCodec.decode(String(bridge.eventBodies[0])).payload == "hit-1" && CanvasDatagramCodec.decode(String(bridge.eventBodies[1])).messageType == "state.beta" && CanvasDatagramCodec.decode(String(bridge.eventBodies[2])).payload == "alpha-2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[3])).payload == "alpha-v2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[4])).payload == "hit-2","latest did not coalesce independently by datagram message identity");
+         this.assertTrue(bridge.eventBodies.length == 6,"startup policies changed replay count");
+         this.assertTrue(CanvasDatagramCodec.decode(String(bridge.eventBodies[0])).payload == "before-membership" && CanvasDatagramCodec.decode(String(bridge.eventBodies[1])).payload == "hit-1" && CanvasDatagramCodec.decode(String(bridge.eventBodies[2])).messageType == "state.beta" && CanvasDatagramCodec.decode(String(bridge.eventBodies[3])).payload == "alpha-2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[4])).payload == "alpha-v2" && CanvasDatagramCodec.decode(String(bridge.eventBodies[5])).payload == "hit-2","latest did not retain and coalesce independently by datagram message identity");
          this.assertTrue(context.diagnostics.length == 1 && String(context.diagnostics[0]).indexOf("EVENT REJECTED | NOT_READY | venworks.canvas.transient") == 0,"drop policy did not report its startup rejection");
          registry["publishEvent"]("venworks.canvas.state","not-a-datagram");
-         this.assertTrue(bridge.eventBodies.length == 5 && context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | INVALID_DATAGRAM | venworks.canvas.state") == 0,"invalid v3 datagram reached the consumer");
+         this.assertTrue(bridge.eventBodies.length == 6 && context.diagnostics.length == 2 && String(context.diagnostics[1]).indexOf("EVENT REJECTED | INVALID_DATAGRAM | venworks.canvas.state") == 0,"invalid v3 datagram reached the consumer");
+         var lateBridge:CanvasSubscriptionsTestBridge = new CanvasSubscriptionsTestBridge();
+         var lateLoader:Object = {};
+         this.addConsumerV3(registry,context,"late-policies",lateBridge,lateLoader,2,[],[{"topic":"venworks.canvas.state","startup":"latest"}]);
+         registry["markReady"]("late-policies");
+         this.assertTrue(lateBridge.eventBodies.length == 4,"late latest subscriber did not receive retained state identities");
+         registry["removeConsumer"]("late-policies");
+         context.deactivate("late-policies");
          registry["removeConsumer"]("policies");
          context.deactivate("policies");
          registry["dispose"]();

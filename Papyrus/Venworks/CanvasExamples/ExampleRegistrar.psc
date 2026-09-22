@@ -8,6 +8,7 @@ String Property NormalMoviePath Auto Const Mandatory
 String Property LargeMoviePath Auto Const Mandatory
 Int Property DescriptorVersion Auto Const Mandatory
 Bool Property ExpectedRegistration Auto Const Mandatory
+; Retained for ESM and saved-script compatibility; startup no longer waits on this value.
 Float Property InitialDelaySeconds Auto Const Mandatory
 FormList Property BuffEffects Auto Const Mandatory
 FormList Property DebuffEffects Auto Const Mandatory
@@ -176,6 +177,7 @@ Event OnInit()
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
   EnsurePlayerEventRegistrations()
   EnsureMagicEffectRegistrations()
+  StartTimer(0.1, 1)
   RequestEffectRefresh(True)
 EndEvent
 
@@ -186,16 +188,8 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
     LastHudOpenAt = Utility.GetCurrentRealTime()
     EnsurePlayerEventRegistrations()
     EnsureMagicEffectRegistrations()
-    Float delay = InitialDelaySeconds
-    If (delay < 0.1)
-      delay = 0.1
-    EndIf
-    StartTimer(delay, 1)
-    EffectForceRefresh = True
-    EffectRefreshPending = True
-    StartTimer(delay + 1.5, 31)
-    StartTimer(delay + 8.0, 34)
-    StartTimer(delay + 1.5, 33)
+    StartTimer(0.1, 1)
+    RequestEffectRefresh(True)
     ScheduleActiveEffectCheck()
   EndIf
 EndEvent
@@ -732,10 +726,18 @@ Function PublishNextEffectPacket()
     EndIf
   ElseIf (result.Status == "REJECTED_EVENT_INACTIVE")
     LogUserInformational(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_WAITING_FOR_HUD")
+    EffectRetryCount += 1
+    If (EffectRetryCount <= 20)
+      StartTimer(0.5, 33)
+    Else
+      LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_RETRY_EXHAUSTED | Status=" + result.Status)
+      PendingEffectPayload = ""
+      EffectForceRefresh = True
+    EndIf
   ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
     EffectRetryCount += 1
     If (EffectRetryCount <= 20)
-      StartTimer(1.0, 33)
+      StartTimer(0.5, 33)
     Else
       LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_RETRY_EXHAUSTED | Status=" + result.Status)
       PendingEffectPayload = ""
@@ -758,7 +760,8 @@ Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
   RequestRegisteredUi(result)
   ReportAttempt(result)
-  If (IsDeferred(result.Status) || IsDeferred(result.UiLoad))
+  Bool retryUi = IsDeferred(result.UiLoad) && result.UiLoad != "DEFERRED_UI_INACTIVE"
+  If (IsDeferred(result.Status) || retryUi)
     If (attempt < 20)
       StartTimer(0.5, attempt + 1)
     Else

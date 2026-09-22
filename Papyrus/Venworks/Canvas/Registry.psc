@@ -299,6 +299,7 @@ EndFunction
 
 ; A supported menu event defers presentation reset to a bounded timer, not OnInit or a waiting guard.
 Function RefreshUiActivation(Int timerId)
+  Float now = Utility.GetCurrentRealTime()
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
     result.Status = "UI_ACTIVATION_UNCHANGED"
@@ -317,13 +318,15 @@ Function RefreshUiActivation(Int timerId)
       EndIf
       UiAppliedActivationRequest = UiActivationRequest
       result.Status = "UI_ACTIVATION_RESET"
+      If (UiActive && PlayerHudRequested)
+        EnsureStorageLocked(result)
+        QueueRegisteredUiLoadsLocked(result, now)
+      EndIf
     EndIf
     result.Epoch = UiEpoch
   EndTryLockGuard
   LogOperation(result)
-  If (result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0)
-    StartTimer(1.0, result.TimerId)
-  EndIf
+  ScheduleUiPump(result)
   If (result.Status == "DEFERRED_REGISTRY_BUSY" && timerId < 119)
     StartTimer(0.5, timerId + 1)
   EndIf
@@ -343,8 +346,20 @@ EndFunction
 String Function BuildUiLoadPacket(ConsumerRegistration registration)
   Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
   Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
-  String payload = EncodeField("1") + EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+  String payload = EncodeField("1") + BuildUiLoadDescriptorPayload(registration)
   Return BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)
+EndFunction
+
+; Frames one descriptor for either the legacy single-load packet or an atomic load batch.
+String Function BuildUiLoadDescriptorPayload(ConsumerRegistration registration)
+  Return EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+EndFunction
+
+; A batch is one self-contained host command. Each descriptor is validated before selection.
+String Function BuildUiLoadBatchPacket(Int count, String descriptorPayload)
+  Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
+  Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
+  Return BuildEventPacket(headers.V1, packetTypes.UiLoadBatch, EncodeField("1") + EncodeField(count as String) + descriptorPayload)
 EndFunction
 
 ; Frames one validated named event. Topic and body contents are not normalized or interpreted.
@@ -525,6 +540,33 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndIf
 EndFunction
 
+; HUD activation replays saved descriptors without making every owner reacquire the registry first.
+; The existing queue cap remains the bound; later explicit owner requests can fill space after a batch drains.
+Function QueueRegisteredUiLoadsLocked(OperationResult result, Float now)
+  If (!UiActive || !PlayerHudRequested || UiLoads == None || Consumers == None)
+    Return
+  EndIf
+  Int index = 0
+  While (index < Consumers.Length && UiLoads.Length < 32)
+    ConsumerRegistration registration = Consumers[index]
+    If (registration != None && IsDescriptorValid(registration.Owner, registration.ConsumerId, registration.DisplayName, registration.NormalMovieUrl, registration.LargeMovieUrl, registration.DescriptorVersion))
+      String packet = BuildUiLoadPacket(registration)
+      If (packet != "" && IsPrintableAscii(packet, 1, 512))
+        UiLoadEntry entry = new UiLoadEntry
+        entry.Owner = registration.Owner
+        entry.ConsumerId = registration.ConsumerId
+        entry.Packet = packet
+        UiLoads.Add(entry)
+      EndIf
+    EndIf
+    index += 1
+  EndWhile
+  result.Count = UiLoads.Length
+  If (UiLoads.Length > 0 && UiPumpBase == 0)
+    result.TimerId = StartUiPumpLocked(now)
+  EndIf
+EndFunction
+
 ; Monotonic tickets make duplicate, superseded and cross-transport timer callbacks inert. Caller holds RegistryGuard.
 Int Function NextUiTicketLocked()
   UiTimerSerial += 100
@@ -545,7 +587,12 @@ EndFunction
 ; Timer work is never scheduled while holding a registry or registrar guard.
 Function ScheduleUiPump(OperationResult result)
   If (result.TimerId > 0)
-    StartTimer(1.0, result.TimerId)
+    Int attempt = result.TimerId % 100
+    If (attempt >= 51 && attempt <= 70)
+      StartTimer(1.0, result.TimerId)
+    Else
+      StartTimer(0.1, result.TimerId)
+    EndIf
   EndIf
 EndFunction
 
@@ -583,7 +630,7 @@ Function PumpUiLoad(Int timerId)
   EndIf
 EndFunction
 
-; Drops stale owners/descriptors and atomically takes only one packet. No native transport is called here.
+; Drops stale owners/descriptors and atomically takes one bounded batch. No native transport is called here.
 OperationResult Function TryTakeUiLoad(Int ticket, Float now)
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
@@ -593,7 +640,9 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
       UiPumpBase = 0
       UiPumpExpiresAt = 0.0
       Int index = 0
-      While (index < UiLoads.Length && result.Packet == "")
+      UiLoadEntry[] selected = new UiLoadEntry[0]
+      String descriptorPayload = ""
+      While (index < UiLoads.Length)
         UiLoadEntry entry = UiLoads[index]
         If (entry == None)
           UiLoads.Remove(index)
@@ -602,15 +651,19 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
           If (entry.Owner != None && registeredIndex >= 0)
             ConsumerRegistration registration = Consumers[registeredIndex]
             If (registration.Owner == entry.Owner && BuildUiLoadPacket(registration) == entry.Packet)
-              result.Packet = entry.Packet
-              result.ConsumerId = entry.ConsumerId
-              result.DescriptorVersion = registration.DescriptorVersion
-              result.Epoch = UiEpoch
-              result.Status = "UI_LOAD_RESERVED"
-              ; Hold the same ticket across native submission and the following one-second cooldown.
-              UiPumpBase = -ticket
-              UiCompletedSubmissionTicket = 0
-              entry.Submitted = True
+              String candidatePayload = descriptorPayload + BuildUiLoadDescriptorPayload(registration)
+              String candidatePacket = BuildUiLoadBatchPacket(selected.Length + 1, candidatePayload)
+              If (IsPrintableAscii(candidatePacket, 1, 4096))
+                selected.Add(entry)
+                descriptorPayload = candidatePayload
+                If (result.ConsumerId == "")
+                  result.ConsumerId = entry.ConsumerId
+                  result.DescriptorVersion = registration.DescriptorVersion
+                EndIf
+                index += 1
+              Else
+                index = UiLoads.Length
+              EndIf
             Else
               UiLoads.Remove(index)
             EndIf
@@ -621,6 +674,24 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
           index += 1
         EndIf
       EndWhile
+      If (selected.Length > 0)
+        If (selected.Length == 1)
+          result.Packet = selected[0].Packet
+        Else
+          result.Packet = BuildUiLoadBatchPacket(selected.Length, descriptorPayload)
+        EndIf
+        result.Count = selected.Length
+        result.Epoch = UiEpoch
+        result.Status = "UI_LOAD_RESERVED"
+        ; Hold the same ticket across native submission and the following one-second cooldown.
+        UiPumpBase = -ticket
+        UiCompletedSubmissionTicket = 0
+        index = 0
+        While (index < selected.Length)
+          selected[index].Submitted = True
+          index += 1
+        EndWhile
+      EndIf
     EndIf
   EndTryLockGuard
   Return result

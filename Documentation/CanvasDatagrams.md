@@ -93,10 +93,10 @@ Each startup policy applies while that consumer is loading:
 | Policy | Behavior before lifecycle `ready` | Typical use |
 | --- | --- | --- |
 | `drop` | Reject the datagram | Input or transient observations that should not replay |
-| `latest` | Retain the newest received datagram for each message type, schema version, and encoding in that stream | Status, position, target state, clocks |
+| `latest` | Retain the newest received datagram for each message type, schema version, and encoding in that stream, including valid state received before consumer membership exists | Status, position, target state, clocks |
 | `fifo` | Retain bounded datagrams in received order | Hits, alerts, notifications |
 
-The queue remains bounded to 64 datagrams and 65,536 combined topic/body characters per consumer. A `latest` stream can multiplex many state schemas because coalescing uses the generic message type, schema version, and encoding as its key. Replacing an older datagram with the same identity is normal coalescing; other queue eviction is reported in Canvas diagnostics.
+The host keeps a bounded pre-membership `latest` cache, and each loading consumer keeps its own bounded startup queue. Each is limited to 64 datagrams and 65,536 combined topic/body characters. A `latest` stream can multiplex many state schemas because coalescing uses the stream topic, generic message type, schema version, and encoding as its key. When a v3 consumer establishes a `latest` subscription, Canvas seeds its startup queue from the matching retained host state and continues coalescing until lifecycle `ready`. Replacing an older datagram with the same identity is normal coalescing; other queue eviction is reported in Canvas diagnostics. `fifo` does not replay traffic that arrived before membership existed.
 
 `VWCANVAS_CONSUMER/2` remains supported. Its existing settings map to the same internal policies:
 

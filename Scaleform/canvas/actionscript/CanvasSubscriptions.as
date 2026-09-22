@@ -28,6 +28,8 @@ package
 
       private var eventDropReportCount:int = 0;
 
+      private var retainedDatagrams:CanvasEventQueue = new CanvasEventQueue();
+
       private var channelCallbacks:Object = {};
 
       private var channelSubscribed:Object = {};
@@ -128,6 +130,10 @@ package
                   this.topicMembers[name] = recipients;
                }
                recipients.push(membership);
+               if(datagramMode && String(eventPolicies[name]) == "latest")
+               {
+                  this.seedRetainedDatagrams(membership,name);
+               }
                index++;
             }
          }
@@ -178,10 +184,14 @@ package
          // CustomWatchAlert may change ASCII casing in transit. Event topics are
          // identifiers, so canonicalize them before subscription lookup and delivery.
          param1 = param1.toLowerCase();
+         var retained:Boolean = this.retainDatagram(param1,param2);
          var registered:Array = this.topicMembers[param1] as Array;
          if(registered == null || registered.length == 0)
          {
-            this.reportEventDrop("NO_TOPIC_MEMBER",param1,"");
+            if(!retained)
+            {
+               this.reportEventDrop("NO_TOPIC_MEMBER",param1,"");
+            }
             return;
          }
          var recipients:Array = registered.concat();
@@ -295,6 +305,11 @@ package
          this.topicMembers = {};
          this.eventDropReported = {};
          this.eventDropReportCount = 0;
+         if(this.retainedDatagrams != null)
+         {
+            this.retainedDatagrams.clear();
+         }
+         this.retainedDatagrams = null;
          this.channelCallbacks = {};
          this.channelSubscribed = {};
          this.channelCleanupCallbacks = {};
@@ -521,6 +536,44 @@ package
          catch(callbackError:*)
          {
             this.report("EVENT CALLBACK ERROR | " + param1.consumerId + " | " + param2);
+         }
+      }
+
+      private function retainDatagram(param1:String, param2:String) : Boolean
+      {
+         if(this.retainedDatagrams == null)
+         {
+            return false;
+         }
+         try
+         {
+            var datagram:Object = CanvasDatagramCodec.decode(param2);
+            var coalesceKey:String = param1 + "|" + String(datagram.messageType) + "|" + int(datagram.schemaVersion) + "|" + String(datagram.encoding);
+            if(this.retainedDatagrams.enqueue(param1,param2,"latest",coalesceKey))
+            {
+               this.reportEventDrop("QUEUE_EVICTED",param1,"");
+            }
+            return true;
+         }
+         catch(datagramError:*)
+         {
+         }
+         return false;
+      }
+
+      private function seedRetainedDatagrams(param1:Object, param2:String) : void
+      {
+         if(!this.isMembershipCurrent(param1) || this.retainedDatagrams == null)
+         {
+            return;
+         }
+         var retained:Array = this.retainedDatagrams.copyForTopic(param2);
+         var index:int = 0;
+         while(index < retained.length && this.isMembershipCurrent(param1))
+         {
+            var event:Object = retained[index];
+            this.queueEvent(param1,String(event.topic),String(event.body),"latest",String(event.coalesceKey));
+            index++;
          }
       }
 

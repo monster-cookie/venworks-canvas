@@ -17,9 +17,15 @@ package
 
       private static const UI_LOAD_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load|";
 
+      private static const UI_LOAD_BATCH_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load.batch|";
+
       private static const CANVAS_EVENT_PREFIX:String = ENVELOPE_PREFIX + "canvas.event|";
 
       private static const MAX_UI_LOAD_CHARACTERS:int = 512;
+
+      private static const MAX_UI_LOAD_BATCH_CHARACTERS:int = 4096;
+
+      private static const MAX_UI_LOAD_BATCH_DESCRIPTORS:int = 32;
 
       private static const SNAPSHOT_TYPE:String = "canvas.registry.snapshot";
 
@@ -465,6 +471,7 @@ package
          var alert:Object = null;
          var text:String = null;
          var uiLoadPrefixMatch:int = 0;
+         var uiLoadBatchPrefixMatch:int = 0;
          var canvasEventPrefixMatch:int = 0;
          var envelopePrefixMatch:int = 0;
          if(this.disposed || !this.subscribed)
@@ -505,30 +512,39 @@ package
                   continue;
                }
                text = alert.sAlertText;
-               uiLoadPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_PREFIX);
-               if(uiLoadPrefixMatch > 0)
+               uiLoadBatchPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_BATCH_PREFIX);
+               if(uiLoadBatchPrefixMatch > 0)
                {
-                  this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                  this.appendAlertDiagnostic("UI LOAD BATCH | PREFIX " + (uiLoadBatchPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
                   this.queueOrReceiveEnvelope(text);
                }
                else
                {
-                  canvasEventPrefixMatch = this.matchAsciiPrefix(text,CANVAS_EVENT_PREFIX);
-                  if(canvasEventPrefixMatch > 0)
+                  uiLoadPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_PREFIX);
+                  if(uiLoadPrefixMatch > 0)
                   {
-                     this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                     this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
                      this.queueOrReceiveEnvelope(text);
                   }
                   else
                   {
-                     envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
-                     if(envelopePrefixMatch > 0)
+                     canvasEventPrefixMatch = this.matchAsciiPrefix(text,CANVAS_EVENT_PREFIX);
+                     if(canvasEventPrefixMatch > 0)
                      {
-                        this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        this.queueOrReceiveEnvelope(text);
                      }
                      else
                      {
-                        this.appendAlertDiagnostic("OTHER",text.length);
+                        envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
+                        if(envelopePrefixMatch > 0)
+                        {
+                           this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        }
+                        else
+                        {
+                           this.appendAlertDiagnostic("OTHER",text.length);
+                        }
                      }
                   }
                }
@@ -653,7 +669,20 @@ package
       private function receiveEnvelope(param1:String) : void
       {
          // Legacy snapshot/diagnostic ingress remains disabled. Only fixed load and named-event packets are accepted.
-         if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
+         if(this.matchAsciiPrefix(param1,UI_LOAD_BATCH_PREFIX) > 0)
+         {
+            try
+            {
+               var batch:Object = this.parseUiLoadBatch(param1);
+               this.appendDiagnostic("RX LOAD BATCH | COUNT " + int(batch.count));
+               this.reconcile(batch.desired,false);
+            }
+            catch(batchLoadCommandError:*)
+            {
+               this.appendDiagnostic("UI LOAD BATCH REJECTED | " + this.sanitizeText(batchLoadCommandError,100));
+            }
+         }
+         else if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
          {
             try
             {
@@ -728,6 +757,64 @@ package
          };
          this.validateDescriptor(descriptor);
          return descriptor;
+      }
+
+      private function parseUiLoadBatch(packet:String) : Object
+      {
+         if(packet == null || packet.length > MAX_UI_LOAD_BATCH_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
+         {
+            throw new Error("invalid UI load batch size or characters");
+         }
+         if(this.matchAsciiPrefix(packet,UI_LOAD_BATCH_PREFIX) == 0)
+         {
+            throw new Error("invalid UI load batch envelope");
+         }
+         var cursor:int = UI_LOAD_BATCH_PREFIX.length;
+         var protocol:Object = this.readFrame(packet,cursor,1);
+         cursor = int(protocol.next);
+         if(protocol.value != "1")
+         {
+            throw new Error("unsupported UI load batch protocol");
+         }
+         var countFrame:Object = this.readFrame(packet,cursor,2);
+         cursor = int(countFrame.next);
+         var count:int = this.parseUnsignedInt(String(countFrame.value),MAX_UI_LOAD_BATCH_DESCRIPTORS);
+         if(count < 1)
+         {
+            throw new Error("invalid UI load batch count");
+         }
+         var desired:Object = {};
+         var index:int = 0;
+         while(index < count)
+         {
+            var id:Object = this.readFrame(packet,cursor,38);
+            cursor = int(id.next);
+            var version:Object = this.readFrame(packet,cursor,4);
+            cursor = int(version.next);
+            var normal:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+            cursor = int(normal.next);
+            var large:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+            cursor = int(large.next);
+            var descriptor:Object = {
+               "consumerId":this.normalizeUuid(String(id.value)),
+               "displayName":String(id.value),
+               "normalPath":String(normal.value),
+               "largePath":String(large.value),
+               "version":this.parseUnsignedInt(String(version.value),9999)
+            };
+            this.validateDescriptor(descriptor);
+            if(desired[descriptor.consumerId] != null)
+            {
+               throw new Error("duplicate UI load batch consumer");
+            }
+            desired[descriptor.consumerId] = descriptor;
+            index++;
+         }
+         if(cursor != packet.length)
+         {
+            throw new Error("trailing UI load batch data");
+         }
+         return {"count":count,"desired":desired};
       }
 
       private function parseCanvasEvent(packet:String) : Object

@@ -60,6 +60,19 @@ package
          return result;
       }
 
+      public function copyForTopic(topic:String) : Array
+      {
+         var result:Array = [];
+         for each(var event:Object in this.events)
+         {
+            if(String(event.topic) == topic)
+            {
+               result.push({"topic":String(event.topic),"body":String(event.body),"characters":int(event.characters),"coalesceKey":String(event.coalesceKey)});
+            }
+         }
+         return result;
+      }
+
       public function clear() : void
       {
          this.events = [];
