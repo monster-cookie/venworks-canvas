@@ -619,7 +619,11 @@ String[] Function AppendActiveEffects(String[] entries, Actor player, FormList c
       If (grouped)
         entry = category + ":" + label
       EndIf
-      If (!grouped || !ContainsEffectEntry(entries, entry))
+      ; Starfield can retain a negative sustenance modifier while its positive
+      ; player-facing state is active. Buffs are assembled first, so keep one
+      ; visible state per food or drink family.
+      Bool suppressed = IsSuppressedSustenanceEntry(entries, entry)
+      If ((!grouped || !ContainsEffectEntry(entries, entry)) && !suppressed)
         entries.Add(entry)
       EndIf
       ActiveSourceEffects.Add(effect)
@@ -655,6 +659,15 @@ Bool Function ContainsEffectEntry(String[] entries, String candidate)
     EndIf
     index += 1
   EndWhile
+  Return False
+EndFunction
+
+Bool Function IsSuppressedSustenanceEntry(String[] entries, String candidate)
+  If (candidate == "D:Dehydrated")
+    Return ContainsEffectEntry(entries, "B:Hydrated")
+  ElseIf (candidate == "D:Malnourished")
+    Return ContainsEffectEntry(entries, "B:Fed")
+  EndIf
   Return False
 EndFunction
 
