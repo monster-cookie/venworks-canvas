@@ -177,7 +177,7 @@ Event OnInit()
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
   EnsurePlayerEventRegistrations()
-  EnsureMagicEffectRegistrations()
+  EnsureMagicEffectRegistrations(True)
   StartTimer(0.1, 1)
   RequestEffectRefresh(True)
 EndEvent
@@ -188,7 +188,7 @@ Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
     LastHudOpenAt = Utility.GetCurrentRealTime()
     EnsurePlayerEventRegistrations()
-    EnsureMagicEffectRegistrations()
+    EnsureMagicEffectRegistrations(True)
     StartTimer(0.1, 1)
     RequestEffectRefresh(True)
     ScheduleActiveEffectCheck()
@@ -216,8 +216,10 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   ActiveSourceSpells = None
   ActiveSourceSpellEntries = None
   PendingEffectRemovals = None
+  CancelTimer(31)
+  EffectRefreshPending = False
   MagicEffectEventRegistered = False
-  EnsureMagicEffectRegistrations()
+  EnsureMagicEffectRegistrations(True)
   RequestEffectRefresh(True)
   ScheduleActiveEffectCheck()
 EndEvent
@@ -266,16 +268,19 @@ EndEvent
 
 ; Re-register after each one-shot apply notification, then scan after the effect can become active.
 Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
-  LogUserInformational(ModuleName, "OnMagicEffectApply", "EVENT_TRIGGERED | Target=" + akTarget + " | Effect=" + akEffect)
+  Bool reportApply = akTarget == Game.GetPlayer() && !EffectRefreshPending
+  If (reportApply)
+    LogUserInformational(ModuleName, "OnMagicEffectApply", "EVENT_TRIGGERED | Target=" + akTarget + " | Effect=" + akEffect)
+  EndIf
   MagicEffectEventRegistered = False
-  EnsureMagicEffectRegistrations()
+  EnsureMagicEffectRegistrations(reportApply)
   If (akTarget == Game.GetPlayer())
     RequestEffectRefresh(False)
   EndIf
 EndEvent
 
 ; This one-shot registration is unfiltered so newly applied, cataloged effects cannot be missed.
-Function EnsureMagicEffectRegistrations()
+Function EnsureMagicEffectRegistrations(Bool reportRegistration)
   If (MagicEffectEventRegistered)
     Return
   EndIf
@@ -287,13 +292,18 @@ Function EnsureMagicEffectRegistrations()
   UnregisterForAllMagicEffectApplyEvents(player)
   RegisterForMagicEffectApplyEvent(player)
   MagicEffectEventRegistered = True
-  LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION | Target=Player | Filter=None")
+  If (reportRegistration)
+    LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION | Target=Player | Filter=None")
+  EndIf
 EndFunction
 
 ; Coalesces load, HUD-ready, and apply requests while preserving a requested full resend.
 Function RequestEffectRefresh(Bool forceSnapshot)
   If (forceSnapshot)
     EffectForceRefresh = True
+  EndIf
+  If (EffectRefreshPending)
+    Return
   EndIf
   EffectRefreshPending = True
   StartTimer(0.5, 31)
