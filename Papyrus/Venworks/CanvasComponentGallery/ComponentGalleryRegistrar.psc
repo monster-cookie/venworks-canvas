@@ -92,6 +92,9 @@ EndFunction
 ; One attempt followed by diagnostics and optional scheduling, all outside the acquired guards.
 Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
+  If (result.Status == "REGISTRATION_UNCHANGED")
+    result.UiLoad = "UI_LOAD_ACTIVATION_REPLAY"
+  EndIf
   RequestRegisteredUi(result)
   ReportAttempt(result)
   Bool retryUi = IsDeferred(result.UiLoad) && result.UiLoad != "DEFERRED_UI_INACTIVE"

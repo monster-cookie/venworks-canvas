@@ -31,6 +31,7 @@ String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
 Bool LocationEventRegistered = False
 Bool PlayerLoadEventRegistered = False
+Bool MagicEffectEventRegistered = False
 Bool EffectRefreshPending = False
 Bool EffectForceRefresh = False
 Bool EffectChangedDuringPublication = False
@@ -215,6 +216,7 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   ActiveSourceSpells = None
   ActiveSourceSpellEntries = None
   PendingEffectRemovals = None
+  MagicEffectEventRegistered = False
   EnsureMagicEffectRegistrations()
   RequestEffectRefresh(True)
   ScheduleActiveEffectCheck()
@@ -265,6 +267,7 @@ EndEvent
 ; Re-register after each one-shot apply notification, then scan after the effect can become active.
 Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
   LogUserInformational(ModuleName, "OnMagicEffectApply", "EVENT_TRIGGERED | Target=" + akTarget + " | Effect=" + akEffect)
+  MagicEffectEventRegistered = False
   EnsureMagicEffectRegistrations()
   If (akTarget == Game.GetPlayer())
     RequestEffectRefresh(False)
@@ -273,6 +276,9 @@ EndEvent
 
 ; This one-shot registration is unfiltered so newly applied, cataloged effects cannot be missed.
 Function EnsureMagicEffectRegistrations()
+  If (MagicEffectEventRegistered)
+    Return
+  EndIf
   Actor player = Game.GetPlayer()
   If (player == None)
     LogUserWarning(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION_DEFERRED | Player unavailable.")
@@ -280,6 +286,7 @@ Function EnsureMagicEffectRegistrations()
   EndIf
   UnregisterForAllMagicEffectApplyEvents(player)
   RegisterForMagicEffectApplyEvent(player)
+  MagicEffectEventRegistered = True
   LogUserInformational(ModuleName, "EnsureMagicEffectRegistrations", "EFFECT_EVENT_REGISTRATION | Target=Player | Filter=None")
 EndFunction
 
@@ -393,7 +400,6 @@ Function PrepareEffectSnapshot()
     EndIf
     Return
   EndIf
-  LogEnvironmentalStatusSources(player)
   String[] previousEntries = ObservedEffectEntries
   ActiveSourceEffects = new MagicEffect[0]
   ActiveSourceEffectEntries = new String[0]
@@ -458,34 +464,7 @@ Function PrepareEffectSnapshot()
   PendingEffectPayload = payload
   EffectSnapshotBuilding = False
   LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_DATAGRAM_QUEUED | Type=effects.state | Schema=1 | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Length=" + framedLength)
-  If (entriesChanged)
-    index = 0
-    While (index < entries.Length)
-      LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_ACTIVE | Entry=" + entries[index])
-      index += 1
-    EndWhile
-  EndIf
   StartTimer(0.1, 33)
-EndFunction
-
-; Compare the named status spells with their constituent effects before expanding the catalog.
-; The latter can be shared by unrelated hazards and must not be treated as a status by themselves.
-Function LogEnvironmentalStatusSources(Actor player)
-  Spell rainSpell = Game.GetFormFromFile(0x281ECB, "Starfield.esm") as Spell
-  Spell corrosiveSpell = Game.GetFormFromFile(0x08CB51, "Starfield.esm") as Spell
-  Spell toxicGasSpell = Game.GetFormFromFile(0x245B6B, "Starfield.esm") as Spell
-  MagicEffect rainWarning = Game.GetFormFromFile(0x131E77, "Starfield.esm") as MagicEffect
-  MagicEffect corrosiveSoak = Game.GetFormFromFile(0x08CB47, "Starfield.esm") as MagicEffect
-  MagicEffect toxicGasSoak = Game.GetFormFromFile(0x245B6E, "Starfield.esm") as MagicEffect
-  MagicEffect toxicGasDamage = Game.GetFormFromFile(0x245B6F, "Starfield.esm") as MagicEffect
-  Bool rainSpellActive = rainSpell != None && player.HasSpell(rainSpell)
-  Bool corrosiveSpellActive = corrosiveSpell != None && player.HasSpell(corrosiveSpell)
-  Bool toxicGasSpellActive = toxicGasSpell != None && player.HasSpell(toxicGasSpell)
-  Bool rainWarningActive = rainWarning != None && player.HasMagicEffect(rainWarning)
-  Bool corrosiveSoakActive = corrosiveSoak != None && player.HasMagicEffect(corrosiveSoak)
-  Bool toxicGasSoakActive = toxicGasSoak != None && player.HasMagicEffect(toxicGasSoak)
-  Bool toxicGasDamageActive = toxicGasDamage != None && player.HasMagicEffect(toxicGasDamage)
-  LogUserInformational(ModuleName, "LogEnvironmentalStatusSources", "STATUS_SOURCE_PROBE | RainSpell=" + rainSpellActive + " | RainWarning=" + rainWarningActive + " | CorrosiveSpell=" + corrosiveSpellActive + " | CorrosiveSoak=" + corrosiveSoakActive + " | ToxicGasSpell=" + toxicGasSpellActive + " | ToxicGasSoak=" + toxicGasSoakActive + " | ToxicGasDamage=" + toxicGasDamageActive)
 EndFunction
 
 ; SQ_ENV owns injuries and infections separately from the magic-effect catalog. Its spells
@@ -758,6 +737,9 @@ EndFunction
 ; One attempt followed by diagnostics and optional scheduling, all outside the acquired guards.
 Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
+  If (result.Status == "REGISTRATION_UNCHANGED" && !result.UpdateApplied)
+    result.UiLoad = "UI_LOAD_ACTIVATION_REPLAY"
+  EndIf
   RequestRegisteredUi(result)
   ReportAttempt(result)
   Bool retryUi = IsDeferred(result.UiLoad) && result.UiLoad != "DEFERRED_UI_INACTIVE"

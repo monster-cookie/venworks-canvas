@@ -112,14 +112,13 @@ Event OnInit()
   EnsureMenuSubscriptions()
 EndEvent
 
-; A supported HUD opening starts deferred reconciliation, never a guarded OnInit continuation.
+; A HUD transition attempts its bounded activation transaction immediately. Busy work falls back to the existing retry timer.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (menuName == "HUDMenu")
     PlayerHudRequested = opening
     UiActivationRequest += 1
-    StartTimer(0.2, 100)
-  EndIf
-  If (opening)
+    RefreshUiActivation(100)
+  ElseIf (opening)
     StartTimer(0.2, 1)
   EndIf
 EndEvent
@@ -297,7 +296,7 @@ OperationResult Function TryRequestUiLoad(Quest owner, String consumerId)
   Return result
 EndFunction
 
-; A supported menu event defers presentation reset to a bounded timer, not OnInit or a waiting guard.
+; A supported menu event performs one nonblocking presentation reset attempt; contention schedules a bounded retry.
 Function RefreshUiActivation(Int timerId)
   Float now = Utility.GetCurrentRealTime()
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
