@@ -340,20 +340,20 @@ package
       {
          switch(param1)
          {
-            case "Sustenance_Food_Negative_2":
-            case "Sustenance_Drink_Negative_2":
-               return 202;
-            case "Sustenance_Food_Negative_1":
-            case "Sustenance_Drink_Negative_1":
-               return 201;
             case "Sustenance_Food_Positive_3":
             case "Sustenance_Drink_Positive_3":
-               return 103;
+               return 203;
             case "Sustenance_Food_Positive_2":
             case "Sustenance_Drink_Positive_2":
-               return 102;
+               return 202;
             case "Sustenance_Food_Positive_1":
             case "Sustenance_Drink_Positive_1":
+               return 201;
+            case "Sustenance_Food_Negative_2":
+            case "Sustenance_Drink_Negative_2":
+               return 102;
+            case "Sustenance_Food_Negative_1":
+            case "Sustenance_Drink_Negative_1":
                return 101;
          }
          return -1;

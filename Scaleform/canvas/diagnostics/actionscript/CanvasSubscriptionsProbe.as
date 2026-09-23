@@ -5,7 +5,7 @@ package
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
-      private static const TEST_COUNT:int = 11;
+      private static const TEST_COUNT:int = 12;
 
       private var marker:CanvasDiagnosticMarker;
 
@@ -35,6 +35,7 @@ package
          this.runCase("EVENT STARTUP POLICIES",this.testEventStartupPolicies);
          this.runCase("DATAGRAM CODEC",this.testDatagramCodec);
          this.runCase("ATOMIC EFFECT STATE",this.testAtomicEffectState);
+         this.runCase("CHRONOMARK SUSTENANCE PRECEDENCE",this.testChronomarkSustenancePrecedence);
          this.updateMarker();
       }
 
@@ -468,6 +469,35 @@ package
          this.assertTrue(adapter.view().empty === true,"empty effect state changed");
          adapter.reset();
          this.assertTrue(adapter.view().waiting === true,"effect reset did not restore pending state");
+      }
+
+      private function testChronomarkSustenancePrecedence() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var received:Object = {};
+         var data:CanvasChronomarkData = new CanvasChronomarkData(manager,function(param1:String, param2:Object):void
+         {
+            received[param1] = param2;
+         },function(param1:String):void
+         {
+         });
+         this.assertTrue(data.initialize(),"Chronomark data test did not initialize");
+         manager.emit("PersonalEffectsData",{
+            "uAlertTimeMS":0,
+            "aPersonalEffects":[
+               {"sEffectIcon":"Sustenance_Food_Negative_2"},
+               {"sEffectIcon":"Sustenance_Food_Positive_1"},
+               {"sEffectIcon":"Sustenance_Food_Positive_3"},
+               {"sEffectIcon":"Sustenance_Drink_Positive_1"},
+               {"sEffectIcon":"Sustenance_Drink_Positive_2"},
+               {"sEffectIcon":"Sustenance_Drink_Negative_2"}
+            ]
+         });
+         var view:Object = received["PersonalEffectsData"];
+         this.assertTrue(view != null && view.effects.length == 2,"Chronomark did not retain one effect per sustenance family");
+         this.assertTrue(view.effects[0].icon == "Sustenance_Food_Positive_3","Chronomark did not select the highest positive food tier");
+         this.assertTrue(view.effects[1].icon == "Sustenance_Drink_Positive_2","Chronomark did not select the highest positive drink tier");
+         data.dispose();
       }
 
       private function assertRejectedBeforeProvider(param1:Array, param2:Array, param3:String) : void

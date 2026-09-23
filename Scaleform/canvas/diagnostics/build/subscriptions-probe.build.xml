@@ -30,6 +30,7 @@
     <token>SUBSCRIBE ROLLBACK</token>
     <token>UNSUBSCRIBE RECOVERY</token>
     <token>REPEAT DISPOSE</token>
+    <token>CHRONOMARK SUSTENANCE PRECEDENCE</token>
     <token>ALL REGISTRY DIAGNOSTICS PASSED</token>
     <token>GetDataFromClient</token>
     <token>Subscribe</token>

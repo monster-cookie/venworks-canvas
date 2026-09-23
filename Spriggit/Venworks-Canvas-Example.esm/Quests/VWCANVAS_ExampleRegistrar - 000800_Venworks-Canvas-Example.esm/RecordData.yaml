@@ -11,11 +11,35 @@ VirtualMachineAdapter:
     - MutagenObjectType: ScriptStringListProperty
       Name: BuffLabels
       Data:
+      - Fortify Carry Weight
+      - Fortify Melee Damage
       - Well Rested
       - Companion Affinity Increases Faster
       - Improved Research Crit Chance
       - Reduced Research Cost
       - Heart+
+      - Fortify Power Recovery Rate
+      - Fortify Damage
+      - Fortify Damage
+      - Fortify O2 Recovery Rate
+      - Increased Weapon Accuracy
+      - Fortify Energy Damage Resistance
+      - Restore Health
+      - Fortify Movement Speed
+      - Fortify Physical Damage Resistance
+      - Addiction Suppression
+      - Fortify O2
+      - Fortify Jump Height
+      - Slow Time
+      - Reduce Movement Noise
+      - Fortify Ranged Damage
+      - Fortify Ranged Damage
+      - Fortify Melee Damage
+      - Fortify Melee Damage
+      - Fortify Damage
+      - Fortify Damage
+      - Increased Weapon Accuracy
+      - Increased Weapon Accuracy
       - Fortify Persuasion
       - Fed
       - Hydrated

@@ -40,6 +40,7 @@ Bool UiActive = False
 Int UiEpoch = 0
 Int UiActivationRequest = 0
 Int UiAppliedActivationRequest = -1
+Bool UiAutomaticReplayCompleted = False
 Int UiTimerSerial = 1000
 Int UiPumpBase = 0
 Int UiCompletedSubmissionTicket = 0
@@ -57,6 +58,9 @@ Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
 Int MaxCanvasEventTopicCharacters = 96
+; Retained as inert saved-script fields. Packet validation uses the current hard-coded 4096-character limit.
+Int MaxCanvasEventBodyCharacters = 400
+Int MaxCanvasEventPacketCharacters = 4096
 
 ; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
 String Function ConsoleResolve() Global
@@ -306,6 +310,7 @@ Function RefreshUiActivation(Int timerId)
       UiEpoch += 1
       UiActive = PlayerHudRequested
       UiLoads = new UiLoadEntry[0]
+      UiAutomaticReplayCompleted = False
       ; A positive timer can be retired with the old activation. Negative ownership survives until native completion and cooldown.
       If (UiPumpBase >= 0)
         UiPumpBase = 0
@@ -507,9 +512,14 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndWhile
   If (existing >= 0)
     If (UiLoads[existing].Owner == owner && UiLoads[existing].Packet == packet)
-      result.Status = "UI_LOAD_ALREADY_REQUESTED"
-      ; Restart an exhausted local pump, but never resubmit an already reserved packet.
-      If (!UiLoads[existing].Submitted && UiPumpBase == 0)
+      If (UiLoads[existing].Submitted)
+        ; The native alert transport has no delivery receipt. An explicit repeat request must remain useful.
+        UiLoads[existing].Submitted = False
+        result.Status = "UI_LOAD_REQUEUED"
+      Else
+        result.Status = "UI_LOAD_ALREADY_REQUESTED"
+      EndIf
+      If (UiPumpBase == 0)
         result.TimerId = StartUiPumpLocked(now)
       EndIf
       Return
@@ -595,7 +605,7 @@ Function ScheduleUiPump(OperationResult result)
   EndIf
 EndFunction
 
-; One owner-checked, rate-limited reservation; a missed UI event is never retried for lack of an ACK.
+; One owner-checked, rate-limited reservation. The queue performs one bounded replay after its first pass.
 Function PumpUiLoad(Int timerId)
   Int attempt = timerId % 100
   If (attempt >= 51 && attempt <= 70)
@@ -716,6 +726,19 @@ Function FinishUiLoad(Int timerId)
           EndIf
           index += 1
         EndWhile
+        ; ShowCustomWatchAlert is lossy and has no ACK. Once the initial queue drains, replay every
+        ; current descriptor exactly once for this HUD activation. Host reconciliation is idempotent.
+        If (result.TimerId == 0 && !UiAutomaticReplayCompleted && UiLoads.Length > 0)
+          UiAutomaticReplayCompleted = True
+          index = 0
+          While (index < UiLoads.Length)
+            If (UiLoads[index] != None)
+              UiLoads[index].Submitted = False
+            EndIf
+            index += 1
+          EndWhile
+          result.TimerId = StartUiPumpLocked(now)
+        EndIf
       EndIf
     EndIf
   EndTryLockGuard

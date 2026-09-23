@@ -29,6 +29,8 @@ String PendingDisplayName
 String PendingNormalMovieUrl
 String PendingLargeMovieUrl
 Int PendingDescriptorVersion = 0
+; Retained as an inert saved-script field from the former location refresh path.
+Bool LocationRefreshPending = False
 Bool LocationEventRegistered = False
 Bool PlayerLoadEventRegistered = False
 Bool MagicEffectEventRegistered = False
@@ -48,6 +50,8 @@ String LastEffectSignature = ""
 String PendingEffectSignature = ""
 String[] EffectPackets
 String PendingEffectPayload = ""
+Bool PendingEffectNeedsRecoveryReplay = False
+Bool EffectRecoveryRefresh = False
 String[] ObservedEffectEntries
 MagicEffect[] ActiveSourceEffects
 String[] ActiveSourceEffectEntries
@@ -206,6 +210,8 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   EffectPackets = None
   EffectPacketIndex = 0
   PendingEffectPayload = ""
+  PendingEffectNeedsRecoveryReplay = False
+  EffectRecoveryRefresh = False
   EffectSnapshotBuilding = False
   EffectChangedDuringPublication = False
   ObservedEffectEntries = None
@@ -217,6 +223,8 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
   ActiveSourceSpellEntries = None
   PendingEffectRemovals = None
   CancelTimer(31)
+  CancelTimer(34)
+  CancelTimer(35)
   EffectRefreshPending = False
   MagicEffectEventRegistered = False
   EnsureMagicEffectRegistrations(True)
@@ -262,6 +270,9 @@ Event OnTimer(Int aiTimerID)
   ElseIf (aiTimerID == 33)
     PublishNextEffectPacket()
   ElseIf (aiTimerID == 34)
+    RequestEffectRefresh(True)
+  ElseIf (aiTimerID == 35)
+    EffectRecoveryRefresh = True
     RequestEffectRefresh(True)
   EndIf
 EndEvent
@@ -410,6 +421,8 @@ Function PrepareEffectSnapshot()
     EndIf
     Return
   EndIf
+  Bool recoveryRefresh = EffectRecoveryRefresh
+  EffectRecoveryRefresh = False
   String[] previousEntries = ObservedEffectEntries
   ActiveSourceEffects = new MagicEffect[0]
   ActiveSourceEffectEntries = new String[0]
@@ -452,6 +465,7 @@ Function PrepareEffectSnapshot()
     EndIf
     Return
   EndIf
+  Bool forcedRefresh = EffectForceRefresh
   EffectForceRefresh = False
   String payload = buffCount + "|" + debuffCount + "|" + signature
   String datagram = Registry.BuildCanvasDatagramBody("effects.state", 1, "ci-ascii", payload)
@@ -460,6 +474,7 @@ Function PrepareEffectSnapshot()
   If (datagram == "" || framedLength > 4096)
     EffectSnapshotBuilding = False
     EffectForceRefresh = True
+    PendingEffectNeedsRecoveryReplay = False
     LogUserWarning(ModuleName, "PrepareEffectSnapshot", "EFFECT_DATAGRAM_REJECTED | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Length=" + framedLength + " | Limit=4096")
     Return
   EndIf
@@ -471,6 +486,7 @@ Function PrepareEffectSnapshot()
   ; Publish the payload last, after every field used by the send timer is ready.
   PendingEffectSignature = signature
   EffectRetryCount = 0
+  PendingEffectNeedsRecoveryReplay = !recoveryRefresh && (forcedRefresh || entriesChanged)
   PendingEffectPayload = payload
   EffectSnapshotBuilding = False
   LogUserInformational(ModuleName, "PrepareEffectSnapshot", "EFFECT_DATAGRAM_QUEUED | Type=effects.state | Schema=1 | Buffs=" + buffCount + " | Debuffs=" + debuffCount + " | Length=" + framedLength)
@@ -657,6 +673,38 @@ String Function ResolveKnownBuffLabel(MagicEffect effect)
     Return "Fortify Persuasion"
   ElseIf (effect == Game.GetFormFromFile(0x0B92EB, "Starfield.esm"))
     Return "Heart+"
+  ElseIf (effect == Game.GetFormFromFile(0x268D36, "Starfield.esm"))
+    Return "Addiction Suppression"
+  ElseIf (effect == Game.GetFormFromFile(0x29A857, "Starfield.esm"))
+    Return "Fortify Jump Height"
+  ElseIf (effect == Game.GetFormFromFile(0x237E51, "Starfield.esm"))
+    Return "Fortify Movement Speed"
+  ElseIf (effect == Game.GetFormFromFile(0x046959, "Starfield.esm"))
+    Return "Fortify Carry Weight"
+  ElseIf (effect == Game.GetFormFromFile(0x1253D5, "Starfield.esm") || effect == Game.GetFormFromFile(0x16AF61, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D3990, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D3991, "Starfield.esm"))
+    Return "Fortify Damage"
+  ElseIf (effect == Game.GetFormFromFile(0x2466F6, "Starfield.esm"))
+    Return "Fortify Physical Damage Resistance"
+  ElseIf (effect == Game.GetFormFromFile(0x04696E, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D398E, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D398F, "Starfield.esm"))
+    Return "Fortify Melee Damage"
+  ElseIf (effect == Game.GetFormFromFile(0x29A853, "Starfield.esm"))
+    Return "Fortify O2"
+  ElseIf (effect == Game.GetFormFromFile(0x16AF67, "Starfield.esm"))
+    Return "Fortify O2 Recovery Rate"
+  ElseIf (effect == Game.GetFormFromFile(0x2AD405, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D398D, "Starfield.esm"))
+    Return "Fortify Ranged Damage"
+  ElseIf (effect == Game.GetFormFromFile(0x2197C4, "Starfield.esm"))
+    Return "Fortify Energy Damage Resistance"
+  ElseIf (effect == Game.GetFormFromFile(0x122EB7, "Starfield.esm"))
+    Return "Fortify Power Recovery Rate"
+  ElseIf (effect == Game.GetFormFromFile(0x2AD404, "Starfield.esm"))
+    Return "Reduce Movement Noise"
+  ElseIf (effect == Game.GetFormFromFile(0x1FE6B9, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D3992, "Starfield.esm") || effect == Game.GetFormFromFile(0x2D3993, "Starfield.esm"))
+    Return "Increased Weapon Accuracy"
+  ElseIf (effect == Game.GetFormFromFile(0x21DDB8, "Starfield.esm"))
+    Return "Restore Health"
+  ElseIf (effect == Game.GetFormFromFile(0x2A34F1, "Starfield.esm"))
+    Return "Slow Time"
   EndIf
   Return ""
 EndFunction
@@ -718,10 +766,18 @@ Function PublishNextEffectPacket()
     Return
   EndIf
   If (result.Status == "EVENT_SUBMITTED")
+    Bool scheduleRecoveryReplay = PendingEffectNeedsRecoveryReplay
     EffectRetryCount = 0
     LastEffectSignature = signature
     LastEffectSnapshotAt = Utility.GetCurrentRealTime()
     PendingEffectPayload = ""
+    PendingEffectNeedsRecoveryReplay = False
+    CancelTimer(34)
+    StartTimer(60.0, 34)
+    If (scheduleRecoveryReplay)
+      CancelTimer(35)
+      StartTimer(2.0, 35)
+    EndIf
     If (EffectChangedDuringPublication)
       EffectChangedDuringPublication = False
       RequestEffectRefresh(False)
@@ -734,7 +790,10 @@ Function PublishNextEffectPacket()
     Else
       LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_RETRY_EXHAUSTED | Status=" + result.Status)
       PendingEffectPayload = ""
+      PendingEffectNeedsRecoveryReplay = False
       EffectForceRefresh = True
+      CancelTimer(34)
+      StartTimer(60.0, 34)
     EndIf
   ElseIf (IsDeferred(result.Status) || result.Status == "EVENT_CANCELLED_ACTIVATION")
     EffectRetryCount += 1
@@ -743,11 +802,15 @@ Function PublishNextEffectPacket()
     Else
       LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_RETRY_EXHAUSTED | Status=" + result.Status)
       PendingEffectPayload = ""
+      PendingEffectNeedsRecoveryReplay = False
       EffectForceRefresh = True
+      CancelTimer(34)
+      StartTimer(60.0, 34)
     EndIf
   Else
     LogUserWarning(ModuleName, "PublishNextEffectPacket", "EFFECT_DATAGRAM_REJECTED | Status=" + result.Status + " | Detail=" + result.Detail)
     PendingEffectPayload = ""
+    PendingEffectNeedsRecoveryReplay = False
     EffectForceRefresh = True
   EndIf
 EndFunction

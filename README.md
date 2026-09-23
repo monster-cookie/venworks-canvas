@@ -22,7 +22,7 @@ Start with a new or disposable save when evaluating a new Canvas build. Existing
 
 ## Optional examples
 
-The Example package demonstrates an independently installed Canvas consumer. Its Papyrus registrar publishes status-effect snapshots; a Canvas-side adapter commits complete snapshots, and the Example's packaged HTML/CSS renders the clock, buff and debuff counts, pending or empty states, and effect rows. When more than eight effects are active, the view rotates through every page every six seconds.
+The Example package demonstrates an independently installed Canvas consumer. Its Papyrus registrar publishes status-effect snapshots from a curated catalog of player-facing conditions, sustenance states, and timed chem and aid effects; afflictions and environmental statuses continue through their dedicated game sources. A Canvas-side adapter commits complete snapshots, and the Example's packaged HTML/CSS renders the clock, buff and debuff counts, pending or empty states, and effect rows. When more than eight effects are active, the view rotates through every page every six seconds.
 
 The Component Gallery is a live cheatsheet and example UI rendered by Canvas from the Gallery's packaged HTML and CSS. Its `Tag | Syntax | Rendered Result` columns place literal HTML beside the result it produces. Examples cover text, lists, buttons, SVG images, reusable content, and sample data such as bound text, visibility, repeated items, and a meter.
 

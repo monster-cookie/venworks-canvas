@@ -88,7 +88,7 @@ Unknown envelope versions, encodings, message types, and application schema vers
 }
 ```
 
-Each startup policy applies while that consumer is loading:
+Each startup policy applies to the complete subscribed topic while that consumer is loading. Every message type published on one topic therefore shares one startup policy. Use separate topics when state and occurrence traffic need different behavior, such as `author.combat.state` with `latest` and `author.combat.events` with `fifo`.
 
 | Policy | Behavior before lifecycle `ready` | Typical use |
 | --- | --- | --- |
@@ -131,8 +131,8 @@ For occurrence messages, every received datagram is a separate occurrence. Consu
 | --- | --- | --- | --- |
 | `venworks.canvas.example.status` | `effects.state` | `0|2|D:DEHYDRATED;D:MALNOURISHED;` | Complete current effect arrays |
 | `author.navigation` | `gps.position` | `12.5|-44.25|380.0` | One independent position sample |
-| `author.combat` | `hit.damage` | `player|47.5|physical` | One hit occurrence |
-| `author.combat` | `target.state` | `target-42|320|500` | Complete current target state |
+| `author.combat.events` | `hit.damage` | `player|47.5|physical` | One hit occurrence; subscribe with `fifo` when startup delivery matters |
+| `author.combat.state` | `target.state` | `target-42|320|500` | Complete current target state; subscribe with `latest` |
 
 The Example publishes an empty effect state as `0|0|`. Apply, removal, HUD recreation, and periodic resynchronization each produce another complete `effects.state` datagram. Its Canvas adapter validates counts and entries, replaces both arrays atomically, and suppresses identical state before calling the HTML bridge.
 
