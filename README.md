@@ -24,7 +24,7 @@ Start with a new or disposable save when evaluating a new Canvas build. Existing
 
 The Example package demonstrates an independently installed Canvas consumer. Its Papyrus registrar publishes status-effect snapshots from a curated catalog of player-facing conditions, sustenance states, and timed chem and aid effects; afflictions and environmental statuses continue through their dedicated game sources. A Canvas-side adapter commits complete snapshots, and the Example's packaged HTML/CSS renders the clock, buff and debuff counts, pending or empty states, and effect rows. When more than eight effects are active, the view rotates through every page every six seconds.
 
-The Component Gallery is a live cheatsheet and example UI rendered by Canvas from the Gallery's packaged HTML and CSS. Its `Tag | Syntax | Rendered Result` columns place literal HTML beside the result it produces. Examples cover text, lists, buttons, SVG images, reusable content, and sample data such as bound text, visibility, repeated items, and a meter.
+The [Component Gallery](Documentation/CanvasComponentGallery.md) is a live cheatsheet and example UI rendered by Canvas from the Gallery's packaged HTML and CSS. Its `Tag | Syntax | Rendered Result` columns place literal HTML beside the result it produces. Examples cover text, lists, buttons, SVG images, reusable content, and sample data such as bound text, visibility, repeated items, and a meter.
 
 Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gallery. The current development build still needs in-game verification on PC and PS5; these examples describe Canvas's supported HTML/CSS subset and do not imply full web-browser compatibility.
 
@@ -45,6 +45,12 @@ Canvas event topics are ASCII case insensitive and are delivered to consumers in
 `VWCANVAS_CONSUMER/3` assigns a `drop`, `latest`, or `fifo` startup policy to each subscribed stream. `latest` retains one queued datagram per message type, schema version, and encoding in that stream, including valid state received before the consumer SWF establishes its membership. `fifo` preserves bounded occurrence traffic after membership exists. Existing `VWCANVAS_CONSUMER/2` registrations remain supported: `queueEventsUntilReady: false` maps to `drop`, and `true` maps to `fifo`.
 
 On Player HUD activation, Canvas replays saved consumer descriptors from its registry in bounded atomic load batches. The host validates the entire batch and begins loading its consumers concurrently. A newly installed or updated consumer still uses the existing individual load command after registration; consumer registrars should register without an arbitrary startup delay so later HUD recreations can use the central replay path.
+
+### Creator guides
+
+- [Create a Canvas plugin from scratch](Documentation/CreatingACanvasPlugin.md) explains the ESM, Papyrus registrar, Scaleform consumer, HTML/CSS resources, package layout, and in-game checks used by an independently installed Canvas add-on.
+- [Canvas component gallery](Documentation/CanvasComponentGallery.md) pairs the supplied in-game captures with copy-ready tags, bindings, player-data mappings, and a complete example document.
+- [Send data with Canvas datagrams](Documentation/CanvasDatagrams.md) explains topics, message types, startup behavior, payload design, validation, and delivery limits in creator-facing language.
 
 ## Current compatibility
 
