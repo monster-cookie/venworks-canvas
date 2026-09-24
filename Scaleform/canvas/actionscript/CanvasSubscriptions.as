@@ -10,6 +10,8 @@ package
 
       private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
 
+      private static const MAX_EVENT_DROP_REPORTS:int = 32;
+
       private var dataManager:Object;
 
       private var currentConsumer:Function;
@@ -21,6 +23,12 @@ package
       private var channelMembers:Object = {};
 
       private var topicMembers:Object = {};
+
+      private var eventDropReported:Object = {};
+
+      private var eventDropReportCount:int = 0;
+
+      private var retainedDatagrams:CanvasEventQueue = new CanvasEventQueue();
 
       private var channelCallbacks:Object = {};
 
@@ -43,14 +51,28 @@ package
          this.diagnostic = param3;
       }
 
-      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array) : void
+      public function addConsumer(param1:String, param2:Object, param3:Object, param4:int, param5:Array, param6:Array, param7:Boolean = false, param8:Array = null) : void
       {
          if(this.disposed || this.dataManager == null || this.memberships[param1] != null || this.membershipCount >= MAX_CONSUMERS)
          {
             throw new Error("consumer subscription membership unavailable");
          }
          var channels:Array = this.preflightList(param5,MAX_UI_CHANNELS,true);
-         var topics:Array = this.preflightList(param6,MAX_EVENT_TOPICS,false);
+         var eventSubscriptions:Array = param8 == null ? this.legacyEventSubscriptions(param6,param7) : this.preflightEventSubscriptions(param8);
+         var datagramMode:Boolean = param8 != null;
+         var topics:Array = [];
+         var eventPolicies:Object = {};
+         var hasQueuedPolicy:Boolean = false;
+         var subscription:Object = null;
+         for each(subscription in eventSubscriptions)
+         {
+            topics.push(subscription.topic);
+            eventPolicies[subscription.topic] = subscription.startup;
+            if(subscription.startup != "drop")
+            {
+               hasQueuedPolicy = true;
+            }
+         }
          var index:int = 0;
          var name:String = null;
          while(index < channels.length)
@@ -66,6 +88,9 @@ package
             "generation":param4,
             "channels":channels,
             "topics":topics,
+            "eventPolicies":eventPolicies,
+            "datagramMode":datagramMode,
+            "eventQueue":hasQueuedPolicy ? new CanvasEventQueue() : null,
             "ready":false
          };
          this.memberships[param1] = membership;
@@ -105,6 +130,10 @@ package
                   this.topicMembers[name] = recipients;
                }
                recipients.push(membership);
+               if(datagramMode && String(eventPolicies[name]) == "latest")
+               {
+                  this.seedRetainedDatagrams(membership,name);
+               }
                index++;
             }
          }
@@ -123,6 +152,15 @@ package
             return;
          }
          membership.ready = true;
+         var eventQueue:CanvasEventQueue = membership.eventQueue as CanvasEventQueue;
+         var queuedEvents:Array = eventQueue == null ? [] : eventQueue.drain();
+         var queuedIndex:int = 0;
+         while(queuedEvents != null && queuedIndex < queuedEvents.length && this.isMembershipCurrent(membership))
+         {
+            var queuedEvent:Object = queuedEvents[queuedIndex];
+            this.deliverEvent(membership,String(queuedEvent.topic),String(queuedEvent.body));
+            queuedIndex++;
+         }
          var channels:Array = membership.channels.concat();
          var index:int = 0;
          var channel:String = null;
@@ -143,9 +181,17 @@ package
          {
             return;
          }
+         // CustomWatchAlert may change ASCII casing in transit. Event topics are
+         // identifiers, so canonicalize them before subscription lookup and delivery.
+         param1 = param1.toLowerCase();
+         var retained:Boolean = this.retainDatagram(param1,param2);
          var registered:Array = this.topicMembers[param1] as Array;
-         if(registered == null)
+         if(registered == null || registered.length == 0)
          {
+            if(!retained)
+            {
+               this.reportEventDrop("NO_TOPIC_MEMBER",param1,"");
+            }
             return;
          }
          var recipients:Array = registered.concat();
@@ -213,6 +259,12 @@ package
             }
             index++;
          }
+         var eventQueue:CanvasEventQueue = param1.eventQueue as CanvasEventQueue;
+         if(eventQueue != null)
+         {
+            eventQueue.clear();
+         }
+         param1.eventQueue = null;
          param1.ready = false;
       }
 
@@ -251,6 +303,13 @@ package
          this.memberships = {};
          this.channelMembers = {};
          this.topicMembers = {};
+         this.eventDropReported = {};
+         this.eventDropReportCount = 0;
+         if(this.retainedDatagrams != null)
+         {
+            this.retainedDatagrams.clear();
+         }
+         this.retainedDatagrams = null;
          this.channelCallbacks = {};
          this.channelSubscribed = {};
          this.channelCleanupCallbacks = {};
@@ -440,8 +499,34 @@ package
 
       private function deliverEvent(param1:Object, param2:String, param3:String) : void
       {
-         if(!this.isMembershipCurrent(param1) || param1.ready !== true)
+         if(!this.isMembershipCurrent(param1))
          {
+            this.reportEventDrop("STALE_MEMBERSHIP",param2,param1 == null ? "" : String(param1.consumerId));
+            return;
+         }
+         var coalesceKey:String = param2;
+         if(param1.datagramMode === true)
+         {
+            try
+            {
+               var datagram:Object = CanvasDatagramCodec.decode(param3);
+               coalesceKey += "|" + String(datagram.messageType) + "|" + int(datagram.schemaVersion) + "|" + String(datagram.encoding);
+            }
+            catch(datagramError:*)
+            {
+               this.reportEventDrop("INVALID_DATAGRAM",param2,String(param1.consumerId));
+               return;
+            }
+         }
+         if(param1.ready !== true)
+         {
+            var startupPolicy:String = String(param1.eventPolicies[param2]);
+            if(startupPolicy == "fifo" || startupPolicy == "latest")
+            {
+               this.queueEvent(param1,param2,param3,startupPolicy,coalesceKey);
+               return;
+            }
+            this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
             return;
          }
          try
@@ -452,6 +537,75 @@ package
          {
             this.report("EVENT CALLBACK ERROR | " + param1.consumerId + " | " + param2);
          }
+      }
+
+      private function retainDatagram(param1:String, param2:String) : Boolean
+      {
+         if(this.retainedDatagrams == null)
+         {
+            return false;
+         }
+         try
+         {
+            var datagram:Object = CanvasDatagramCodec.decode(param2);
+            var coalesceKey:String = param1 + "|" + String(datagram.messageType) + "|" + int(datagram.schemaVersion) + "|" + String(datagram.encoding);
+            if(this.retainedDatagrams.enqueue(param1,param2,"latest",coalesceKey))
+            {
+               this.reportEventDrop("QUEUE_EVICTED",param1,"");
+            }
+            return true;
+         }
+         catch(datagramError:*)
+         {
+         }
+         return false;
+      }
+
+      private function seedRetainedDatagrams(param1:Object, param2:String) : void
+      {
+         if(!this.isMembershipCurrent(param1) || this.retainedDatagrams == null)
+         {
+            return;
+         }
+         var retained:Array = this.retainedDatagrams.copyForTopic(param2);
+         var index:int = 0;
+         while(index < retained.length && this.isMembershipCurrent(param1))
+         {
+            var event:Object = retained[index];
+            this.queueEvent(param1,String(event.topic),String(event.body),"latest",String(event.coalesceKey));
+            index++;
+         }
+      }
+
+      private function queueEvent(param1:Object, param2:String, param3:String, param4:String, param5:String) : void
+      {
+         if(!this.isMembershipCurrent(param1))
+         {
+            this.reportEventDrop("STALE_MEMBERSHIP",param2,param1 == null ? "" : String(param1.consumerId));
+            return;
+         }
+         var eventQueue:CanvasEventQueue = param1.eventQueue as CanvasEventQueue;
+         if(eventQueue == null)
+         {
+            this.reportEventDrop("NOT_READY",param2,String(param1.consumerId));
+            return;
+         }
+         if(eventQueue.enqueue(param2,param3,param4,param5))
+         {
+            this.reportEventDrop("QUEUE_EVICTED",param2,String(param1.consumerId));
+         }
+      }
+
+      private function reportEventDrop(reason:String, topic:String, consumerId:String) : void
+      {
+         var key:String = reason + "|" + topic + "|" + consumerId;
+         if(this.eventDropReported[key] === true || this.eventDropReportCount >= MAX_EVENT_DROP_REPORTS)
+         {
+            return;
+         }
+         this.eventDropReported[key] = true;
+         this.eventDropReportCount++;
+         this.report("EVENT REJECTED | " + reason + " | " + topic + (consumerId == "" ? "" : " | " + consumerId));
       }
 
       private function isMembershipCurrent(param1:Object) : Boolean
@@ -506,6 +660,10 @@ package
                throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
             }
             value = String(param1[index]);
+            if(!param3)
+            {
+               value = value.toLowerCase();
+            }
             if(seen.hasOwnProperty("$" + value) || (param3 && !this.isAllowedUiChannel(value)) || (!param3 && !this.isEventTopicValid(value)))
             {
                throw new Error(param3 ? "invalid UI channel request" : "invalid event topic request");
@@ -513,6 +671,44 @@ package
             seen["$" + value] = true;
             result.push(value);
             index++;
+         }
+         return result;
+      }
+
+      private function legacyEventSubscriptions(param1:Array, param2:Boolean) : Array
+      {
+         var topics:Array = this.preflightList(param1,MAX_EVENT_TOPICS,false);
+         var result:Array = [];
+         var startup:String = param2 ? "fifo" : "drop";
+         for each(var topic:String in topics)
+         {
+            result.push({"topic":topic,"startup":startup});
+         }
+         return result;
+      }
+
+      private function preflightEventSubscriptions(param1:Array) : Array
+      {
+         if(param1 == null || param1.length > MAX_EVENT_TOPICS)
+         {
+            throw new Error("invalid event subscription request");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         for each(var candidate:Object in param1)
+         {
+            if(candidate == null || !("topic" in candidate) || !("startup" in candidate) || typeof candidate.topic != "string" || typeof candidate.startup != "string")
+            {
+               throw new Error("invalid event subscription request");
+            }
+            var topic:String = String(candidate.topic).toLowerCase();
+            var startup:String = String(candidate.startup).toLowerCase();
+            if(!this.isEventTopicValid(topic) || seen.hasOwnProperty("$" + topic) || startup != "drop" && startup != "latest" && startup != "fifo")
+            {
+               throw new Error("invalid event subscription request");
+            }
+            seen["$" + topic] = true;
+            result.push({"topic":topic,"startup":startup});
          }
          return result;
       }

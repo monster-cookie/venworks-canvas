@@ -9,6 +9,7 @@ EndStruct
 Struct PacketType
   Int UiLoad = 1
   Int CanvasEvent = 2
+  Int UiLoadBatch = 3
 EndStruct
 
 ; Resolves a validated event-header selector to its canonical wire text; unsupported values return empty.
@@ -27,6 +28,8 @@ String Function ResolvePacketType(Int packetType) Global
     Return "canvas.ui.load"
   ElseIf (packetType == packetTypes.CanvasEvent)
     Return "canvas.event"
+  ElseIf (packetType == packetTypes.UiLoadBatch)
+    Return "canvas.ui.load.batch"
   EndIf
   Return ""
 EndFunction

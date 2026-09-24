@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <scaleformBuild name="vwcanvas-spaceshiphudmenu-lrg"
                 inputFile="spaceshiphudmenu_lrg.swf"
-                outputFile="spaceshiphudmenu_lrg.swf">
+                outputFile="spaceshiphudmenu_lrg.swf"
+                displayMode="large">
   <actionScriptPatches>
     <patch path="../patches/spaceship-hud-auxiliary-loader.xml" />
   </actionScriptPatches>

@@ -7,18 +7,30 @@
                            stageWidth="1920"
                            stageHeight="1080"
                            frameRate="30">
+  <sourceRoots>
+    <sourceRoot>../../actionscript</sourceRoot>
+  </sourceRoots>
   <requiredTokens>
-    <token>VWCANVAS_CONSUMER/2</token>
+    <token>VWCANVAS_CONSUMER/3</token>
     <token>a8098c1a-f86e-4b1e-9d7c-5a102bf38460</token>
     <token>venworks.canvas.example.subscriptions-probe</token>
     <token>"version":2</token>
     <token>SUBSCRIPTIONS-PROBE-TEST-ONLY</token>
     <token>CanvasSubscriptions</token>
+    <token>CanvasDatagramCodec</token>
     <token>SHARED REPLAY FANOUT</token>
+    <token>EVENT DROP DIAGNOSTICS</token>
+    <token>QUEUED EVENT REPLAY</token>
+    <token>LIVE DATAGRAM RX</token>
+    <token>LIVE SNAPSHOT</token>
+    <token>CanvasExampleEffectsAdapter</token>
+    <token>eventSubscriptions</token>
+    <token>latest</token>
     <token>REQUEST PREFLIGHT</token>
     <token>SUBSCRIBE ROLLBACK</token>
     <token>UNSUBSCRIBE RECOVERY</token>
     <token>REPEAT DISPOSE</token>
+    <token>CHRONOMARK SUSTENANCE PRECEDENCE</token>
     <token>ALL REGISTRY DIAGNOSTICS PASSED</token>
     <token>GetDataFromClient</token>
     <token>Subscribe</token>

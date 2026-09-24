@@ -17,9 +17,15 @@ package
 
       private static const UI_LOAD_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load|";
 
+      private static const UI_LOAD_BATCH_PREFIX:String = ENVELOPE_PREFIX + "canvas.ui.load.batch|";
+
       private static const CANVAS_EVENT_PREFIX:String = ENVELOPE_PREFIX + "canvas.event|";
 
       private static const MAX_UI_LOAD_CHARACTERS:int = 512;
+
+      private static const MAX_UI_LOAD_BATCH_CHARACTERS:int = 4096;
+
+      private static const MAX_UI_LOAD_BATCH_DESCRIPTORS:int = 32;
 
       private static const SNAPSHOT_TYPE:String = "canvas.registry.snapshot";
 
@@ -33,6 +39,8 @@ package
 
       private static const CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/2";
 
+      private static const DATAGRAM_CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/3";
+
       private static const HOST_PROTOCOL:String = "VWCANVAS_HOST/1";
 
       private static const HOST_STATE_NEW:String = "new";
@@ -43,7 +51,9 @@ package
 
       private static const HOST_STATE_DISPOSED:String = "disposed";
 
-      private static const HOST_CONTRACT_VERSION:int = 2;
+      private static const MIN_HOST_CONTRACT_VERSION:int = 2;
+
+      private static const MAX_HOST_CONTRACT_VERSION:int = 3;
 
       private static const MAX_UI_CHANNELS:int = 18;
 
@@ -51,9 +61,7 @@ package
 
       private static const MAX_EVENT_TOPIC_CHARACTERS:int = 96;
 
-      private static const MAX_EVENT_BODY_CHARACTERS:int = 400;
-
-      private static const MAX_CANVAS_EVENT_CHARACTERS:int = 512;
+      private static const MAX_CANVAS_EVENT_CHARACTERS:int = 4096;
 
       private static const PROVIDER:String = "CustomAlertsData";
 
@@ -87,9 +95,13 @@ package
 
       private var htmlEngine:CanvasHtmlEngine;
 
+      private var chronomarkSurface:CanvasChronomarkSurface;
+
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
+
+      private var chronomarkLayout:Object = null;
 
       private var hostKind:String = "";
 
@@ -170,6 +182,10 @@ package
          {
             if(this.owner === param1 && this.hostKind == context.hostKind && this.displayMode == context.displayMode)
             {
+               if(context.layout != null)
+               {
+                  this.reapplyVanillaPlacements(context.layout);
+               }
                return true;
             }
             trace("VWCANVAS-HOST-INIT | CONFLICTING DUPLICATE | OWNER " + this.resolveOwnerUrl(param1));
@@ -187,6 +203,7 @@ package
             this.ownerLabel = this.resolveOwnerUrl(param1);
             this.hostKind = context.hostKind;
             this.displayMode = context.displayMode;
+            this.chronomarkLayout = context.layout;
             this.createDiagnostics();
             this.htmlEngine = new CanvasHtmlEngine();
             this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
@@ -194,7 +211,7 @@ package
             this.appendDiagnostic("OWNER " + this.ownerLabel);
             if(this.hostKind == "player")
             {
-               this.subscribe();
+               this.subscribe(context.layout);
             }
             else if(this.hostKind == "menu")
             {
@@ -222,17 +239,37 @@ package
          return false;
       }
 
-      public function reapplyVanillaPlacements() : void
+      public function reapplyVanillaPlacements(param1:Object = null) : void
       {
+         var rightEdge:Number = 0;
+         if(param1 != null)
+         {
+            try
+            {
+               this.chronomarkLayout = this.validateChronomarkLayout(param1);
+            }
+            catch(layoutError:*)
+            {
+            }
+         }
+         if(this.chronomarkSurface != null && this.chronomarkLayout != null)
+         {
+            this.chronomarkSurface.updateLayout(this.chronomarkLayout);
+         }
          if(this.diagnostics != null)
          {
-            this.diagnostics.x = 24;
+            rightEdge = this.chronomarkLayout != null ? Number(this.chronomarkLayout.visibleX) + Number(this.chronomarkLayout.visibleWidth) - Number(this.chronomarkLayout.safeX) : (stage != null ? stage.stageWidth : 1920);
+            this.diagnostics.x = Math.max(24,rightEdge - this.diagnostics.width - 24);
             this.diagnostics.y = 24;
          }
       }
 
-      public function updateVanillaHudModeVisibility(param1:Array) : void
+      public function updateVanillaHudModeVisibility(param1:Boolean) : void
       {
+         if(!this.disposed && this.hostKind == "player" && this.chronomarkSurface != null)
+         {
+            this.chronomarkSurface.setHudModeVisibility(param1);
+         }
       }
 
       public function loadLocalConsumer(param1:Object) : Boolean
@@ -320,6 +357,16 @@ package
             }
          }
          this.subscribed = false;
+         if(this.chronomarkSurface != null)
+         {
+            this.chronomarkSurface.dispose();
+            if(this.chronomarkSurface.parent === this)
+            {
+               removeChild(this.chronomarkSurface);
+            }
+         }
+         this.chronomarkSurface = null;
+         this.chronomarkLayout = null;
          consumerIds = this.getLoaderIds();
          for each(consumerId in consumerIds)
          {
@@ -357,30 +404,30 @@ package
          this.alertDiagnosticCount = 0;
       }
 
-      private function subscribe() : void
+      private function subscribe(param1:Object) : void
       {
          if(this.disposed || this.initializationState != HOST_STATE_INITIALIZING || this.subscribed)
          {
             throw new Error("load bridge subscription ownership unavailable");
          }
-         var watch:Object = "BottomLeftGroup_mc" in this.owner ? this.owner["BottomLeftGroup_mc"] : null;
-         if(watch == null || !("getCanvasWatchDisabled" in watch) || !("getCanvasWatchSubscriptionsRestored" in watch))
+         if(this.owner == null || !("getVenworksCanvasDataManager" in this.owner) || typeof this.owner["getVenworksCanvasDataManager"] != "function")
          {
-            throw new Error("WATCH PATCH MISSING; verify Host archive deployment");
+            throw new Error("PLAYER DATA BRIDGE MISSING");
          }
-         if(!watch.getCanvasWatchSubscriptionsRestored())
+         this.dataManager = this.owner["getVenworksCanvasDataManager"]();
+         if(this.dataManager == null || !("GetDataFromClient" in this.dataManager) || !("Subscribe" in this.dataManager) || !("Unsubscribe" in this.dataManager))
          {
-            throw new Error("WATCH SUBSCRIPTIONS NOT RESTORED");
+            throw new Error("PLAYER DATA MANAGER UNAVAILABLE");
          }
-         this.appendDiagnostic("WATCH SUBSCRIPTIONS RESTORED");
-         if(!watch.getCanvasWatchDisabled())
-         {
-            throw new Error("WATCH PRESENTATION ACTIVE");
-         }
-         this.appendDiagnostic("WATCH PRESENTATION DISABLED");
-         // Use the same class reference as the vanilla Watch, not this auxiliary's application domain.
-         this.dataManager = watch.getCanvasWatchDataManager();
          this.consumerSubscriptions = new CanvasSubscriptions(this.dataManager,this.isConsumerCurrent,this.appendDiagnostic);
+         this.chronomarkLayout = param1;
+         this.chronomarkSurface = new CanvasChronomarkSurface();
+         addChildAt(this.chronomarkSurface,0);
+         if(!this.chronomarkSurface.initialize(this.dataManager,this.displayMode,this.dispatchChronomarkSound,this.appendDiagnostic,param1))
+         {
+            throw new Error("CHRONOMARK INITIALIZATION FAILED");
+         }
+         this.appendDiagnostic("CANVAS CHRONOMARK READY");
          var provider:Object = this.dataManager.GetDataFromClient(PROVIDER,true);
          if(provider == null)
          {
@@ -402,6 +449,21 @@ package
          this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
       }
 
+      private function dispatchChronomarkSound(param1:String) : void
+      {
+         if(this.disposed || this.owner == null || !("playVenworksCanvasSound" in this.owner) || typeof this.owner["playVenworksCanvasSound"] != "function")
+         {
+            return;
+         }
+         try
+         {
+            this.owner["playVenworksCanvasSound"](param1);
+         }
+         catch(soundError:*)
+         {
+         }
+      }
+
       private function onCustomAlertsData(param1:Object) : void
       {
          var data:Object = null;
@@ -409,6 +471,7 @@ package
          var alert:Object = null;
          var text:String = null;
          var uiLoadPrefixMatch:int = 0;
+         var uiLoadBatchPrefixMatch:int = 0;
          var canvasEventPrefixMatch:int = 0;
          var envelopePrefixMatch:int = 0;
          if(this.disposed || !this.subscribed)
@@ -449,30 +512,39 @@ package
                   continue;
                }
                text = alert.sAlertText;
-               uiLoadPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_PREFIX);
-               if(uiLoadPrefixMatch > 0)
+               uiLoadBatchPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_BATCH_PREFIX);
+               if(uiLoadBatchPrefixMatch > 0)
                {
-                  this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                  this.appendAlertDiagnostic("UI LOAD BATCH | PREFIX " + (uiLoadBatchPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
                   this.queueOrReceiveEnvelope(text);
                }
                else
                {
-                  canvasEventPrefixMatch = this.matchAsciiPrefix(text,CANVAS_EVENT_PREFIX);
-                  if(canvasEventPrefixMatch > 0)
+                  uiLoadPrefixMatch = this.matchAsciiPrefix(text,UI_LOAD_PREFIX);
+                  if(uiLoadPrefixMatch > 0)
                   {
-                     this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                     this.appendAlertDiagnostic("UI LOAD | PREFIX " + (uiLoadPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
                      this.queueOrReceiveEnvelope(text);
                   }
                   else
                   {
-                     envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
-                     if(envelopePrefixMatch > 0)
+                     canvasEventPrefixMatch = this.matchAsciiPrefix(text,CANVAS_EVENT_PREFIX);
+                     if(canvasEventPrefixMatch > 0)
                      {
-                        this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        this.appendAlertDiagnostic("CANVAS EVENT | PREFIX " + (canvasEventPrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        this.queueOrReceiveEnvelope(text);
                      }
                      else
                      {
-                        this.appendAlertDiagnostic("OTHER",text.length);
+                        envelopePrefixMatch = this.matchAsciiPrefix(text,ENVELOPE_PREFIX);
+                        if(envelopePrefixMatch > 0)
+                        {
+                           this.appendAlertDiagnostic("CANVAS OTHER | PREFIX " + (envelopePrefixMatch == 1 ? "EXACT" : "ASCII CASE-FOLDED"),text.length);
+                        }
+                        else
+                        {
+                           this.appendAlertDiagnostic("OTHER",text.length);
+                        }
                      }
                   }
                }
@@ -597,7 +669,20 @@ package
       private function receiveEnvelope(param1:String) : void
       {
          // Legacy snapshot/diagnostic ingress remains disabled. Only fixed load and named-event packets are accepted.
-         if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
+         if(this.matchAsciiPrefix(param1,UI_LOAD_BATCH_PREFIX) > 0)
+         {
+            try
+            {
+               var batch:Object = this.parseUiLoadBatch(param1);
+               this.appendDiagnostic("RX LOAD BATCH | COUNT " + int(batch.count));
+               this.reconcile(batch.desired,false);
+            }
+            catch(batchLoadCommandError:*)
+            {
+               this.appendDiagnostic("UI LOAD BATCH REJECTED | " + this.sanitizeText(batchLoadCommandError,100));
+            }
+         }
+         else if(this.matchAsciiPrefix(param1,UI_LOAD_PREFIX) > 0)
          {
             try
             {
@@ -621,6 +706,10 @@ package
                if(this.consumerSubscriptions != null)
                {
                   this.consumerSubscriptions.publishEvent(String(canvasEvent.topic),String(canvasEvent.body));
+               }
+               else
+               {
+                  this.appendDiagnostic("CANVAS EVENT REJECTED | SUBSCRIPTIONS UNAVAILABLE | " + canvasEvent.topic);
                }
             }
             catch(eventCommandError:*)
@@ -670,6 +759,64 @@ package
          return descriptor;
       }
 
+      private function parseUiLoadBatch(packet:String) : Object
+      {
+         if(packet == null || packet.length > MAX_UI_LOAD_BATCH_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
+         {
+            throw new Error("invalid UI load batch size or characters");
+         }
+         if(this.matchAsciiPrefix(packet,UI_LOAD_BATCH_PREFIX) == 0)
+         {
+            throw new Error("invalid UI load batch envelope");
+         }
+         var cursor:int = UI_LOAD_BATCH_PREFIX.length;
+         var protocol:Object = this.readFrame(packet,cursor,1);
+         cursor = int(protocol.next);
+         if(protocol.value != "1")
+         {
+            throw new Error("unsupported UI load batch protocol");
+         }
+         var countFrame:Object = this.readFrame(packet,cursor,2);
+         cursor = int(countFrame.next);
+         var count:int = this.parseUnsignedInt(String(countFrame.value),MAX_UI_LOAD_BATCH_DESCRIPTORS);
+         if(count < 1)
+         {
+            throw new Error("invalid UI load batch count");
+         }
+         var desired:Object = {};
+         var index:int = 0;
+         while(index < count)
+         {
+            var id:Object = this.readFrame(packet,cursor,38);
+            cursor = int(id.next);
+            var version:Object = this.readFrame(packet,cursor,4);
+            cursor = int(version.next);
+            var normal:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+            cursor = int(normal.next);
+            var large:Object = this.readFrame(packet,cursor,MAX_CONSUMER_MOVIE_URL_CHARACTERS);
+            cursor = int(large.next);
+            var descriptor:Object = {
+               "consumerId":this.normalizeUuid(String(id.value)),
+               "displayName":String(id.value),
+               "normalPath":String(normal.value),
+               "largePath":String(large.value),
+               "version":this.parseUnsignedInt(String(version.value),9999)
+            };
+            this.validateDescriptor(descriptor);
+            if(desired[descriptor.consumerId] != null)
+            {
+               throw new Error("duplicate UI load batch consumer");
+            }
+            desired[descriptor.consumerId] = descriptor;
+            index++;
+         }
+         if(cursor != packet.length)
+         {
+            throw new Error("trailing UI load batch data");
+         }
+         return {"count":count,"desired":desired};
+      }
+
       private function parseCanvasEvent(packet:String) : Object
       {
          if(packet == null || packet.length > MAX_CANVAS_EVENT_CHARACTERS || !/^[\x20-\x7E]+$/.test(packet))
@@ -689,7 +836,7 @@ package
          }
          var topic:Object = this.readFrame(packet,cursor,MAX_EVENT_TOPIC_CHARACTERS);
          cursor = int(topic.next);
-         var body:Object = this.readFrame(packet,cursor,MAX_EVENT_BODY_CHARACTERS);
+         var body:Object = this.readFrame(packet,cursor,MAX_CANVAS_EVENT_CHARACTERS);
          cursor = int(body.next);
          if(cursor != packet.length)
          {
@@ -1038,10 +1185,12 @@ package
                "bridge":param3,
                "hostKinds":["player","ship","menu"],
                "uiChannels":[],
-               "eventTopics":[]
+               "eventTopics":[],
+               "eventSubscriptions":[],
+               "queueEventsUntilReady":false
             };
          }
-         if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL)
+         if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL && protocol != DATAGRAM_CONSUMER_PROTOCOL)
          {
             throw new Error("unsupported consumer protocol");
          }
@@ -1057,16 +1206,41 @@ package
          }
          var minimumContractVersion:int = this.strictContractInteger(param1.minimumContractVersion,"minimumContractVersion");
          var maximumContractVersion:int = this.strictContractInteger(param1.maximumContractVersion,"maximumContractVersion");
-         if(minimumContractVersion > maximumContractVersion || minimumContractVersion > HOST_CONTRACT_VERSION || maximumContractVersion < HOST_CONTRACT_VERSION)
+         var protocolMaximum:int = protocol == CONSUMER_PROTOCOL ? 2 : MAX_HOST_CONTRACT_VERSION;
+         var contractVersion:int = Math.min(maximumContractVersion,protocolMaximum);
+         if(minimumContractVersion > maximumContractVersion || contractVersion < minimumContractVersion || contractVersion < MIN_HOST_CONTRACT_VERSION || protocol == DATAGRAM_CONSUMER_PROTOCOL && contractVersion != 3)
          {
             throw new Error("incompatible consumer contract range");
          }
          var uiChannels:Array = this.validateStringList(param1.uiChannels,MAX_UI_CHANNELS,true);
-         var eventTopics:Array = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+         var eventTopics:Array = [];
+         var eventSubscriptions:Array = [];
+         var queueEventsUntilReady:Boolean = false;
+         if(protocol == CONSUMER_PROTOCOL)
+         {
+            eventTopics = this.validateStringList(param1.eventTopics,MAX_EVENT_TOPICS,false);
+            if("queueEventsUntilReady" in param1)
+            {
+               if(typeof param1.queueEventsUntilReady != "boolean")
+               {
+                  throw new Error("queueEventsUntilReady must be a boolean");
+               }
+               queueEventsUntilReady = param1.queueEventsUntilReady === true;
+            }
+            eventSubscriptions = this.eventSubscriptionsFromTopics(eventTopics,queueEventsUntilReady);
+         }
+         else
+         {
+            eventSubscriptions = this.validateEventSubscriptions(param1.eventSubscriptions);
+            for each(var eventSubscription:Object in eventSubscriptions)
+            {
+               eventTopics.push(eventSubscription.topic);
+            }
+         }
          var hostKinds:Array = this.validateHostKinds("hostKinds" in param1 ? param1.hostKinds : null);
          if(!("handleUIData" in param3) || typeof param3["handleUIData"] != "function" || !("handleCanvasEvent" in param3) || typeof param3["handleCanvasEvent"] != "function" || !("handleLifecycle" in param3) || typeof param3["handleLifecycle"] != "function")
          {
-            throw new Error("consumer is missing fixed v2 callbacks");
+            throw new Error("consumer is missing fixed callbacks");
          }
          var htmlRegistration:Object = null;
          if("getCanvasHtmlRegistration" in param3)
@@ -1083,7 +1257,7 @@ package
          }
          return {
             "protocol":String(protocol),
-            "contractVersion":HOST_CONTRACT_VERSION,
+            "contractVersion":contractVersion,
             "bridge":param3,
             "assetNamespace":expectedNamespace,
             "htmlRegistration":htmlRegistration,
@@ -1091,7 +1265,9 @@ package
             "htmlBridge":null,
             "hostKinds":hostKinds,
             "uiChannels":uiChannels,
-            "eventTopics":eventTopics
+            "eventTopics":eventTopics,
+            "eventSubscriptions":eventSubscriptions,
+            "queueEventsUntilReady":queueEventsUntilReady
          };
       }
 
@@ -1186,6 +1362,58 @@ package
          return result;
       }
 
+      private function eventSubscriptionsFromTopics(param1:Array, param2:Boolean) : Array
+      {
+         var result:Array = [];
+         var startup:String = param2 ? "fifo" : "drop";
+         for each(var topic:String in param1)
+         {
+            result.push({"topic":topic.toLowerCase(),"startup":startup});
+         }
+         return result;
+      }
+
+      private function validateEventSubscriptions(param1:Object) : Array
+      {
+         if(!(param1 is Array))
+         {
+            throw new Error("eventSubscriptions must be an array");
+         }
+         var source:Array = param1 as Array;
+         if(source.length > MAX_EVENT_TOPICS)
+         {
+            throw new Error("too many event subscriptions");
+         }
+         var result:Array = [];
+         var seen:Object = {};
+         for each(var candidate:Object in source)
+         {
+            if(candidate == null || !("topic" in candidate) || !("startup" in candidate) || typeof candidate.topic != "string" || typeof candidate.startup != "string")
+            {
+               throw new Error("invalid event subscription");
+            }
+            var topic:String = String(candidate.topic).toLowerCase();
+            var startup:String = String(candidate.startup).toLowerCase();
+            if(!this.isEventTopicValid(topic) || seen.hasOwnProperty("$" + topic) || startup != "drop" && startup != "latest" && startup != "fifo")
+            {
+               throw new Error("invalid or duplicate event subscription");
+            }
+            seen["$" + topic] = true;
+            result.push({"topic":topic,"startup":startup});
+         }
+         return result;
+      }
+
+      private function cloneEventSubscriptions(param1:Array) : Array
+      {
+         var result:Array = [];
+         for each(var subscription:Object in param1)
+         {
+            result.push({"topic":String(subscription.topic),"startup":String(subscription.startup)});
+         }
+         return result;
+      }
+
       private function isEventTopicValid(param1:String) : Boolean
       {
          if(param1 == null || param1.length < 3 || param1.length > MAX_EVENT_TOPIC_CHARACTERS || !/^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)+$/.test(param1))
@@ -1208,6 +1436,11 @@ package
       private function createLifecycleContext(param1:Object) : Object
       {
          var features:Array = ["uiData","canvasEvents","lifecycle"];
+         if(int(param1.contractVersion) >= 3)
+         {
+            features.push("canvasDatagrams");
+            features.push("eventStartupPolicies");
+         }
          if(param1.htmlRegistration != null)
          {
             features.push("htmlDocuments");
@@ -1219,7 +1452,9 @@ package
             "hostKind":this.hostKind,
             "displayMode":this.displayMode,
             "uiChannels":param1.uiChannels.concat(),
-            "eventTopics":param1.eventTopics.concat()
+            "eventTopics":param1.eventTopics.concat(),
+            "eventSubscriptions":this.cloneEventSubscriptions(param1.eventSubscriptions),
+            "queueEventsUntilReady":param1.queueEventsUntilReady === true
          };
          if(param1.htmlBridge != null)
          {
@@ -1359,7 +1594,7 @@ package
                this.unloadConsumer(consumerId);
                return;
             }
-            if(contract.contractVersion == HOST_CONTRACT_VERSION)
+            if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
             {
                if((contract.uiChannels.length > 0 || contract.eventTopics.length > 0) && this.consumerSubscriptions == null)
                {
@@ -1367,7 +1602,7 @@ package
                }
                if(this.consumerSubscriptions != null)
                {
-                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics);
+                  this.consumerSubscriptions.addConsumer(consumerId,bridge,loader,generation,contract.uiChannels,contract.eventTopics,contract.queueEventsUntilReady,contract.protocol == DATAGRAM_CONSUMER_PROTOCOL ? contract.eventSubscriptions : null);
                }
                if(!this.isConsumerCurrent(consumerId,loader,generation) || this.loaderStates[consumerId] != "initializing")
                {
@@ -1417,7 +1652,7 @@ package
             }
             return;
          }
-         if(contract.contractVersion == HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
+         if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION && contract.htmlRegistration != null)
          {
             if(this.htmlEngine == null)
             {
@@ -1483,7 +1718,7 @@ package
             return;
          }
          this.loaderStates[consumerId] = "completing";
-         if(contract.contractVersion == HOST_CONTRACT_VERSION)
+         if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
          {
             try
             {
@@ -1567,7 +1802,7 @@ package
             return;
          }
          this.removeLoaderListeners(loader);
-         if(contract != null && contract.contractVersion == HOST_CONTRACT_VERSION)
+         if(contract != null && contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
          {
             try
             {
@@ -1676,10 +1911,57 @@ package
          {
             throw new Error("unsupported host context");
          }
+         var layout:Object = "layout" in param2 && param2.layout != null ? this.validateChronomarkLayout(param2.layout) : null;
+         if(param2.hostKind == "player" && layout == null)
+         {
+            throw new Error("invalid player layout");
+         }
          return {
             "hostKind":String(param2.hostKind),
-            "displayMode":String(param2.displayMode)
+            "displayMode":String(param2.displayMode),
+            "layout":layout
          };
+      }
+
+      private function validateChronomarkLayout(param1:Object) : Object
+      {
+         if(param1 == null || param1 is Array || typeof param1 != "object")
+         {
+            throw new Error("invalid Chronomark layout");
+         }
+         var visibleX:Number = this.requiredLayoutNumber(param1,"visibleX");
+         var visibleY:Number = this.requiredLayoutNumber(param1,"visibleY");
+         var visibleWidth:Number = this.requiredLayoutNumber(param1,"visibleWidth");
+         var visibleHeight:Number = this.requiredLayoutNumber(param1,"visibleHeight");
+         var safeX:Number = this.requiredLayoutNumber(param1,"safeX");
+         var safeY:Number = this.requiredLayoutNumber(param1,"safeY");
+         if(visibleWidth <= 0 || visibleHeight <= 0 || safeX < 0 || safeY < 0 || !("ownerAppliesOpacity" in param1) || typeof param1.ownerAppliesOpacity != "boolean")
+         {
+            throw new Error("invalid Chronomark layout values");
+         }
+         return {
+            "visibleX":visibleX,
+            "visibleY":visibleY,
+            "visibleWidth":visibleWidth,
+            "visibleHeight":visibleHeight,
+            "safeX":safeX,
+            "safeY":safeY,
+            "ownerAppliesOpacity":param1.ownerAppliesOpacity === true
+         };
+      }
+
+      private function requiredLayoutNumber(param1:Object, param2:String) : Number
+      {
+         if(!(param2 in param1) || typeof param1[param2] != "number")
+         {
+            throw new Error("missing Chronomark layout value");
+         }
+         var value:Number = Number(param1[param2]);
+         if(!isFinite(value))
+         {
+            throw new Error("invalid Chronomark layout number");
+         }
+         return value;
       }
 
       private function resolveOwnerUrl(param1:DisplayObjectContainer) : String

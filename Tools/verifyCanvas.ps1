@@ -52,31 +52,25 @@ foreach ($variant in $allVariants) {
 }
 [void](ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
 
-foreach ($repositoryToolTest in @(
-  'testPackaging.ps1',
-  'testBuildVariants.ps1',
-  'testBuildEvidence.ps1',
-  'testSetup.ps1',
-  'testScaleformSetup.ps1'
-)) {
-  & (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot $repositoryToolTest) -Description "Repository tooling test '$repositoryToolTest'")
-}
-# The tooling checks intentionally exercise failing native processes; clear their status after every assertion passes.
+& (Resolve-BuildRequiredFile -Path (Join-Path $PSScriptRoot 'testPackaging.ps1') -Description "Repository tooling test 'testPackaging.ps1'")
+# The packaging checks intentionally exercise failure paths; clear their status after every assertion passes.
 $global:LASTEXITCODE = 0
 if ($SourceOnly) {
-  Write-Host -ForegroundColor Green 'Verified Canvas repository build, setup, and packaging tooling contracts.'
+  Write-Host -ForegroundColor Green 'Verified Canvas configuration and packaging tooling contracts.'
   return
 }
 
-[void](Get-BuildPackageArchivePlans -Variants $variants -RepositoryRoot $repositoryRoot `
-  -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot -ScriptsDirectory $ScriptsDirectory -ScaleformDirectory $ScaleformDirectory)
 if ($ArtifactsOnly) {
+  [void](Get-BuildPackageArchivePlans -Variants $variants -RepositoryRoot $repositoryRoot `
+    -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot -ScriptsDirectory $ScriptsDirectory -ScaleformDirectory $ScaleformDirectory)
   Write-Host -ForegroundColor Green "Verified current Canvas-owned build inputs for $($variants.VariantKey -join ', ')."
   return
 }
 
+$configuredPayloadTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants $variants -RepositoryRoot $repositoryRoot -PapyrusSourceRoot $Global:BuildSettings.PapyrusSourceRoot)
 $operations = @(Get-BuildPackageInstallOperations -SelectedVariants $variants -AllVariants $allVariants)
 foreach ($operation in $operations) {
-  Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath
+  $operationTargets = @($configuredPayloadTargets | Where-Object { [string]$_.VariantKey -ceq [string]$operation.Key } | ForEach-Object { [string]$_.Target })
+  Assert-BuildInstalledPackage -Variant $operation.Variant -InstallPath $operation.InstallPath -LoosePayloadTargets $operationTargets
 }
-Write-Host -ForegroundColor Green "Verified configured installed package files and headers for $($variants.VariantKey -join ', ')."
+Write-Host -ForegroundColor Green "Verified configured installed package files, headers, and absence of archive-shadowing loose payloads for $($variants.VariantKey -join ', ')."

@@ -40,6 +40,7 @@ Bool UiActive = False
 Int UiEpoch = 0
 Int UiActivationRequest = 0
 Int UiAppliedActivationRequest = -1
+Bool UiAutomaticReplayCompleted = False
 Int UiTimerSerial = 1000
 Int UiPumpBase = 0
 Int UiCompletedSubmissionTicket = 0
@@ -57,8 +58,9 @@ Int MaxConsumerMovieUrlCharacters = 180
 Int MaxSnapshotPageCharacters = 4096
 Int MaxSnapshotPagePayloadCharacters = 3600
 Int MaxCanvasEventTopicCharacters = 96
+; Retained as inert saved-script fields. Packet validation uses the current hard-coded 4096-character limit.
 Int MaxCanvasEventBodyCharacters = 400
-Int MaxCanvasEventPacketCharacters = 512
+Int MaxCanvasEventPacketCharacters = 4096
 
 ; Reports this packaged script's runtime quest binding only; does not initialize storage or request work.
 String Function ConsoleResolve() Global
@@ -114,14 +116,13 @@ Event OnInit()
   EnsureMenuSubscriptions()
 EndEvent
 
-; A supported HUD opening starts deferred reconciliation, never a guarded OnInit continuation.
+; A HUD transition attempts its bounded activation transaction immediately. Busy work falls back to the existing retry timer.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (menuName == "HUDMenu")
     PlayerHudRequested = opening
     UiActivationRequest += 1
-    StartTimer(0.2, 100)
-  EndIf
-  If (opening)
+    RefreshUiActivation(100)
+  ElseIf (opening)
     StartTimer(0.2, 1)
   EndIf
 EndEvent
@@ -299,8 +300,9 @@ OperationResult Function TryRequestUiLoad(Quest owner, String consumerId)
   Return result
 EndFunction
 
-; A supported menu event defers presentation reset to a bounded timer, not OnInit or a waiting guard.
+; A supported menu event performs one nonblocking presentation reset attempt; contention schedules a bounded retry.
 Function RefreshUiActivation(Int timerId)
+  Float now = Utility.GetCurrentRealTime()
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
     result.Status = "UI_ACTIVATION_UNCHANGED"
@@ -308,6 +310,7 @@ Function RefreshUiActivation(Int timerId)
       UiEpoch += 1
       UiActive = PlayerHudRequested
       UiLoads = new UiLoadEntry[0]
+      UiAutomaticReplayCompleted = False
       ; A positive timer can be retired with the old activation. Negative ownership survives until native completion and cooldown.
       If (UiPumpBase >= 0)
         UiPumpBase = 0
@@ -319,13 +322,15 @@ Function RefreshUiActivation(Int timerId)
       EndIf
       UiAppliedActivationRequest = UiActivationRequest
       result.Status = "UI_ACTIVATION_RESET"
+      If (UiActive && PlayerHudRequested)
+        EnsureStorageLocked(result)
+        QueueRegisteredUiLoadsLocked(result, now)
+      EndIf
     EndIf
     result.Epoch = UiEpoch
   EndTryLockGuard
   LogOperation(result)
-  If (result.Status == "UI_ACTIVATION_RESET" && result.TimerId > 0)
-    StartTimer(1.0, result.TimerId)
-  EndIf
+  ScheduleUiPump(result)
   If (result.Status == "DEFERRED_REGISTRY_BUSY" && timerId < 119)
     StartTimer(0.5, timerId + 1)
   EndIf
@@ -345,8 +350,20 @@ EndFunction
 String Function BuildUiLoadPacket(ConsumerRegistration registration)
   Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
   Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
-  String payload = EncodeField("1") + EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+  String payload = EncodeField("1") + BuildUiLoadDescriptorPayload(registration)
   Return BuildEventPacket(headers.V1, packetTypes.UiLoad, payload)
+EndFunction
+
+; Frames one descriptor for either the legacy single-load packet or an atomic load batch.
+String Function BuildUiLoadDescriptorPayload(ConsumerRegistration registration)
+  Return EncodeField(registration.ConsumerId) + EncodeField(registration.DescriptorVersion as String) + EncodeField(registration.NormalMovieUrl) + EncodeField(registration.LargeMovieUrl)
+EndFunction
+
+; A batch is one self-contained host command. Each descriptor is validated before selection.
+String Function BuildUiLoadBatchPacket(Int count, String descriptorPayload)
+  Venworks:Canvas:Enumerations:EventHeader headers = new Venworks:Canvas:Enumerations:EventHeader
+  Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
+  Return BuildEventPacket(headers.V1, packetTypes.UiLoadBatch, EncodeField("1") + EncodeField(count as String) + descriptorPayload)
 EndFunction
 
 ; Frames one validated named event. Topic and body contents are not normalized or interpreted.
@@ -355,6 +372,25 @@ String Function BuildCanvasEventPacket(String eventTopic, String body)
   Venworks:Canvas:Enumerations:PacketType packetTypes = new Venworks:Canvas:Enumerations:PacketType
   String payload = EncodeField("1") + EncodeField(eventTopic) + EncodeField(body)
   Return BuildEventPacket(headers.V1, packetTypes.CanvasEvent, payload)
+EndFunction
+
+; Frames one application-owned atomic datagram. Canvas validates the generic envelope and leaves payload semantics to consumers.
+String Function BuildCanvasDatagramBody(String messageType, Int schemaVersion, String encoding, String payload)
+  If (GetCanvasDatagramRejectionReason(messageType, schemaVersion, encoding, payload) != "")
+    Return ""
+  EndIf
+  Return "VWDG/1|" + EncodeField(messageType) + EncodeField(schemaVersion as String) + EncodeField(encoding) + EncodeField(payload)
+EndFunction
+
+; Publishes one complete datagram through the existing nonblocking, lossy Canvas event transport.
+OperationResult Function TryPublishCanvasDatagram(String streamTopic, String messageType, Int schemaVersion, String encoding, String payload)
+  String rejection = GetCanvasDatagramRejectionReason(messageType, schemaVersion, encoding, payload)
+  If (rejection != "")
+    OperationResult rejected = NewResult("REJECTED_DATAGRAM_ARGUMENTS")
+    rejected.Detail = rejection
+    Return rejected
+  EndIf
+  Return TryPublishCanvasEvent(streamTopic, BuildCanvasDatagramBody(messageType, schemaVersion, encoding, payload))
 EndFunction
 
 ; One nonblocking, lossy publish attempt. The receipt acknowledges native submission, never UI delivery.
@@ -366,7 +402,8 @@ OperationResult Function TryPublishCanvasEvent(String eventTopic, String body)
     Return result
   EndIf
   result.Packet = BuildCanvasEventPacket(eventTopic, body)
-  If (!IsPrintableAscii(result.Packet, 1, MaxCanvasEventPacketCharacters))
+  ; Keep this limit in compiled code: saved Registry instances may retain an older field value.
+  If (!IsPrintableAscii(result.Packet, 1, 4096))
     result.Status = "REJECTED_EVENT_PACKET"
     result.Packet = ""
     Return result
@@ -475,9 +512,14 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndWhile
   If (existing >= 0)
     If (UiLoads[existing].Owner == owner && UiLoads[existing].Packet == packet)
-      result.Status = "UI_LOAD_ALREADY_REQUESTED"
-      ; Restart an exhausted local pump, but never resubmit an already reserved packet.
-      If (!UiLoads[existing].Submitted && UiPumpBase == 0)
+      If (UiLoads[existing].Submitted)
+        ; The native alert transport has no delivery receipt. An explicit repeat request must remain useful.
+        UiLoads[existing].Submitted = False
+        result.Status = "UI_LOAD_REQUEUED"
+      Else
+        result.Status = "UI_LOAD_ALREADY_REQUESTED"
+      EndIf
+      If (UiPumpBase == 0)
         result.TimerId = StartUiPumpLocked(now)
       EndIf
       Return
@@ -507,6 +549,33 @@ Function QueueUiLoadLocked(Quest owner, OperationResult result, Float now)
   EndIf
 EndFunction
 
+; HUD activation replays saved descriptors without making every owner reacquire the registry first.
+; The existing queue cap remains the bound; later explicit owner requests can fill space after a batch drains.
+Function QueueRegisteredUiLoadsLocked(OperationResult result, Float now)
+  If (!UiActive || !PlayerHudRequested || UiLoads == None || Consumers == None)
+    Return
+  EndIf
+  Int index = 0
+  While (index < Consumers.Length && UiLoads.Length < 32)
+    ConsumerRegistration registration = Consumers[index]
+    If (registration != None && IsDescriptorValid(registration.Owner, registration.ConsumerId, registration.DisplayName, registration.NormalMovieUrl, registration.LargeMovieUrl, registration.DescriptorVersion))
+      String packet = BuildUiLoadPacket(registration)
+      If (packet != "" && IsPrintableAscii(packet, 1, 512))
+        UiLoadEntry entry = new UiLoadEntry
+        entry.Owner = registration.Owner
+        entry.ConsumerId = registration.ConsumerId
+        entry.Packet = packet
+        UiLoads.Add(entry)
+      EndIf
+    EndIf
+    index += 1
+  EndWhile
+  result.Count = UiLoads.Length
+  If (UiLoads.Length > 0 && UiPumpBase == 0)
+    result.TimerId = StartUiPumpLocked(now)
+  EndIf
+EndFunction
+
 ; Monotonic tickets make duplicate, superseded and cross-transport timer callbacks inert. Caller holds RegistryGuard.
 Int Function NextUiTicketLocked()
   UiTimerSerial += 100
@@ -527,11 +596,16 @@ EndFunction
 ; Timer work is never scheduled while holding a registry or registrar guard.
 Function ScheduleUiPump(OperationResult result)
   If (result.TimerId > 0)
-    StartTimer(1.0, result.TimerId)
+    Int attempt = result.TimerId % 100
+    If (attempt >= 51 && attempt <= 70)
+      StartTimer(1.0, result.TimerId)
+    Else
+      StartTimer(0.1, result.TimerId)
+    EndIf
   EndIf
 EndFunction
 
-; One owner-checked, rate-limited reservation; a missed UI event is never retried for lack of an ACK.
+; One owner-checked, rate-limited reservation. The queue performs one bounded replay after its first pass.
 Function PumpUiLoad(Int timerId)
   Int attempt = timerId % 100
   If (attempt >= 51 && attempt <= 70)
@@ -565,7 +639,7 @@ Function PumpUiLoad(Int timerId)
   EndIf
 EndFunction
 
-; Drops stale owners/descriptors and atomically takes only one packet. No native transport is called here.
+; Drops stale owners/descriptors and atomically takes one bounded batch. No native transport is called here.
 OperationResult Function TryTakeUiLoad(Int ticket, Float now)
   OperationResult result = NewResult("DEFERRED_REGISTRY_BUSY")
   TryLockGuard RegistryGuard
@@ -575,7 +649,9 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
       UiPumpBase = 0
       UiPumpExpiresAt = 0.0
       Int index = 0
-      While (index < UiLoads.Length && result.Packet == "")
+      UiLoadEntry[] selected = new UiLoadEntry[0]
+      String descriptorPayload = ""
+      While (index < UiLoads.Length)
         UiLoadEntry entry = UiLoads[index]
         If (entry == None)
           UiLoads.Remove(index)
@@ -584,15 +660,19 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
           If (entry.Owner != None && registeredIndex >= 0)
             ConsumerRegistration registration = Consumers[registeredIndex]
             If (registration.Owner == entry.Owner && BuildUiLoadPacket(registration) == entry.Packet)
-              result.Packet = entry.Packet
-              result.ConsumerId = entry.ConsumerId
-              result.DescriptorVersion = registration.DescriptorVersion
-              result.Epoch = UiEpoch
-              result.Status = "UI_LOAD_RESERVED"
-              ; Hold the same ticket across native submission and the following one-second cooldown.
-              UiPumpBase = -ticket
-              UiCompletedSubmissionTicket = 0
-              entry.Submitted = True
+              String candidatePayload = descriptorPayload + BuildUiLoadDescriptorPayload(registration)
+              String candidatePacket = BuildUiLoadBatchPacket(selected.Length + 1, candidatePayload)
+              If (IsPrintableAscii(candidatePacket, 1, 4096))
+                selected.Add(entry)
+                descriptorPayload = candidatePayload
+                If (result.ConsumerId == "")
+                  result.ConsumerId = entry.ConsumerId
+                  result.DescriptorVersion = registration.DescriptorVersion
+                EndIf
+                index += 1
+              Else
+                index = UiLoads.Length
+              EndIf
             Else
               UiLoads.Remove(index)
             EndIf
@@ -603,6 +683,24 @@ OperationResult Function TryTakeUiLoad(Int ticket, Float now)
           index += 1
         EndIf
       EndWhile
+      If (selected.Length > 0)
+        If (selected.Length == 1)
+          result.Packet = selected[0].Packet
+        Else
+          result.Packet = BuildUiLoadBatchPacket(selected.Length, descriptorPayload)
+        EndIf
+        result.Count = selected.Length
+        result.Epoch = UiEpoch
+        result.Status = "UI_LOAD_RESERVED"
+        ; Hold the same ticket across native submission and the following one-second cooldown.
+        UiPumpBase = -ticket
+        UiCompletedSubmissionTicket = 0
+        index = 0
+        While (index < selected.Length)
+          selected[index].Submitted = True
+          index += 1
+        EndWhile
+      EndIf
     EndIf
   EndTryLockGuard
   Return result
@@ -628,6 +726,19 @@ Function FinishUiLoad(Int timerId)
           EndIf
           index += 1
         EndWhile
+        ; ShowCustomWatchAlert is lossy and has no ACK. Once the initial queue drains, replay every
+        ; current descriptor exactly once for this HUD activation. Host reconciliation is idempotent.
+        If (result.TimerId == 0 && !UiAutomaticReplayCompleted && UiLoads.Length > 0)
+          UiAutomaticReplayCompleted = True
+          index = 0
+          While (index < UiLoads.Length)
+            If (UiLoads[index] != None)
+              UiLoads[index].Submitted = False
+            EndIf
+            index += 1
+          EndWhile
+          result.TimerId = StartUiPumpLocked(now)
+        EndIf
       EndIf
     EndIf
   EndTryLockGuard
@@ -723,7 +834,27 @@ String Function GetCanvasEventRejectionReason(String eventTopic, String body)
   If (body == "")
     Return ""
   EndIf
-  Return GetPrintableAsciiRejectionReason(body, 0, MaxCanvasEventBodyCharacters, "body")
+  ; The complete framed packet is bounded separately; no additional body-only cap is needed.
+  Return GetPrintableAsciiRejectionReason(body, 0, 4096, "body")
+EndFunction
+
+; Validates only the reusable datagram envelope. Message payload schemas remain application-owned.
+String Function GetCanvasDatagramRejectionReason(String messageType, Int schemaVersion, String encoding, String payload)
+  String rejection = GetCanvasEventTopicRejectionReason(messageType)
+  If (rejection != "")
+    Return "messageType " + rejection
+  EndIf
+  If (schemaVersion < 1 || schemaVersion > 9999)
+    Return "schemaVersion=" + schemaVersion + " | range=1..9999"
+  EndIf
+  rejection = GetPrintableAsciiRejectionReason(encoding, 1, 24, "encoding")
+  If (rejection != "")
+    Return rejection
+  EndIf
+  If (!AsciiEquals(encoding, "ci-ascii"))
+    Return "unsupported encoding"
+  EndIf
+  Return GetPrintableAsciiRejectionReason(payload, 0, 4096, "payload")
 EndFunction
 
 ; Requires at least two dot-separated ASCII segments with alphanumeric boundaries and rejects Canvas-owned topics.
@@ -948,6 +1079,23 @@ Int Function FoldAscii(Int character)
     Return character + 32
   EndIf
   Return character
+EndFunction
+
+; Compares printable ASCII identifiers without depending on transport-preserved letter case.
+Bool Function AsciiEquals(String leftValue, String rightValue)
+  Int[] leftCharacters = Utility.SplitStringChars(leftValue)
+  Int[] rightCharacters = Utility.SplitStringChars(rightValue)
+  If (leftCharacters == None || rightCharacters == None || leftCharacters.Length != rightCharacters.Length)
+    Return False
+  EndIf
+  Int index = 0
+  While (index < leftCharacters.Length)
+    If (FoldAscii(leftCharacters[index]) != FoldAscii(rightCharacters[index]))
+      Return False
+    EndIf
+    index += 1
+  EndWhile
+  Return True
 EndFunction
 
 ; Validates both local loader paths independently of the UUID, and requires one identical asset namespace.

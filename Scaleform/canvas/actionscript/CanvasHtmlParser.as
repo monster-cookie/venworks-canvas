@@ -295,6 +295,10 @@ package
 
       private function isAllowedAttribute(param1:String, param2:String) : Boolean
       {
+         if(param2 == "data-vw-for-each")
+         {
+            return param1 == "div" || param1 == "li";
+         }
          if(param1 == "body" && (param2 == "data-vw-text" || param2 == "data-vw-format" || param2 == "data-vw-template" || param2 == "data-vw-visible"))
          {
             return false;
@@ -362,7 +366,7 @@ package
          {
             return this.isIdentifier(value);
          }
-         if(name == "data-vw-text" || name == "data-vw-visible" || name == "items" || name == "when" || name == "value")
+         if(name == "data-vw-text" || name == "data-vw-visible" || name == "data-vw-for-each" || name == "items" || name == "when" || name == "value")
          {
             return CanvasHtmlData.isDataIdentifier(value);
          }

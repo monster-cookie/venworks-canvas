@@ -8,6 +8,7 @@ String Property NormalMoviePath Auto Const Mandatory
 String Property LargeMoviePath Auto Const Mandatory
 Int Property DescriptorVersion Auto Const Mandatory
 Bool Property ExpectedRegistration Auto Const Mandatory
+; Retained for ESM and saved-script compatibility; startup no longer waits on this value.
 Float Property InitialDelaySeconds Auto Const Mandatory
 
 String ModuleName = "CanvasComponentGallery:ComponentGalleryRegistrar"
@@ -62,20 +63,17 @@ Function LogConsoleComponentGallery(String functionName, String logMessage) Glob
   Venworks:Core:Logging.LogUser(creationName="Venworks-Canvas", moduleName="CanvasComponentGallery:ComponentGalleryRegistrar", functionName=functionName, logMessage="VWCANVAS_CONSOLE/1 | " + logMessage, severity=severityTable.Info)
 EndFunction
 
-; Bootstrap only: no wait, registration, storage access or guard acquisition in OnInit.
+; Register immediately through the normal nonblocking timer path so HUD activation can replay the descriptor.
 Event OnInit()
   RegisterForMenuOpenCloseEvent("HUDMenu")
   RegisterForMenuOpenCloseEvent("SpaceshipHudMenu")
+  StartTimer(0.1, 1)
 EndEvent
 
 ; HUD opening schedules a bounded sequence; there is no saved active latch or wait in this event.
 Event OnMenuOpenCloseEvent(String menuName, Bool opening)
   If (opening)
-    Float delay = InitialDelaySeconds
-    If (delay < 0.1)
-      delay = 0.1
-    EndIf
-    StartTimer(delay, 1)
+    StartTimer(0.1, 1)
   EndIf
 EndEvent
 
@@ -94,9 +92,13 @@ EndFunction
 ; One attempt followed by diagnostics and optional scheduling, all outside the acquired guards.
 Bool Function ProcessAttempt(Int attempt)
   OperationResult result = TryReconcile()
+  If (result.Status == "REGISTRATION_UNCHANGED")
+    result.UiLoad = "UI_LOAD_ACTIVATION_REPLAY"
+  EndIf
   RequestRegisteredUi(result)
   ReportAttempt(result)
-  If (IsDeferred(result.Status) || IsDeferred(result.UiLoad))
+  Bool retryUi = IsDeferred(result.UiLoad) && result.UiLoad != "DEFERRED_UI_INACTIVE"
+  If (IsDeferred(result.Status) || retryUi)
     If (attempt < 20)
       StartTimer(0.5, attempt + 1)
     Else

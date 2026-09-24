@@ -118,9 +118,25 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 4 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
+$exampleResourceAssets = @($configuredExample.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
+if ($exampleResourceAssets.Count -ne 1 -or
+    [string]$exampleResourceAssets[0].Source -cne 'Scaleform/canvas/resources/example' -or
+    [string]$exampleResourceAssets[0].Target -cne 'Interface/VenworksCanvas/Consumers/venworks.canvas.example') {
+  throw 'Example HTML resource mapping changed.'
+}
+$exampleResourceRoot = Join-Path $PSScriptRoot '..\Scaleform\canvas\resources\example'
+$exampleResourceFiles = @(Get-ChildItem -LiteralPath $exampleResourceRoot -Recurse -File | ForEach-Object {
+  [IO.Path]::GetRelativePath($exampleResourceRoot, $_.FullName)
+})
+Assert-TestNames -Actual $exampleResourceFiles -Expected @('example.css', 'index.html') -Description 'Example packaged HTML resource inventory'
+$exampleResourceTargets = @($exampleResourceFiles | ForEach-Object { Join-Path ([string]$exampleResourceAssets[0].Target) $_ })
+Assert-TestNames -Actual $exampleResourceTargets -Expected @(
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.example/example.css'
+  'Interface/VenworksCanvas/Consumers/venworks.canvas.example/index.html'
+) -Description 'Example complete packaged HTML resource target inventory'
 $galleryPauseMenuAssets = @($configuredGallery.Archives[0].Assets | Where-Object { $_ -is [Collections.IDictionary] -and $_.Contains('HostMenu') -and [string]$_['HostMenu'] -ceq 'pausemenu' })
 Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
 Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch targets'
@@ -290,6 +306,12 @@ try {
     'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
     'Docs/readme.txt'
   ) -Description 'Consumer archive movie ownership with legitimate nonmovie asset'
+  $configuredConsumerTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants @($consumerVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot)
+  Assert-TestNames -Actual @($configuredConsumerTargets.Target) -Expected @(
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Docs/readme.txt'
+  ) -Description 'Configured package payload target inventory without compiled Scaleform inputs'
 
   $repositoryHostArchive = @{} + $consumerArchive
   $repositoryHostArchive.Assets = @($consumerAssets) + @(
@@ -480,6 +502,11 @@ try {
     $stagingChildVariant.Archives = @($stagingChildArchive)
     $stagingChildPlans = @(Get-BuildPackageArchivePlans -Variants @($stagingChildVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
     Assert-TestNames -Actual @($stagingChildPlans[0].Payloads.Target) -Expected @('Textures/surface.dds', 'loose.txt') -Description 'Ordinary child mappings beneath the configured Staging Junction'
+    $loosePayloadTargets = @(Get-BuildPackagePlanPayloadTargets -Plans $stagingChildPlans)
+    Assert-TestNames -Actual $loosePayloadTargets -Expected @('Textures/surface.dds', 'loose.txt') -Description 'Archive-shadowing loose payload inventory'
+    Assert-TestRejected -Description 'Installed archive-shadowing loose payloads' -MessagePattern 'archive-shadowing loose payloads' -Action {
+      Assert-BuildNoLoosePackagePayloads -VariantKey 'FIXTURE' -InstallPath $stagingTarget -PayloadTargets $loosePayloadTargets
+    }
 
     $nestedAssetLink = Join-Path $stagingTarget 'nested-asset-link'
     New-Item -ItemType Junction -Path $nestedAssetLink -Target $linkedAssetTarget | Out-Null
@@ -501,6 +528,8 @@ try {
 
     $backupPath = Join-Path $fixtureRoot 'managed-backup'
     New-Item -ItemType Directory -Path $backupPath | Out-Null
+    $looseBackupRoot = Join-Path $backupPath 'loose-payloads'
+    New-Item -ItemType Directory -Path $looseBackupRoot | Out-Null
     $operation = $operations[0]
     Assert-TestNames -Actual @($operation.CandidateNames) -Expected @('ExplicitAnchor.esm', 'DifferentArchiveBase - Main.ba2', 'DifferentArchiveBase - Textures.ba2') -Description 'Flat wrapper candidate inventory'
     if (@($operation.CandidateNames | Where-Object { $_ -is [array] }).Count -ne 0) { throw 'Wrapper candidate inventory contains a nested archive-name array.' }
@@ -511,15 +540,30 @@ try {
       Copy-Item -LiteralPath (Join-Path $stagingTarget $name) -Destination (Join-Path $backupPath $name)
       $originalHashes[$name] = Get-BuildFileSha256 -Path (Join-Path $backupPath $name)
     }
+    $originalLoosePayloadHashes = @{}
+    foreach ($target in $loosePayloadTargets) {
+      $source = Resolve-BuildArchiveTarget -Root $stagingTarget -Target $target
+      $destination = Resolve-BuildArchiveTarget -Root $looseBackupRoot -Target $target
+      $hash = Get-BuildFileSha256 -Path $source
+      Copy-BuildVerifiedFile -Source $source -Destination $destination -ExpectedSha256 $hash -Description "Fixture loose-payload backup '$target'"
+      $originalLoosePayloadHashes[$target] = $hash
+    }
+    $operation | Add-Member -NotePropertyName LoosePayloadTargets -NotePropertyValue $loosePayloadTargets -Force
     $operation | Add-Member -NotePropertyName BackupPath -NotePropertyValue $backupPath -Force
     $operation | Add-Member -NotePropertyName OriginalNames -NotePropertyValue $originalNames -Force
     $operation | Add-Member -NotePropertyName OriginalHashes -NotePropertyValue $originalHashes -Force
+    $operation | Add-Member -NotePropertyName OriginalLoosePayloadTargets -NotePropertyValue $loosePayloadTargets -Force
+    $operation | Add-Member -NotePropertyName OriginalLoosePayloadHashes -NotePropertyValue $originalLoosePayloadHashes -Force
     $publicationError = $null
     try {
       Write-TestEsm -Path (Join-Path $stagingTarget 'ExplicitAnchor.esm') -Marker 9
       Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Main.ba2') -Marker 9
       Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2') -Marker 9
-      throw 'Injected publication failure after the previously absent texture archive was installed.'
+      foreach ($target in $loosePayloadTargets) {
+        Remove-Item -LiteralPath (Resolve-BuildArchiveTarget -Root $stagingTarget -Target $target) -Force
+      }
+      Assert-BuildNoLoosePackagePayloads -VariantKey 'FIXTURE' -InstallPath $stagingTarget -PayloadTargets $loosePayloadTargets
+      throw 'Injected publication failure after the previously absent texture archive was installed and loose payloads were removed.'
     }
     catch {
       $publicationError = $_
@@ -530,9 +574,13 @@ try {
       if ((Get-BuildFileSha256 -Path (Join-Path $stagingTarget $name)) -cne [string]$originalHashes[$name]) { throw "Recovery changed '$name'." }
     }
     if (Test-Path -LiteralPath (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2')) { throw 'Recovery left the newly installed texture archive behind.' }
-    if ([IO.File]::ReadAllText((Join-Path $stagingTarget 'loose.txt')) -cne 'loose payload' -or !(Test-Path -LiteralPath (Join-Path $stagingTarget 'Textures/surface.dds') -PathType Leaf)) {
-      throw 'Managed package recovery changed unrelated staged assets.'
+    foreach ($target in $loosePayloadTargets) {
+      $restoredPath = Resolve-BuildArchiveTarget -Root $stagingTarget -Target $target
+      if (!(Test-Path -LiteralPath $restoredPath -PathType Leaf) -or (Get-BuildFileSha256 -Path $restoredPath) -cne [string]$originalLoosePayloadHashes[$target]) {
+        throw "Managed package recovery did not restore loose payload '$target'."
+      }
     }
+    if ([IO.File]::ReadAllText((Join-Path $stagingTarget 'meta.ini')) -cne 'metadata') { throw 'Managed package recovery changed unrelated staged metadata.' }
     Write-TestBa2 -Path (Join-Path $stagingTarget 'DifferentArchiveBase - Textures.ba2')
     Assert-BuildInstalledPackage -Variant $variant -InstallPath $stagingTarget
   }
@@ -572,4 +620,4 @@ finally {
   }
 }
 
-Write-Output 'Packaging contracts passed: declarative archive mappings, exact namespace-derived PEX ownership, added/deleted source refresh, filter-before-validation behavior, nested-link rejection with configured Staging Junction support, explicit ESM/archive identities, dynamic Junction routing, multiarchive absence restoration, retained-transaction blocking, and package-lock exclusion.'
+Write-Output 'Packaging contracts passed: declarative archive mappings, source-independent payload ownership, exact namespace-derived PEX ownership, added/deleted source refresh, filter-before-validation behavior, nested-link rejection with configured Staging Junction support, explicit ESM/archive identities, dynamic Junction routing, loose-payload cleanup recovery, multiarchive absence restoration, retained-transaction blocking, and package-lock exclusion.'

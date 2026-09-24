@@ -8,16 +8,30 @@
                            stageHeight="1080"
                            frameRate="30">
   <requiredTokens>
-    <token>VWCANVAS_CONSUMER/2</token>
+    <token>VWCANVAS_CONSUMER/3</token>
     <token>venworks.canvas.example</token>
     <token>"version":1</token>
     <token>getCanvasRegistration</token>
+    <token>getCanvasHtmlRegistration</token>
+    <token>VWCANVAS_HTML/2</token>
+    <token>index.html</token>
+    <token>htmlRendering</token>
+    <token>setData</token>
     <token>minimumContractVersion</token>
     <token>maximumContractVersion</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
-    <token>venworks.canvas.example.ping</token>
+    <token>LocalEnvironmentData</token>
+    <token>LocalEnvData_Frequent</token>
+    <token>fGalacticStandardTime</token>
+    <token>fLocalPlanetTime</token>
+    <token>venworks.canvas.example.status</token>
+    <token>effects.state</token>
+    <token>CanvasDatagramCodec</token>
+    <token>CanvasExampleEffectsAdapter</token>
+    <token>eventSubscriptions</token>
+    <token>latest</token>
     <token>public function dispose</token>
   </requiredTokens>
   <forbiddenTokens>
@@ -25,5 +39,8 @@
     <token>CustomAlertsData</token>
     <token>URLLoader</token>
     <token>ExternalInterface</token>
+    <token>TextField</token>
+    <token>TextFormat</token>
+    <token>Shape</token>
   </forbiddenTokens>
 </movieBuild>

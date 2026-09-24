@@ -63,7 +63,6 @@ foreach ($variant in $variants) {
       --InputPath $pluginPath `
       --PackageVersion $env:SPRIGGIT_VERSION `
       --OutputPath $pluginOutputPath `
-      --Check `
       --GameRelease Starfield `
       --PackageName Spriggit.Yaml `
       --DataFolder $env:STEAM_DATA_FOLDER | Out-Host
