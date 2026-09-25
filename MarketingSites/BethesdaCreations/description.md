@@ -12,13 +12,28 @@ PACKAGES
 
 FEATURES
 
-- Gives compatible add-ons a shared Player HUD host.
+- Gives compatible add-ons a shared Player HUD/UI host and data exchange layer.
 - Keeps add-on registration and loading in the Canvas base package.
 - Supports normal and large interface modes.
 - Renders a focused game-UI subset of HTML and CSS, including styled text, lists, buttons, SVG images, reusable content, and bound data.
 - Provides shared player values and named events for compatible panels.
 - Lets add-ons publish their own small Canvas datagrams for state and event data.
 - Includes complete source and creator documentation for authors building their own Canvas panel.
+
+ROADMAP
+
+Planned improvements:
+
+- Support for custom menus.
+- More shared data subscriptions and events.
+
+USAGE
+
+The Canvas base package works in the background and does not add a complete HUD theme by itself. Install a compatible Canvas add-on to add a visible panel.
+
+The optional Example panel demonstrates an independently packaged Canvas add-on, with player data, a clock, buff and debuff counts, and rotating effect rows.
+
+The optional Component Gallery can be opened from the Pause Menu and browsed with Up/Down, the right stick, the mouse wheel, or the scrollbar. Cancel returns to the Pause Menu.
 
 REQUIREMENTS
 
@@ -27,18 +42,14 @@ REQUIREMENTS
 
 INSTALLATION
 
-1. Install and enable Venworks Core Library.
+1. Install and enable Venworks Core Library version 2.1.8 or newer.
 2. Install and enable Venworks Canvas.
 3. Install the optional Example or Component Gallery Creations only if you want them.
 4. Keep Core before Canvas and Canvas before its optional add-ons in the load order. Their plugin masters should enforce this order.
 
-The Canvas base package works in the background and does not add a complete HUD theme by itself. Install a compatible Canvas add-on to add a visible panel.
-
-The optional Component Gallery can be opened from the Pause Menu and browsed with Up/Down, the right stick, the mouse wheel, or the scrollbar. Cancel returns to the Pause Menu.
-
 COMPATIBILITY
 
-Canvas 1.0 is a Player HUD framework. It owns complete Player HUD files, so another Creation that replaces the same files can overwrite Canvas or be overwritten by it according to load order. Do not combine competing full-HUD replacements unless the authors provide an explicit compatibility patch.
+Canvas 1.0 is a Player HUD and UI framework. It owns complete Player HUD and UI files, so another Creation that replaces the same files can overwrite Canvas or be overwritten by it according to load order. Do not combine competing full-HUD replacements unless the authors provide an explicit compatibility patch.
 
 Keep Canvas and its add-ons on mutually compatible versions. The Example and Component Gallery require the Canvas base Creation but are not required by ordinary Canvas add-ons unless their authors say otherwise.
 
@@ -66,10 +77,21 @@ https://github.com/monster-cookie/venworks-canvas/blob/master/Documentation/Canv
 Send data with Canvas datagrams:
 https://github.com/monster-cookie/venworks-canvas/blob/master/Documentation/CanvasDatagrams.md
 
-SOURCE CODE AND SUPPORT
+SOCIAL PRESENCE
 
-Source repository:
-https://github.com/monster-cookie/venworks-canvas
-
-Venworks Discord Community:
+Join the Venworks Discord Community for discussion, support, and beta feedback:
 https://discord.gg/DTbmrJDMxZ
+
+I can also usually be found in the Quarter Onion Games Discord Server:
+https://discord.gg/quarteronion
+
+Follow me on X as @monstercookiebd:
+https://x.com/monstercookiebd
+
+Follow me on Threads as @monstercookiebd:
+https://www.threads.net/@monstercookiebd
+
+SOURCE CODE
+
+The complete source code and documentation are available in the Venworks Canvas GitHub repository:
+https://github.com/monster-cookie/venworks-canvas
