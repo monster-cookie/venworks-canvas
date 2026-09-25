@@ -1,5 +1,14 @@
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-overview-1600x120.png[/img]
-TEMPLATE NOTE: Creation overview goes here
+Venworks Canvas is a shared Player HUD framework for Starfield. Compatible UI add-ons use one common host instead of each add-on replacing the Player HUD on its own.
+
+Canvas is a foundation for compatible add-ons, not a standalone HUD theme. Install the base package first, then install the Canvas add-ons you want to use.
+
+[b]The downloads are separate packages:[/b]
+[list]
+[*][b]Venworks Canvas[/b] — the required base runtime and shared Player HUD host.[/*]
+[*][b]Venworks Canvas Example[/b] — an optional example panel that demonstrates player data, a clock, buff and debuff counts, and rotating effect rows.[/*]
+[*][b]Venworks Canvas Component Gallery[/b] — an optional live reference for creators that shows supported Canvas HTML, CSS, components, and data bindings beside their rendered results.[/*]
+[/list]
 
 [quote]
 [size=4][b][u]Venworks Discord Community[/u][/b][/size]
@@ -11,42 +20,56 @@ I'll continue releasing my mods here on Nexus and through the Bethesda Game Stud
 
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-features-1600x120.png[/img]
 [list]
-[*]Feature 1[/*]
-[*]Feature 2[/*]
-[*]Etc.....[/*]
+[*]Gives compatible add-ons a shared Player HUD/UI host and data exchange layer.[/*]
+[*]Keeps add-on registration and loading in the Canvas base package.[/*]
+[*]Supports normal and large interface modes.[/*]
+[*]Renders a focused game-UI subset of HTML and CSS, including styled text, lists, buttons, SVG images, reusable content, and bound data.[/*]
+[*]Provides shared player values and named events for compatible panels.[/*]
+[*]Lets add-ons publish their own small Canvas datagrams for state and event data.[/*]
 [/list]
 
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-roadmap-1600x120.png[/img]
 [list]
-[*]Enhancement 1[/*]
-[*]Enhancement 2[/*]
-[*]Etc.....[/*]
-[/list]
-
-[img]https://cdn.venworkscreations.com/NexusMods/description-divider-known-issues-1600x120.png[/img]
-[list]
-[*]Known Issue 1[/*]
-[*]Known Issue 2[/*]
-[*]Etc.....[/*]
+[*]Handling of custom menus[/*]
+[*]More shared data subscriptions and events[/*]
 [/list]
 
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-usage-instructions-1600x120.png[/img]
-TEMPLATE NOTE: Creation usage instructions go here
+The Canvas base package works in the background and does not add a complete HUD theme by itself. Install a compatible Canvas add-on to add a visible panel.
 
-[size=4][b][u]Compatibility[/u][/b][/size]
-Below are Creations we have known compatibility problems with and workarounds if we have them.
+The optional Example panel demonstrates a real independently packaged consumer. The optional Component Gallery can be opened from the Pause Menu and browsed with Up/Down, the right stick, the mouse wheel, or the scrollbar. Cancel returns to the Pause Menu.
+
+[size=4][b]Documentation for players[/b][/size]
 [list]
-[*]Creation 1[/*]
-[*]Creation 2[/*]
-[*]Etc.....[/*]
+[*][url=https://github.com/monster-cookie/venworks-canvas#readme]Overview, installation, compatibility, and troubleshooting[/url][/*]
 [/list]
 
-[img]https://cdn.venworkscreations.com/NexusMods/description-divider-installation-instructions-1600x120.png[/img]
+[size=4][b]Documentation for creators[/b][/size]
+[list]
+[*][url=https://github.com/monster-cookie/venworks-canvas/blob/master/Documentation/CreatingACanvasPlugin.md]Create a Canvas plugin from scratch[/url][/*]
+[*][url=https://github.com/monster-cookie/venworks-canvas/blob/master/Documentation/CanvasComponentGallery.md]Canvas HTML and CSS component gallery[/url][/*]
+[*][url=https://github.com/monster-cookie/venworks-canvas/blob/master/Documentation/CanvasDatagrams.md]Send data with Canvas datagrams[/url][/*]
+[/list]
 
-[size=3][b][u]Via Vortex/MO2[/u][/b][/size]
-Install as normally would any mod. 
-[size=3][b][u]Manually[/u][/b][/size]
-Really please use a mod manager :) Download the current zip file. Please everything in the Data folder in the zip to the same place under <Game Install Dir aka where starfield.exe is>\Data.  
+[img]https://cdn.venworkscreations.com/NexusMods/description-divider-requirements-1600x120.png[/img]
+[list]
+[*][url=https://www.nexusmods.com/starfield/mods/7097]Venworks - Core Utilities[/url] version 2.1.8 or newer[/*]
+[/list]
+
+[size=4][b]Compatibility[/b][/size]
+
+Canvas 1.0 is a Player HUD and UI framework. It owns complete Player HUD and UI files, so another mod that replaces the same files can overwrite Canvas or be overwritten by it according to package priority. Do not combine competing full-HUD replacements unless the authors provide an explicit compatibility patch.
+
+Keep Canvas and its add-ons on mutually compatible versions. The Example and Component Gallery require the Canvas base package but are not required by ordinary Canvas add-ons unless their authors say otherwise.
+
+[img]https://cdn.venworkscreations.com/NexusMods/description-divider-installation-instructions-1600x120.png[/img]
+[size=4][b]Vortex or Mod Organizer 2[/b][/size]
+[list]
+[*]Install and enable Venworks - Core Utilities version 2.1.8 or newer.[/*]
+[*]Install and enable Venworks Canvas.[/*]
+[*]Install the optional Example or Component Gallery files only if you want them.[/*]
+[*]Allow the plugin masters to keep Core before Canvas and Canvas before its optional add-ons.[/*]
+[/list]
 
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-my-other-creations-1600x120.png[/img]
 [b][u]Modding Tools[/u][/b]
@@ -71,6 +94,5 @@ Really please use a mod manager :) Download the current zip file. Please everyt
 [/list]
 
 [img]https://cdn.venworkscreations.com/NexusMods/description-divider-source-code-1600x120.png[/img]
-TEMPLATE NOTE: If you have it and want too, it is considered good form to give access to your repository
 
-The complete source code and technical documentation are available in the [url=https://github.com/monster-cookie/venworks-template]Venworks - Template GitHub Repository[/url]
+The complete source code and documentation is available at the [url=https://github.com/monster-cookie/venworks-canvas]Venworks Canvas GitHub Repository[/url].
