@@ -11,6 +11,9 @@ class ModuleVariant {
   [string]$EnvironmentVariableName
   [object[]]$ScaleformBuilds
   [object[]]$Archives
+  [string]$ReleaseDisplayName
+  [string]$NexusDisplayName
+  [string[]]$ArchiveTargets
 
   ModuleVariant(
     [string]$variantKey,
@@ -21,7 +24,10 @@ class ModuleVariant {
     [string]$stagingFolderPath,
     [string]$environmentVariableName,
     [object[]]$scaleformBuilds,
-    [object[]]$archives
+    [object[]]$archives,
+    [string]$releaseDisplayName = '',
+    [string]$nexusDisplayName = '',
+    [string[]]$archiveTargets = @()
   ) {
     $this.VariantKey = $variantKey
     $this.VariantName = $variantName
@@ -32,6 +38,9 @@ class ModuleVariant {
     $this.EnvironmentVariableName = $environmentVariableName
     $this.ScaleformBuilds = $scaleformBuilds
     $this.Archives = $archives
+    $this.ReleaseDisplayName = $releaseDisplayName
+    $this.NexusDisplayName = $nexusDisplayName
+    $this.ArchiveTargets = $archiveTargets
   }
 }
 

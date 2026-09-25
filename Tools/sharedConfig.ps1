@@ -97,7 +97,10 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
         )
       }
-    )
+    ),
+    'Venworks - Canvas',
+    'Venworks - Canvas',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
   [ModuleVariant]::new(
     'EXAMPLE',
@@ -143,7 +146,10 @@ $Global:ModuleVariants = @(
           @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
-    )
+    ),
+    'Venworks - Canvas - Example',
+    'Venworks - Canvas - Example',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
   [ModuleVariant]::new(
     'COMPONENTGALLERY',
@@ -190,8 +196,26 @@ $Global:ModuleVariants = @(
           @{ Root = 'Repository'; Source = 'Scaleform/component-gallery/resources'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' }
         )
       }
-    )
+    ),
+    'Venworks - Canvas - Component Gallery',
+    'Venworks - Canvas - Component Gallery',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
 )
+
+function Global:Get-VariantReleasePackageSuffixes {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ModuleVariant]$Variant
+  )
+
+  $targets = @($Variant.ArchiveTargets)
+  $suffixes = @()
+  if ('Main' -in $targets) { $suffixes += 'Nexus PC - Normal'; $suffixes += 'Bethesda PC' }
+  if ('Main_XBox' -in $targets) { $suffixes += 'Bethesda Xbox' }
+  if ('Main_PS' -in $targets) { $suffixes += 'Bethesda PS5' }
+  return $suffixes
+}
 
 $Global:SharedConfigurationLoaded = $true
