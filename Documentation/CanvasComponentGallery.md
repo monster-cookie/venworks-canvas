@@ -96,7 +96,7 @@ The consumer owns the values. It obtains the HTML bridge during lifecycle `ready
 
 Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 256 items.
 
-## Live VWHUD player placeholders
+## Live player placeholders
 
 ![Lossless crop of the live player-value rows in the Gallery](Images/ComponentGallery/live-player-values.png)
 
