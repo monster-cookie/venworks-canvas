@@ -39,11 +39,19 @@ Offsets are bounded to ±8192 and allowed only for a single native target. Group
 
 ## Data updates and diagnostics
 
+HUD requests apply on the first successful render, even without a data snapshot, and on successful state and layout commits. HTML/2 documents cannot use HTML/3 HUD targets, native symbols, presentation bindings, anchors, or extended meter controls.
+
 HTML/3 snapshots are validated before queuing and coalesced until the next frame. Unchanged objects remain attached; text and meter graphics update in place, and changed repeated/state subtrees reconcile. The bridge's `getUpdateState()` reports pending work, accepted revision and the most recent render diagnostic. A rejected update preserves the last valid display. Teardown removes queued frame work and releases HUD requests.
 
 The Component Gallery demonstrates standard curves, primitive groups and an explicit segmented meter. The existing subscriptions diagnostic harness exercises production SVG/meter code, retained text/meter/static identities, coalescing, rejected data, unload, native mask restoration, multiple consumers and placement changes. Compiling the harness does not execute these tests; run it in the game before claiming runtime success.
 
+The subscriptions probe also includes real-frame coalescing and disposal checks, first-paint and static-target session checks, body bindings, standard inline SVG dimensions, watch restoration, and transactional inventory boundary checks. A completed compile is not a passing probe result. Execute the probe and require all 17 cases to complete successfully; the asynchronous frame case remains pending until the player advances it.
+
+Dynamic inventories publish only complete scans. A node or depth limit retains the last complete inventory for the same root, missing/replaced roots release obsolete objects, and diagnostics are emitted once per changed failure condition while frame retries continue.
+
 For each target below, acceptance must cover enabled, hidden, disabled, group suppression, overlapping consumers, timeline replacement and unload in normal and large movies. Test game actions and status delivery while presentation is suppressed. Dynamic ship marker targets select the catalog's native marker classes through a bounded host inventory; they do not depend on transient instance names.
+
+Standard `viewBox` and the existing lowercase `viewbox` alias share the same internal representation. SVG dimensions accept bounded numbers, pixel lengths, and root percentages; CSS dimensions override presentation attributes. External SVG dimensions supply intrinsic image sizing when CSS leaves that dimension automatic.
 
 ## HUD target catalog
 

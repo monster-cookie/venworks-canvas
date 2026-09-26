@@ -425,6 +425,8 @@ package
          {
             return this.isFourFiniteNumbers(value);
          }
+         if((name == "width" || name == "height") && CanvasSvgGeometry.isElement(param1))
+            return CanvasSvgGeometry.dimension(value) != null && (param1 == "svg" || value.indexOf("%") < 0);
          if(name == "width" || name == "height" || name == "stroke-width")
          {
             return name == "stroke-width" ? this.isFiniteNumber(value,true) && Number(value) <= CanvasHtmlLimits.MAX_SVG_STROKE_WIDTH : this.isLength(value,true);

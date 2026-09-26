@@ -88,6 +88,13 @@ package
                this.reject("limit-exceeded",node.resource,"style");
                return null;
             }
+            if(node.name == "img")
+            {
+               var assetRoot:CanvasHtmlNode = this.resolveSvg(node);
+               if(assetRoot == null) { this.reject("invalid-svg",this.resolveSvgResourcePath(node),"asset"); this.disposeDisplay(root == null ? null : root.sprite as Sprite); return null; }
+               for each(var dimension:String in ["width","height"])
+                  if(style[dimension] == "auto" && assetRoot.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(assetRoot.getAttribute(dimension));
+            }
             if(node.type == CanvasHtmlNode.TEXT)
             {
                style["display"] = "inline";
@@ -582,6 +589,7 @@ package
 
       private function drawBox(param1:Object) : void
       {
+         var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
          var sprite:Sprite = param1.sprite as Sprite;
          var background:Object = CanvasCssValue.parseColor(String(param1.style["background-color"]));
          var borderColor:Object = CanvasCssValue.parseColor(String(param1.style["border-color"]));
@@ -610,7 +618,6 @@ package
          {
             sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
          }
-         var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
          if(node.name == "hr")
          {
             var rule:Shape = new Shape();

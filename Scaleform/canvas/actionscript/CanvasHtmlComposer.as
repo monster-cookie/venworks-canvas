@@ -53,6 +53,8 @@ package
          output.children.push(outputBody);
          this.generatedNodes = 2;
          var rootScope:Object = {"values":param2 == null ? {} : param2,"parent":null};
+         if(!CanvasHtmlBindings.resolve(body,outputBody,rootScope))
+            return new CanvasHtmlComposeResult(false,null,new CanvasHtmlDiagnostic("compose","invalid-binding",body.resource));
          var frames:Array = [];
          this.pushChildren(frames,body.children,outputBody,rootScope,3,[],body.resource);
          while(frames.length > 0 && this.failure == null)

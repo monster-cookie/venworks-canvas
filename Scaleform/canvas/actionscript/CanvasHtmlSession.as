@@ -16,7 +16,7 @@ package
       private var pendingData:Object;
       private var updateDiagnostic:CanvasHtmlDiagnostic;
       private var updateRevision:uint = 0;
-      private var committingData:Boolean = false;
+      private var contract:String;
 
       private var mount:DisplayObjectContainer;
 
@@ -48,7 +48,7 @@ package
 
       private var activeState:String;
 
-      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:Boolean = false, param4:CanvasHudTargets = null, param5:String = null, param6:Object = null)
+      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:Boolean = false, param4:CanvasHudTargets = null, param5:String = null, param6:Object = null, param7:String = null)
       {
          if(param1 == null || param2 == null || !param2.success)
          {
@@ -62,7 +62,8 @@ package
          }
          this.hudTargets = param4;
          this.consumerId = param5;
-         this.coalesce = param3;
+         this.contract = param7 == null ? (param3 ? "VWCANVAS_HTML/3" : "VWCANVAS_HTML/2") : param7;
+         this.coalesce = this.contract == "VWCANVAS_HTML/3";
          this.mount = param1;
          this.loadResult = param2;
       }
@@ -73,6 +74,8 @@ package
          {
             return new CanvasHtmlDiagnostic("lifecycle","disposed",null);
          }
+         var capabilityFailure:CanvasHtmlDiagnostic = this.validateCapabilities();
+         if(capabilityFailure != null) return capabilityFailure;
          var stateFailure:CanvasHtmlDiagnostic = this.indexEventStates();
          if(stateFailure != null)
          {
@@ -99,7 +102,7 @@ package
             var composed:CanvasHtmlComposeResult = new CanvasHtmlComposer().compose(this.loadResult,snapshot,this.activeState);
             if(!composed.success) throw new Error(composed.diagnostic.toString());
             this.pendingData = snapshot;
-            this.mount.addEventListener(Event.ENTER_FRAME,this.applyPending,false,0,true);
+            this.mount.addEventListener(Event.ENTER_FRAME,this.applyPending,false,0,false);
             return;
          }
          var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
@@ -123,7 +126,6 @@ package
          this.pendingData = null;
          try
          {
-            this.committingData = true;
             this.updateDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
             if(this.updateDiagnostic == null)
             {
@@ -133,9 +135,8 @@ package
          }
          catch(updateError:*)
          {
-            this.updateDiagnostic = new CanvasHtmlDiagnostic("render","update-failed",this.loadResult.entryDocument.resource);
+            this.updateDiagnostic = new CanvasHtmlDiagnostic("render","update-failed",this.loadResult.entryDocument.resource,-1,String(updateError).substr(0,256));
          }
-         finally { this.committingData = false; }
       }
 
       public function setHostLayout(layout:Object) : void
@@ -143,8 +144,12 @@ package
          if(!this.coalesce || this.disposed || layout == null) return;
          var previous:Object = this.hostLayout;
          this.hostLayout = layout;
-         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,Number(layout.visibleWidth),Number(layout.visibleHeight),this.activeState);
-         if(failure != null) { this.hostLayout = previous; throw new Error(failure.toString()); }
+         try
+         {
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,Number(layout.visibleWidth),Number(layout.visibleHeight),this.activeState);
+            if(failure != null) throw new Error(failure.toString());
+         }
+         catch(error:*) { this.hostLayout = previous; throw error; }
          this.viewportWidth = Number(layout.visibleWidth);
          this.viewportHeight = Number(layout.visibleHeight);
       }
@@ -302,7 +307,6 @@ package
             var targetError:String = this.hudTargets == null ? "HUD targets unavailable in this host" : this.hudTargets.validate(rendered.targets);
             if(targetError != null) return new CanvasHtmlDiagnostic("render","hud-target-unavailable",this.loadResult.entryDocument.resource,-1,targetError);
          }
-         if(this.hudTargets != null && (!this.coalesce || this.committingData || this.updateRevision > 0)) this.hudTargets.apply(this.consumerId,rendered.targets);
          CanvasHtmlRetainedTree.commit(rendered.boxes);
          rendered.display = rendered.boxes[0].sprite as Sprite;
          this.retainedBoxes = rendered.boxes;
@@ -330,6 +334,29 @@ package
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
+         if(this.hudTargets != null) this.hudTargets.apply(this.consumerId,rendered.targets);
+         return null;
+      }
+
+      private function validateCapabilities() : CanvasHtmlDiagnostic
+      {
+         if(this.contract == "VWCANVAS_HTML/3") return null;
+         if(this.contract != "VWCANVAS_HTML/2") return new CanvasHtmlDiagnostic("parse","unsupported-contract",null);
+         // Inspect every resource, including inactive templates and included documents.
+         for each(var resource:CanvasHtmlResource in this.loadResult.resources)
+         {
+            if(resource.document == null || resource.document.root == null) continue;
+            var nodes:Array = [resource.document.root];
+            while(nodes.length > 0)
+            {
+               var node:CanvasHtmlNode = nodes.pop() as CanvasHtmlNode;
+               var unsupported:Boolean = node.name == "vw-hud-target" || node.name == "vw-symbol";
+               for each(var attribute:CanvasHtmlAttribute in node.attributes)
+                  unsupported ||= CanvasHtmlBindings.isAttribute(attribute.name) || attribute.name == "data-vw-anchor" || attribute.name == "data-vw-assets" || node.name == "vw-meter" && ["min","max","direction","segments","gap","partial"].indexOf(attribute.name) >= 0;
+               if(unsupported) return new CanvasHtmlDiagnostic("parse","requires-html3",node.resource,node.offset);
+               for each(var child:CanvasHtmlNode in node.children) nodes.push(child);
+            }
+         }
          return null;
       }
 

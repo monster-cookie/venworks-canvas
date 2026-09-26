@@ -48,6 +48,9 @@ package
             for each(var property:String in ["fill","stroke","stroke-width","fill-opacity","stroke-opacity","opacity"])
                if(param1.getAttribute(property) != null) style[property] = param1.getAttribute(property);
          }
+         if(param1 != null && param1.name == "svg")
+            for each(var dimension:String in ["width","height"])
+               if(param1.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(param1.getAttribute(dimension));
          var priorities:Object = {};
          var rule:Object = null;
          var declaration:Object = null;

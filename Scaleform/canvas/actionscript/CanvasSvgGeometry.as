@@ -17,12 +17,24 @@ package
       {
          if(!isElement(name)) return false;
          if(["id","class","fill","stroke","stroke-width","fill-opacity","stroke-opacity","opacity","transform"].indexOf(attribute) >= 0) return true;
-         if(name == "svg") return ["viewbox","viewBox","xmlns","data-vw-visible"].indexOf(attribute) >= 0;
+         if(name == "svg") return ["viewbox","viewBox","width","height","xmlns","data-vw-visible"].indexOf(attribute) >= 0;
          if(name == "path") return attribute == "d";
          if(name == "rect") return ["x","y","width","height","rx","ry"].indexOf(attribute) >= 0;
          if(name == "circle") return ["cx","cy","r"].indexOf(attribute) >= 0;
          if(name == "ellipse") return ["cx","cy","rx","ry"].indexOf(attribute) >= 0;
          return (name == "polygon" || name == "polyline") && attribute == "points";
+      }
+
+      public static function dimension(value:String) : String
+      {
+         if(value == null) return null;
+         var numeric:String = value.substr(-2) == "px" ? value.substring(0,value.length-2) : value;
+         if(/^[+]?(?:[0-9]*\.[0-9]+|[0-9]+\.?)(?:[eE][-+]?[0-9]+)?$/.test(numeric))
+         {
+            var number:Number = Number(numeric);
+            return isFinite(number) && number >= 0 && number <= 8192 ? String(number)+"px" : null;
+         }
+         return CanvasCssValue.parseLength(value,false,true,false) != null ? value : null;
       }
 
       public static function render(root:CanvasHtmlNode, viewbox:Array, width:Number, height:Number, cascade:CanvasCssCascade, inherited:Object, ancestors:Array, consume:Function, inline:Boolean = false) : Sprite
@@ -99,6 +111,7 @@ package
       {
          var value:String = node.getAttribute(name);
          if(value == null) return fallback;
+         if(value.substr(-2) == "px") value = value.substring(0,value.length-2);
          if(!/^[-+]?(?:[0-9]*\.[0-9]+|[0-9]+\.?)(?:[eE][-+]?[0-9]+)?$/.test(value)) return NaN;
          var result:Number = Number(value);
          return isFinite(result) && Math.abs(result) <= CanvasHtmlLimits.MAX_SVG_COORDINATE ? result : NaN;

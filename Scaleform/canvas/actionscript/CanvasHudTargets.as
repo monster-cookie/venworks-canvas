@@ -103,7 +103,14 @@ package
                if(declaration.hidden || declaration.disabled)
                   for each(var candidate:String in CanvasHudTargetCatalog.resolve(String(declaration.target),this.hostKind))
                      if(candidate.indexOf("@ship:") == 0) hasDynamic = true;
-         if(hasDynamic && !this.dynamicTargets.scan(this.find("Reticle_mc") as DisplayObjectContainer) && this.diagnostic != null) this.diagnostic("HUD TARGET INVENTORY LIMIT");
+         if(hasDynamic)
+         {
+            var complete:Boolean = this.dynamicTargets.scan(this.find("Reticle_mc") as DisplayObjectContainer);
+            var failure:String = this.dynamicTargets.failure;
+            if(!complete && this.unavailable["@inventory"] != failure && this.diagnostic != null) this.diagnostic("HUD TARGET INVENTORY | "+failure);
+            this.unavailable["@inventory"] = failure;
+         }
+         else this.dynamicTargets.scan(null);
          var watchHidden:Boolean = false;
          var watchDisabled:Boolean = false;
          for each(var targets:Array in this.requests)
@@ -147,7 +154,7 @@ package
             else if(object.mask !== record.mask) record.nativeMask = object.mask;
             object.mask = record.mask;
          }
-         if(consumers.length > 0) this.owner.addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,true);
+         if(consumers.length > 0) this.owner.addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,false);
          else this.owner.removeEventListener(Event.ENTER_FRAME,this.refresh);
       }
 

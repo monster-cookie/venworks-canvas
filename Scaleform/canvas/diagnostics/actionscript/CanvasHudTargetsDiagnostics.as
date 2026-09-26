@@ -1,6 +1,7 @@
 package
 {
    import flash.display.Sprite;
+   import fixtures.POIIcon;
    import flash.display.Shape;
    import flash.events.Event;
 
@@ -8,6 +9,7 @@ package
    {
       public static function run() : void
       {
+         testInventory();
          var root:Sprite = new Sprite();
          var center:Sprite = child(root,"CenterGroup_mc");
          var reticle:Sprite = child(center,"ReticleBase_mc");
@@ -53,6 +55,27 @@ package
          manager.dispose();
          check(replacement.mask == null,"dispose left presentation suppressed");
          check(!root.hasEventListener(Event.ENTER_FRAME),"dispose left frame work active");
+      }
+
+      private static function testInventory() : void
+      {
+         var inventory:CanvasHudDynamicTargets = new CanvasHudDynamicTargets();
+         var root:Sprite = new Sprite();
+         var marker:POIIcon = new POIIcon(); root.addChild(marker);
+         check(inventory.scan(root),"complete inventory failed");
+         var paths:Array = inventory.paths("POIIcon").concat();
+         check(paths.length == 1 && inventory.find(paths[0]) === marker,"marker inventory absent");
+         for(var i:int = 0; i < 4096; i++) root.addChild(new Sprite());
+         check(!inventory.scan(root) && inventory.failure == "node-limit","oversized inventory accepted");
+         check(inventory.paths("POIIcon").length == 1 && inventory.find(paths[0]) === marker,"failed scan published partial inventory");
+         while(root.numChildren > 1) root.removeChildAt(root.numChildren-1);
+         var nested:Sprite = root;
+         for(i = 0; i < 13; i++) nested = child(nested,"level");
+         check(!inventory.scan(root) && inventory.failure == "depth-limit","depth truncation reported success");
+         check(inventory.find(paths[0]) === marker,"depth failure replaced complete inventory");
+         check(!inventory.scan(null) && inventory.failure == "root-unavailable" && inventory.find(paths[0]) == null,"missing root retained stale objects");
+         var replacement:Sprite = new Sprite();
+         check(inventory.scan(replacement) && inventory.paths("POIIcon").length == 0,"root replacement retained previous inventory");
       }
 
       private static function child(parent:Sprite,name:String) : Sprite

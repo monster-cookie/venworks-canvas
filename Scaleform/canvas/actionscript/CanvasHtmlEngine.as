@@ -5,6 +5,7 @@ package
    public final class CanvasHtmlEngine
    {
       private var hostLayout:Object;
+      private var layoutRetry:Boolean = false;
 
       private var hudTargets:CanvasHudTargets;
 
@@ -69,10 +70,20 @@ package
 
       public function setHostLayout(layout:Object) : void
       {
-         if(this.hostLayout != null && layout != null && CanvasHtmlRetainedTree.sameStyle(this.hostLayout,layout)) return;
-         this.hostLayout = layout;
+         if(!this.layoutRetry && this.hostLayout != null && layout != null && CanvasHtmlRetainedTree.sameStyle(this.hostLayout,layout)) return;
+         this.layoutRetry = false;
          for each(var entry:Object in this.consumers)
-            if(entry.session != null) CanvasHtmlSession(entry.session).setHostLayout(layout);
+         {
+            if(entry.session == null) continue;
+            try { CanvasHtmlSession(entry.session).setHostLayout(layout); }
+            catch(error:*)
+            {
+               this.layoutRetry = true;
+               trace("VWCANVAS HTML | host-layout-failed | "+String(error).substr(0,256));
+            }
+         }
+         // New consumers receive the current host layout; failed sessions remain retryable.
+         this.hostLayout = layout;
       }
 
       public function remove(param1:String) : void
@@ -212,7 +223,7 @@ package
          {
             try
             {
-               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3,param2.registration.contract == "VWCANVAS_HTML/3",this.hudTargets,param1,this.hostLayout);
+               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3,param2.registration.contract == "VWCANVAS_HTML/3",this.hudTargets,param1,this.hostLayout,String(param2.registration.contract));
                var diagnostic:CanvasHtmlDiagnostic = session.initialize();
                if(diagnostic == null)
                {
@@ -231,7 +242,7 @@ package
                {
                   session.dispose();
                }
-               finalResult = new CanvasHtmlLoadResult(false,false,null,[],new CanvasHtmlDiagnostic("lifecycle","adapter-failure",param3.entryDocument == null ? null : param3.entryDocument.resource));
+               finalResult = new CanvasHtmlLoadResult(false,false,null,[],new CanvasHtmlDiagnostic("render","initialization-failed",param3.entryDocument == null ? null : param3.entryDocument.resource,-1,String(renderError).substr(0,256)));
             }
          }
          param2.result = finalResult.success ? finalResult : null;

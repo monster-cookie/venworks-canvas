@@ -70,7 +70,7 @@ package
          this.pixels = new BitmapData(this.outputWidth,this.outputHeight,true,0);
          this.bitmap = new Bitmap(this.pixels,"auto",true);
          addChild(this.bitmap);
-         addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,true);
+         addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,false);
          this.refresh(null);
       }
 

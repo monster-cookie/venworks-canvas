@@ -38,6 +38,7 @@ package
       private var ownerAppliesOpacity:Boolean = true;
 
       private var localEnvironment:Object;
+      private var restoringPresentation:Boolean = false;
 
       private var playerFrequent:Object;
 
@@ -154,8 +155,13 @@ package
             this.hasScannerState = false; this.hasDetectionState = false;
             this.view.clearAlert();
             // Restore current state, without replaying expired presentation alerts.
-            for each(var channel:String in ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","EnvironmentEffectsData","HUDOpacityData"])
-               if(this.latestData.hasOwnProperty(channel)) this.onData(channel,this.latestData[channel]);
+            this.restoringPresentation = true;
+            try
+            {
+               for each(var channel:String in ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","EnvironmentEffectsData","HUDOpacityData"])
+                  if(this.latestData.hasOwnProperty(channel)) this.onData(channel,this.latestData[channel]);
+            }
+            finally { this.restoringPresentation = false; }
          }
       }
 
@@ -271,7 +277,7 @@ package
          }
          this.hasScannerState = true;
          this.scanning = nextScanning;
-         if(leftSpaceship && !nextScanning && !scannerChanged)
+         if(!this.restoringPresentation && leftSpaceship && !nextScanning && !scannerChanged)
          {
             this.animation.showPlanetInformation(Number(param1.alertTimeMs));
          }
@@ -290,7 +296,7 @@ package
          oxygen = CanvasChronomarkStyle.clamp(oxygen,0,1);
          carbonDioxide = CanvasChronomarkStyle.clamp(carbonDioxide,0,1);
          this.view.setOxygen(oxygen,carbonDioxide);
-         if(this.previousOxygen >= 0 && this.previousCarbonDioxide >= 0)
+         if(!this.restoringPresentation && this.previousOxygen >= 0 && this.previousCarbonDioxide >= 0)
          {
             if(this.previousOxygen > CanvasChronomarkStyle.OXYGEN_THRESHOLD_TOLERANCE && oxygen <= CanvasChronomarkStyle.OXYGEN_THRESHOLD_TOLERANCE)
             {

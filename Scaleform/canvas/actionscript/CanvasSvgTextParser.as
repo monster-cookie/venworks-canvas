@@ -285,6 +285,8 @@ package
             return this.reject("invalid-svg-viewbox",viewbox.valueOffset);
          }
          viewbox.value = normalized;
+         for each(var dimension:String in ["width","height"])
+            if(param1.getAttribute(dimension) != null && CanvasSvgGeometry.dimension(param1.getAttribute(dimension)) == null) return this.reject("invalid-svg-size",param1.getAttributeValueOffset(dimension));
          var namespaceValue:String = param1.getAttribute("xmlns");
          if(namespaceValue != null && !this.isSvgNamespace(namespaceValue))
          {
