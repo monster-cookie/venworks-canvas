@@ -17,6 +17,8 @@ Overrides the transaction workspace beneath the configured build work root. Fail
 Skip importing the build environment file. Use when only configuration constants are needed (e.g., in CI packaging).
 .PARAMETER OutputDirectory
 With BuildOnly, writes packages to a fresh directory beneath BuildSettings.WorkRoot instead of staging or installed module folders.
+.PARAMETER PluginDirectory
+For isolated output, reads source plugins from <PluginDirectory>/<VariantKey>/<EsmFileName>. Defaults to each configured staging source without requiring an installation path or junction.
 .PARAMETER BuildOnly
 Build archives only without installing to physical module folders. Use for CI where staging paths are not Junctions.
 #>
@@ -30,6 +32,7 @@ param(
   [switch]$SkipEnvironment,
   [switch]$BuildOnly,
   [string]$OutputDirectory,
+  [string]$PluginDirectory,
   [switch]$CleanupLooseFiles
 )
 
@@ -51,7 +54,16 @@ $allVariants = @(Get-ModuleVariants)
 $selectedVariants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 
 # Complete every source, Junction, configuration, and payload check before acquiring shared write state.
-$operations = @(Get-BuildPackageInstallOperations -SelectedVariants $selectedVariants -AllVariants $allVariants)
+if (![string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  if (!$BuildOnly) { throw 'OutputDirectory requires BuildOnly.' }
+  $isolatedOutput = [IO.Path]::GetFullPath($OutputDirectory)
+  Assert-BuildRemovalPath -Path $isolatedOutput -AllowedRoot ([string]$Global:BuildSettings.WorkRoot)
+  if (Test-Path -LiteralPath $isolatedOutput) { throw 'Choose a fresh package OutputDirectory.' }
+  $operations = @(Get-BuildPackageIsolatedOperations -SelectedVariants $selectedVariants -OutputDirectory $isolatedOutput -PluginDirectory $PluginDirectory)
+} else {
+  if (![string]::IsNullOrWhiteSpace($PluginDirectory)) { throw 'PluginDirectory requires isolated OutputDirectory.' }
+  $operations = @(Get-BuildPackageInstallOperations -SelectedVariants $selectedVariants -AllVariants $allVariants)
+}
 $plans = @(Get-BuildPackageArchivePlans `
   -Variants $selectedVariants `
   -RepositoryRoot $repositoryRoot `

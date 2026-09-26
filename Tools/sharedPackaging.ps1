@@ -598,6 +598,35 @@ function Assert-BuildNoLoosePackagePayloads {
   }
 }
 
+function Get-BuildPackageIsolatedOperations {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$SelectedVariants,
+    [Parameter(Mandatory = $true)][string]$OutputDirectory,
+    [string]$PluginDirectory
+  )
+
+  foreach ($variant in $SelectedVariants) {
+    $key = [string]$variant.VariantKey
+    if ($key -notmatch '^[A-Za-z0-9_-]+$') { throw 'Invalid isolated variant key.' }
+    $pluginName = [string]$variant.EsmFileName
+    Assert-BuildPackageLeafName -Name $pluginName -Extension '.esm' -Description "$key EsmFileName"
+    $archiveNames = @($variant.Archives | ForEach-Object {
+      $name = [string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'FileName')
+      Assert-BuildPackageLeafName -Name $name -Extension '.ba2' -Description "$key archive FileName"
+      $name
+    })
+    if (@($archiveNames | Select-Object -Unique).Count -ne $archiveNames.Count) { throw "$key archive filenames must be unique." }
+    $sourceRoot = if ([string]::IsNullOrWhiteSpace($PluginDirectory)) { [string]$variant.StagingFolderPath } else { Join-Path $PluginDirectory $key }
+    $pluginPath = Resolve-BuildRequiredFile -Path (Join-Path $sourceRoot $pluginName) -Description "$key source ESM"
+    Assert-BuildArtifactHeader -Path $pluginPath
+    [pscustomobject]@{
+      Key = $key; Variant = $variant; StagingPath = Join-Path $OutputDirectory $key
+      PluginName = $pluginName; ArchiveNames = $archiveNames; SourcePluginPath = $pluginPath
+      ManagedNames = @($pluginName) + $archiveNames; CandidateNames = @($pluginName) + $archiveNames
+    }
+  }
+}
+
 function Get-BuildPackageInstallOperations {
   param(
     [Parameter(Mandatory = $true)][object[]]$SelectedVariants,

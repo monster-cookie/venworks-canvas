@@ -354,6 +354,17 @@ try {
     ScaleformBuilds = @(); Archives = @($mainArchive, $textureArchive)
   }
 
+  $isolatedVariant = [pscustomobject]@{
+    VariantKey = 'ISOLATED'; EsmFileName = $variant.EsmFileName; Archives = $variant.Archives
+    StagingFolderPath = Join-Path $fixtureRoot 'does-not-exist'; EnvironmentVariableName = 'UNCONFIGURED_ISOLATED_DESTINATION'
+  }
+  $pluginInputs = Join-Path $fixtureRoot 'plugin-inputs'
+  New-Item -ItemType Directory -Path (Join-Path $pluginInputs 'ISOLATED') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $stagingTarget $variant.EsmFileName) -Destination (Join-Path $pluginInputs 'ISOLATED')
+  $isolated = @(Get-BuildPackageIsolatedOperations -SelectedVariants @($isolatedVariant) -OutputDirectory (Join-Path $fixtureRoot 'isolated-output') -PluginDirectory $pluginInputs)
+  if ($isolated.Count -ne 1 -or $isolated[0].SourcePluginPath -ne (Join-Path $pluginInputs "ISOLATED/$($variant.EsmFileName)")) { throw 'Isolated packaging required staging or lost explicit plugin input.' }
+  Assert-TestRejected -Action { Get-BuildPackageIsolatedOperations -SelectedVariants @($isolatedVariant) -OutputDirectory (Join-Path $fixtureRoot 'isolated-output') } -Description 'Missing isolated source plugin'
+
   $plans = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
   if ($plans.Count -ne 2) { throw 'Fixture variant did not produce one plan per archive.' }
   $mainPlan = @($plans | Where-Object FileName -CEQ 'DifferentArchiveBase - Main.ba2')[0]
