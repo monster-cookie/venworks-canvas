@@ -245,13 +245,13 @@ jobs:
             $packageSuffixes = @(Get-VariantReleasePackageSuffixes -Variant $variant)
             foreach ($packageSuffix in $packageSuffixes) {
               $cleanSuffix = switch ($packageSuffix) {
-                'Nexus PC' { 'Nexus' }
+                'Nexus PC' { '' }
                 'Bethesda PC' { 'Bethesda-PC' }
                 'Bethesda Xbox' { 'Bethesda-Xbox' }
                 'Bethesda PS5' { 'Bethesda-PS5' }
                 default { $packageSuffix }
               }
-              $packageName = "$cleanDisplayName-$cleanSuffix.zip"
+              $packageName = if ($cleanSuffix) { "$cleanDisplayName-$cleanSuffix.zip" } else { "$cleanDisplayName.zip" }
               $expectedPackageNames.Add($packageName)
               $packagePath = Join-Path $releaseRoot $packageName
               if (-not [System.IO.File]::Exists($packagePath)) {
@@ -263,7 +263,7 @@ jobs:
             }
 
             if ('Nexus PC' -in $packageSuffixes) {
-              $normalPath = Join-Path $releaseRoot "$cleanDisplayName-Nexus.zip"
+              $normalPath = Join-Path $releaseRoot "$cleanDisplayName.zip"
               "$($key)_normal_path=$normalPath" >> $env:GITHUB_OUTPUT
             }
           }

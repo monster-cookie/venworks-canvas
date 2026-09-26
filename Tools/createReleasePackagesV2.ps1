@@ -254,19 +254,20 @@ foreach ($variant in $variants) {
       default { throw "$($variant.VariantName) has unsupported release package suffix '$suffix'." }
     }
     $cleanSuffix = switch ($suffix) {
-      'Nexus PC' { 'Nexus' }
+      'Nexus PC' { '' }
       'Bethesda PC' { 'Bethesda-PC' }
       'Bethesda Xbox' { 'Bethesda-Xbox' }
       'Bethesda PS5' { 'Bethesda-PS5' }
       default { $suffix }
     }
     $cleanDisplayName = $variant.ReleaseDisplayName -replace ' - ', '-' -replace ' ', '-'
-    [pscustomobject]@{ Suffix = $suffix; CleanSuffix = $cleanSuffix; CleanDisplayName = $cleanDisplayName; Files = @($files) }
+    $zipName = if ($cleanSuffix) { "$cleanDisplayName-$cleanSuffix.zip" } else { "$cleanDisplayName.zip" }
+    [pscustomobject]@{ Suffix = $suffix; CleanSuffix = $cleanSuffix; CleanDisplayName = $cleanDisplayName; ZipName = $zipName; Files = @($files) }
   })
 
   $expectedZipNames = @(
     $packages |
-      ForEach-Object { "$($_.CleanDisplayName)-$($_.CleanSuffix).zip" } |
+      ForEach-Object { $_.ZipName } |
       Sort-Object
   )
   $existingVariantZipFiles = @(
@@ -278,8 +279,7 @@ foreach ($variant in $variants) {
   }
 
   foreach ($package in $packages) {
-    $zipName = "$($package.CleanDisplayName)-$($package.CleanSuffix).zip"
-    New-ReleaseZip -ZipPath (Join-Path $resolvedOutputDirectory $zipName) -Files $package.Files
+    New-ReleaseZip -ZipPath (Join-Path $resolvedOutputDirectory $package.ZipName) -Files $package.Files
   }
 
   $actualZipNames = @(
