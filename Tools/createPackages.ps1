@@ -13,6 +13,10 @@ Uses an alternative directory containing compiled Papyrus PEX files for this pac
 Uses an alternative directory containing built Scaleform output sets for this packaging run instead of each selected variant's staged Scaleform target files.
 .PARAMETER ArchiveRootsDirectory
 Overrides the transaction workspace beneath the configured build work root. Failed transactions remain there for recovery inspection.
+.PARAMETER SkipEnvironment
+Skip importing the build environment file. Use when only configuration constants are needed (e.g., in CI packaging).
+.PARAMETER BuildOnly
+Build archives only without installing to physical module folders. Use for CI where staging paths are not Junctions.
 #>
 [CmdletBinding()]
 param(
@@ -20,7 +24,10 @@ param(
   [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
   [string]$ScriptsDirectory,
   [string]$ScaleformDirectory,
-  [string]$ArchiveRootsDirectory
+  [string]$ArchiveRootsDirectory,
+  [switch]$SkipEnvironment,
+  [switch]$BuildOnly,
+  [switch]$CleanupLooseFiles
 )
 
 $PSNativeCommandUseErrorActionPreference = $true
@@ -29,7 +36,7 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sharedVariants.ps1')
 . (Join-Path $PSScriptRoot 'sharedBuild.ps1')
 if (!(Test-Path -LiteralPath 'Variable:Global:SharedConfigurationLoaded') -or !$Global:SharedConfigurationLoaded) {
-  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
+  . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath -SkipEnvironment:$SkipEnvironment
 }
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
 
@@ -133,6 +140,22 @@ try {
     }
   }
 
+  if ($BuildOnly) {
+    foreach ($record in $candidateRecords) {
+      $operation = $record.Operation
+      $stagingPath = $operation.StagingPath
+
+      Install-BuildVerifiedFile -Source $record.CandidateEsmPath -Destination (Join-Path $stagingPath $operation.PluginName) -ExpectedSha256 $record.CandidateEsmSha256 -Description "$($operation.Key) candidate ESM"
+      foreach ($archiveRecord in @($record.Archives)) {
+        Install-BuildVerifiedFile -Source $archiveRecord.CandidatePath -Destination (Join-Path $stagingPath $archiveRecord.Plan.FileName) -ExpectedSha256 $archiveRecord.CandidateSha256 -Description "$($operation.Key) candidate archive '$($archiveRecord.Plan.FileName)'"
+      }
+      Write-Host -ForegroundColor Green "Built archives for $($operation.Key) to $stagingPath"
+    }
+    Write-BuildPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Complete' -VariantKeys @($selectedVariants.VariantKey)
+    $completed = $true
+    return
+  }
+
   foreach ($record in $candidateRecords) {
     $operation = $record.Operation
     Assert-BuildJunctionTarget -StagingPath $operation.StagingPath -ExpectedTargetPath $operation.InstallPath
@@ -187,6 +210,19 @@ try {
 
   Write-BuildPackageTransactionJournal -TransactionPath $transactionPath -TransactionId $transactionId -Status 'Complete' -VariantKeys @($selectedVariants.VariantKey)
   $completed = $true
+  if ($CleanupLooseFiles) {
+    foreach ($variant in $selectedVariants) {
+      $staging = $variant.StagingFolderPath
+      if (Test-Path (Join-Path $staging 'Scaleform')) {
+        Remove-Item (Join-Path $staging 'Scaleform') -Recurse -Force
+        Write-Host "Cleaned Scaleform loose files from $staging"
+      }
+      if (Test-Path (Join-Path $staging 'Scripts')) {
+        Remove-Item (Join-Path $staging 'Scripts') -Recurse -Force
+        Write-Host "Cleaned Scripts loose files from $staging"
+      }
+    }
+  }
 }
 catch {
   $packageError = $_

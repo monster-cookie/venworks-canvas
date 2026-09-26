@@ -105,8 +105,8 @@ $Global:ModuleVariants = @(
       }
       @{
         FileName = 'Venworks-Canvas - Main_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
+        Format = 'General'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'Host'
@@ -123,20 +123,11 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
         )
-      }
-      @{
-        FileName = 'Venworks-Canvas - Textures_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'Host'
-        Assets = @()
       }
       @{
         FileName = 'Venworks-Canvas - Main_PS.ba2'
         Format = 'General'
-        Compression = 'Zlib'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'Host'
@@ -154,19 +145,10 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
         )
       }
-      @{
-        FileName = 'Venworks-Canvas - Textures_PS.ba2'
-        Format = 'General'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'Host'
-        Assets = @()
-      }
     ),
     'Venworks - Canvas',
     'Venworks - Canvas',
-    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
+    @('Main', 'Main_XBox', 'Main_PS')
   )
   [ModuleVariant]::new(
     'EXAMPLE',
@@ -214,8 +196,8 @@ $Global:ModuleVariants = @(
       }
       @{
         FileName = 'Venworks-Canvas-Example - Main_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
+        Format = 'General'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'Consumer'
@@ -224,21 +206,13 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'large' }
+          @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
-      }
-      @{
-        FileName = 'Venworks-Canvas-Example - Textures_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'Consumer'
-        Assets = @()
       }
       @{
         FileName = 'Venworks-Canvas-Example - Main_PS.ba2'
         Format = 'General'
-        Compression = 'Zlib'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'Consumer'
@@ -247,21 +221,13 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'large' }
+          @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
-      }
-      @{
-        FileName = 'Venworks-Canvas-Example - Textures_PS.ba2'
-        Format = 'General'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'Consumer'
-        Assets = @()
       }
     ),
     'Venworks - Canvas - Example',
     'Venworks - Canvas - Example',
-    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
+    @('Main', 'Main_XBox', 'Main_PS')
   )
   [ModuleVariant]::new(
     'COMPONENTGALLERY',
@@ -310,8 +276,8 @@ $Global:ModuleVariants = @(
       }
       @{
         FileName = 'Venworks-Canvas-ComponentGallery - Main_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
+        Format = 'General'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'ConsumerExtension'
@@ -321,20 +287,11 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
         )
-      }
-      @{
-        FileName = 'Venworks-Canvas-ComponentGallery - Textures_XBox.ba2'
-        Format = 'DX10'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'ConsumerExtension'
-        Assets = @()
       }
       @{
         FileName = 'Venworks-Canvas-ComponentGallery - Main_PS.ba2'
         Format = 'General'
-        Compression = 'Zlib'
+        Compression = 'None'
         MaxSizeMB = 2048
         IncludePapyrus = $false
         ScaleformOwnership = 'ConsumerExtension'
@@ -345,19 +302,10 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
         )
       }
-      @{
-        FileName = 'Venworks-Canvas-ComponentGallery - Textures_PS.ba2'
-        Format = 'General'
-        Compression = 'Zlib'
-        MaxSizeMB = 2048
-        IncludePapyrus = $false
-        ScaleformOwnership = 'ConsumerExtension'
-        Assets = @()
-      }
     ),
     'Venworks - Canvas - Component Gallery',
     'Venworks - Canvas - Component Gallery',
-    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
+    @('Main', 'Main_XBox', 'Main_PS')
   )
 )
 
