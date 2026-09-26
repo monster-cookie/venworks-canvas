@@ -8,13 +8,18 @@ all module variants. `VariantKey` remains a compatibility alias.
 
 .PARAMETER OutputDirectory
 Directory where release ZIPs will be created. Defaults to artifacts/release.
+
+.PARAMETER SkipEnvironment
+Skip importing the build environment file. Use when only configuration constants are needed (e.g., in CI packaging).
 #>
 [CmdletBinding()]
 param(
   [string]$OutputDirectory = (Join-Path (Join-Path $PSScriptRoot "..") "artifacts/release"),
 
   [Alias("VariantKey")]
-  [string[]]$VariantKeys
+  [string[]]$VariantKeys,
+
+  [switch]$SkipEnvironment
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +27,7 @@ Set-StrictMode -Version Latest
 
 if (!(Test-Path Variable:Global:SharedConfigurationLoaded) -or !$Global:SharedConfigurationLoaded) {
   Write-Host -ForegroundColor Green "Importing module variant configuration"
-  . "$PSScriptRoot/sharedConfig.ps1"
+  . "$PSScriptRoot/sharedConfig.ps1" -SkipEnvironment:$SkipEnvironment
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
