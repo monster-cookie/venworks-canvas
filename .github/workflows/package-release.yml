@@ -23,16 +23,14 @@ permissions: {}
 #       be uploaded manually. Existing repository secrets with the same names remain supported as fallbacks.
 ###############################################################################
 env:
-  UPLOAD_TO_NEXUSMODS: false
-  UPLOAD_CANVAS_TO_NEXUSMODS: false
-  UPLOAD_EXAMPLE_TO_NEXUSMODS: false
-  UPLOAD_COMPONENTGALLERY_TO_NEXUSMODS: false
-  NEXUSMODS_CATEGORY: main
+  UPLOAD_TO_NEXUSMODS: true
+  UPLOAD_CANVAS_TO_NEXUSMODS: true
+  UPLOAD_EXAMPLE_TO_NEXUSMODS: true
+  UPLOAD_COMPONENTGALLERY_TO_NEXUSMODS: true
 
   NEXUSMODS_FILE_ID_CANVAS: ${{ vars.NEXUSMODS_FILE_ID_CANVAS || secrets.NEXUSMODS_FILE_ID_CANVAS }}
   NEXUSMODS_FILE_ID_EXAMPLE: ${{ vars.NEXUSMODS_FILE_ID_EXAMPLE || secrets.NEXUSMODS_FILE_ID_EXAMPLE }}
   NEXUSMODS_FILE_ID_COMPONENTGALLERY: ${{ vars.NEXUSMODS_FILE_ID_COMPONENTGALLERY || secrets.NEXUSMODS_FILE_ID_COMPONENTGALLERY }}
-
 
 jobs:
   validate-tag-source:

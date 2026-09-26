@@ -1,0 +1,312 @@
+[size=6][b]Create a Canvas plugin from scratch[/b][/size]
+
+This guide is for Starfield mod creators who want to build an independently packaged Canvas panel. It follows the same boundaries as the shipped Venworks Canvas Example: an ESM registers the panel, a Papyrus script publishes game state, a small Scaleform movie connects the panel to Canvas, and local HTML/CSS defines what the player sees.
+
+The examples target the current Canvas 1.0 development contract. Canvas is a focused game UI renderer, not a web browser, so start with the elements and styles shown in the Component Gallery.
+
+[size=4][b]What you will make[/b][/size]
+
+[code]
+Start Game Enabled quest
+  -> Papyrus registrar
+  -> Canvas registry and data layer
+  -> your Scaleform consumer
+  -> your HTML and CSS panel
+[/code]
+
+Your finished mod should contain:
+
+[list]
+[*]One light-master ESM with a Start Game Enabled quest.
+[*]One compiled Papyrus registrar script.
+[*]One Canvas consumer SWF, usually used for both normal and large display modes.
+[*]One local HTML entry document and its CSS, SVG, and included HTML files.
+[*]One BA2 containing the compiled script and Interface files.
+[/list]
+
+The Canvas base package remains a separate requirement. Do not copy Canvas host files into your add-on.
+
+[table]
+[tr]
+[td][b]Piece[/b][/td]
+[td][b]Repository source[/b][/td]
+[/tr]
+[tr]
+[td]Plugin header and records[/td]
+[td]Spriggit/Venworks-Canvas-Example.esm[/td]
+[/tr]
+[tr]
+[td]Quest registrar and state publisher[/td]
+[td]ExampleRegistrar.psc[/td]
+[/tr]
+[tr]
+[td]Canvas consumer adapter[/td]
+[td]CanvasExample.as[/td]
+[/tr]
+[tr]
+[td]Effect datagram adapter[/td]
+[td]CanvasExampleEffectsAdapter.as[/td]
+[/tr]
+[tr]
+[td]HTML entry document[/td]
+[td]index.html[/td]
+[/tr]
+[tr]
+[td]Panel stylesheet[/td]
+[td]example.css[/td]
+[/tr]
+[tr]
+[td]Scaleform movie manifest[/td]
+[td]example.build.xml[/td]
+[/tr]
+[tr]
+[td]Build and package mapping[/td]
+[td]The EXAMPLE variant in sharedConfig.ps1[/td]
+[/tr]
+[/table]
+
+[size=4][b]Prerequisites[/b][/size]
+
+[list]
+[*]Venworks Canvas and Venworks Core Library 2.1.8 or later installed as authoring masters.
+[*]A Starfield plugin editor that can create the quest and bind script properties.
+[*]The Starfield Papyrus compiler with the Starfield, Venworks Core, and Canvas script sources available.
+[*]An ActionScript 3 compiler compatible with the repository's Apache Flex and Player 11.1 build target.
+[*]Archive2 or another packaging workflow that preserves the paths in this guide.
+[*]A new or disposable PC save for the first in-game test.
+[/list]
+
+[size=4][b]1. Choose permanent identities[/b][/size]
+
+Choose these values before creating records or files. They must agree across the ESM, Papyrus properties, SWF registration, and packaged paths.
+
+[table]
+[tr]
+[td][b]Identity[/b][/td]
+[td][b]Example used in this guide[/b][/td]
+[td][b]Rule[/b][/td]
+[/tr]
+[tr]
+[td]Plugin file[/td]
+[td]Acme-Canvas-Example.esm[/td]
+[td]Use a unique filename and do not rename it after release without a migration plan.[/td]
+[/tr]
+[tr]
+[td]Papyrus namespace[/td]
+[td]Acme:CanvasExample[/td]
+[td]Keep every compiled script for this plugin under the same namespace.[/td]
+[/tr]
+[tr]
+[td]Asset namespace[/td]
+[td]acme.canvas-example[/td]
+[td]Use lowercase ASCII letters, digits, dots, and hyphens. This becomes part of the Interface path.[/td]
+[/tr]
+[tr]
+[td]Consumer UUID[/td]
+[td]your-generated-uuid[/td]
+[td]Generate a new UUID once. Never reuse the UUID from the shipped Example or Gallery.[/td]
+[/tr]
+[tr]
+[td]Display name[/td]
+[td]Acme Canvas Example[/td]
+[td]This is the readable name Canvas reports in diagnostics.[/td]
+[/tr]
+[tr]
+[td]Descriptor version[/td]
+[td]1[/td]
+[td]Increase it when an installed update must replace the registered movie descriptor.[/td]
+[/tr]
+[/table]
+
+[size=4][b]2. Create the HTML panel[/b][/size]
+
+Create index.html and panel.css in a local resource folder. This starter displays complete data supplied by the Scaleform consumer; HTML does not read game data by itself.
+
+[code-html]
+<!doctype html>
+<html>
+  <head>
+    <title>Acme Canvas Example</title>
+    <meta charset="utf-8"></meta>
+    <link rel="stylesheet" href="panel.css"></link>
+  </head>
+  <body>
+    <main class="panel">
+      <h1>PLAYER STATUS</h1>
+      <p data-vw-template="{playername} | LEVEL {playerlevel:integer}"></p>
+      <p data-vw-template="HEALTH {health:integer}/{maxhealth:integer}"></p>
+      <vw-meter class="health-meter" value="healthpercent"></vw-meter>
+    </main>
+  </body>
+</html>
+[/code-html]
+
+[code-css]
+.panel { display: flex; flex-direction: column; width: 460px; margin: 28px 32px; padding: 14px; gap: 8px; color: #e3fdff; background-color: #141414d1; border-width: 1px; border-style: solid; border-color: #3aadfc; font-family: $MAIN_Font_Bold; font-size: 18px; line-height: 26px; }
+.panel h1 { margin: 0px; color: #66ffff; font-size: 24px; line-height: 30px; }
+.panel p { margin: 0px; }
+.health-meter { width: 420px; height: 14px; color: #66ffff; background-color: #26313a; }
+[/code-css]
+
+[size=4][b]3. Create the Scaleform consumer[/b][/size]
+
+The SWF is the adapter between Canvas and your document. It declares the data it needs, keeps a complete view model, and gives that model to the HTML bridge.
+
+Your registration should have this shape:
+
+[code-actionscript]
+public function getCanvasRegistration() : Object
+{
+   return {
+      "protocol":"VWCANVAS_CONSUMER/3",
+      "consumerId":"your-generated-uuid",
+      "assetNamespace":"acme.canvas-example",
+      "version":1,
+      "minimumContractVersion":3,
+      "maximumContractVersion":3,
+      "hostKinds":["player"],
+      "uiChannels":["PlayerData","PlayerFrequentData"],
+      "eventSubscriptions":[],
+      "marker":"ACME_CANVAS_EXAMPLE"
+   };
+}
+
+public function getCanvasHtmlRegistration() : Object
+{
+   return {"contract":"VWCANVAS_HTML/2","entryDocument":"index.html"};
+}
+[/code-actionscript]
+
+Canvas calls three fixed callbacks on a current consumer:
+
+[table]
+[tr]
+[td][b]Callback[/b][/td]
+[td][b]What your SWF should do[/b][/td]
+[/tr]
+[tr]
+[td]handleUIData(channel, data)[/td]
+[td]Copy only validated values from a requested game UI channel into your saved view model, then publish the complete model.[/td]
+[/tr]
+[tr]
+[td]handleCanvasEvent(topic, body)[/td]
+[td]Decode and validate a subscribed Canvas datagram, commit the complete accepted update, then publish. Leave the previous valid model unchanged when validation fails.[/td]
+[/tr]
+[tr]
+[td]handleLifecycle(state, detail)[/td]
+[td]On ready, obtain the HTML bridge, set the viewport, and publish the initial model. On unload, release the bridge and any timers or listeners.[/td]
+[/tr]
+[/table]
+
+[size=4][b]4. Build the consumer movie[/b][/size]
+
+Compile the document class as an ActionScript 3 movie targeting the same Player 11.1 runtime as Canvas. Your build must produce a consumer movie, not a second Canvas host. Do not embed Canvas's HTML parser, renderer, subscription manager, or host classes in the consumer SWF.
+
+[size=4][b]5. Create the Papyrus registrar[/b][/size]
+
+Create a Start Game Enabled quest and attach a registrar script that extends Venworks:Canvas:Base:BaseQuest.
+
+Bind these quest properties:
+
+[table]
+[tr]
+[td][b]Property[/b][/td]
+[td][b]Value for this guide[/b][/td]
+[/tr]
+[tr]
+[td]Registry[/td]
+[td]The VWCANVAS_Registry quest from Venworks-Canvas.esm[/td]
+[/tr]
+[tr]
+[td]ConsumerId[/td]
+[td]Your permanent UUID[/td]
+[/tr]
+[tr]
+[td]DisplayName[/td]
+[td]Acme Canvas Example[/td]
+[/tr]
+[tr]
+[td]NormalMoviePath[/td]
+[td]VenworksCanvas/Consumers/acme.canvas-example/normal.swf[/td]
+[/tr]
+[tr]
+[td]LargeMoviePath[/td]
+[td]VenworksCanvas/Consumers/acme.canvas-example/large.swf[/td]
+[/tr]
+[tr]
+[td]DescriptorVersion[/td]
+[td]1[/td]
+[/tr]
+[tr]
+[td]ExpectedRegistration[/td]
+[td]True[/td]
+[/tr]
+[/table]
+
+[size=4][b]6. Add mod-owned data[/b][/size]
+
+Use Canvas UI channels for data already supplied by the game UI. Use Canvas datagrams for a complete state or occurrence produced by your Papyrus code.
+
+[code-papyrus]
+OperationResult result = Registry.TryPublishCanvasDatagram(
+  "acme.canvas-example.status",
+  "panel.state",
+  1,
+  "ci-ascii",
+  "ready|42"
+)
+Registry.LogOperation(result)
+[/code-papyrus]
+
+[size=4][b]7. Author the ESM[/b][/size]
+
+Create a light master with these masters:
+[list]
+[*]Starfield.esm
+[*]Venworks-Core.esm
+[*]Venworks-Canvas.esm
+[/list]
+
+Add one quest, mark it Start Game Enabled and Starts Enabled, attach your compiled registrar, and fill every mandatory property.
+
+[size=4][b]8. Package the files[/b][/size]
+
+The installed layout must resolve to these paths:
+
+[code]
+Data/
+  Acme-Canvas-Example.esm
+  Acme-Canvas-Example - Main.ba2
+
+Acme-Canvas-Example - Main.ba2
+  Scripts/Acme/CanvasExample/Registrar.pex
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/normal.swf
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/large.swf
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/index.html
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/panel.css
+[/code]
+
+[size=4][b]9. Test in increasing scope[/b][/size]
+
+[list]
+[*]Inspect the ESM after saving.
+[*]Compile the registrar with no Papyrus errors.
+[*]Compile the SWF and confirm the movie contains your own UUID and namespace.
+[*]Inspect the BA2 and confirm every file uses the exact packaged path.
+[*]Install Canvas plus only your add-on on a disposable save.
+[*]Open the Player HUD and confirm the initial HTML appears.
+[*]Change or trigger each data source and confirm the visible values update.
+[/list]
+
+[size=4][b]Common mistakes[/b][/size]
+
+[list]
+[*]Reusing the shipped Example or Gallery UUID.
+[*]Letting the ESM UUID, SWF UUID, namespace, movie paths, or descriptor version disagree.
+[*]Expecting HTML bindings to read game state without the consumer calling setData().
+[*]Sending partial setData() objects and accidentally removing earlier values.
+[*]Treating ci-ascii payload text as case preserving.
+[*]Using one topic for both current state and replayable occurrences.
+[*]Loading remote assets, JavaScript, browser APIs, forms, navigation, or unsupported CSS.
+[*]Packaging a second copy of Canvas host classes inside the consumer SWF.
+[/list]

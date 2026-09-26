@@ -1,5 +1,9 @@
 # Venworks Canvas and UI Data Layer
 
+## Version 1.0.3 (September 25, 2026)
+
+- Misc documentation updates and hooking up to Nexus API for automatic uploads.
+
 ## Version 1.0.1 (September 25, 2026)
 
 - Requires Venworks Core Library 2.1.8 or higher.
