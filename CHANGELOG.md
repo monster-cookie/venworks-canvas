@@ -1,6 +1,6 @@
 # Venworks Canvas and UI Data Layer
 
-## Version 1.0.0 (UNRELEASED)
+## Version 1.0.1 (September 25, 2026)
 
 - Requires Venworks Core Library 2.1.8 or higher.
 - Includes an optional Example panel and a separate Component Gallery with `Tag | Syntax | Rendered Result` columns that place HTML examples beside their Canvas-rendered results.
