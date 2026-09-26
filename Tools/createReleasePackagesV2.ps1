@@ -247,19 +247,26 @@ foreach ($variant in $variants) {
   $packages = @($packageSuffixes | ForEach-Object {
     $suffix = [string]$_
     $files = switch ($suffix) {
-      'Nexus PC - Normal' { @($pluginFile) + $windowsArchiveFiles; break }
+      'Nexus PC' { @($pluginFile) + $windowsArchiveFiles; break }
       'Bethesda PC' { @($pluginFile) + $windowsArchiveFiles; break }
       'Bethesda Xbox' { @($pluginFile) + $xboxArchiveFiles; break }
       'Bethesda PS5' { @($pluginFile) + $psArchiveFiles; break }
       default { throw "$($variant.VariantName) has unsupported release package suffix '$suffix'." }
     }
-    [pscustomobject]@{ Suffix = $suffix; Files = @($files) }
+    $cleanSuffix = switch ($suffix) {
+      'Nexus PC' { 'Nexus' }
+      'Bethesda PC' { 'Bethesda-PC' }
+      'Bethesda Xbox' { 'Bethesda-Xbox' }
+      'Bethesda PS5' { 'Bethesda-PS5' }
+      default { $suffix }
+    }
+    $cleanDisplayName = $variant.ReleaseDisplayName -replace ' - ', '-' -replace ' ', '-'
+    [pscustomobject]@{ Suffix = $suffix; CleanSuffix = $cleanSuffix; CleanDisplayName = $cleanDisplayName; Files = @($files) }
   })
 
-  $zipNamePrefix = "$($variant.ReleaseDisplayName) - "
   $expectedZipNames = @(
     $packages |
-      ForEach-Object { "$zipNamePrefix$($_.Suffix).zip" } |
+      ForEach-Object { "$($_.CleanDisplayName)-$($_.CleanSuffix).zip" } |
       Sort-Object
   )
   $existingVariantZipFiles = @(
@@ -271,13 +278,13 @@ foreach ($variant in $variants) {
   }
 
   foreach ($package in $packages) {
-    $zipName = "$($variant.ReleaseDisplayName) - $($package.Suffix).zip"
+    $zipName = "$($package.CleanDisplayName)-$($package.CleanSuffix).zip"
     New-ReleaseZip -ZipPath (Join-Path $resolvedOutputDirectory $zipName) -Files $package.Files
   }
 
   $actualZipNames = @(
     Get-ChildItem -LiteralPath $resolvedOutputDirectory -File -Filter '*.zip' |
-      Where-Object { $_.Name.StartsWith($zipNamePrefix, [System.StringComparison]::Ordinal) } |
+      Where-Object { $expectedZipNames -contains $_.Name } |
       ForEach-Object { $_.Name } |
       Sort-Object
   )

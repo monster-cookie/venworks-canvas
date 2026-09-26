@@ -243,9 +243,17 @@ jobs:
 
           foreach ($variant in $Global:ModuleVariants) {
             $key = $variant.VariantKey.ToLowerInvariant()
+            $cleanDisplayName = $variant.ReleaseDisplayName -replace ' - ', '-' -replace ' ', '-'
             $packageSuffixes = @(Get-VariantReleasePackageSuffixes -Variant $variant)
             foreach ($packageSuffix in $packageSuffixes) {
-              $packageName = "$($variant.ReleaseDisplayName) - $packageSuffix.zip"
+              $cleanSuffix = switch ($packageSuffix) {
+                'Nexus PC' { 'Nexus' }
+                'Bethesda PC' { 'Bethesda-PC' }
+                'Bethesda Xbox' { 'Bethesda-Xbox' }
+                'Bethesda PS5' { 'Bethesda-PS5' }
+                default { $packageSuffix }
+              }
+              $packageName = "$cleanDisplayName-$cleanSuffix.zip"
               $expectedPackageNames.Add($packageName)
               $packagePath = Join-Path $releaseRoot $packageName
               if (-not [System.IO.File]::Exists($packagePath)) {
@@ -256,8 +264,8 @@ jobs:
               }
             }
 
-            if ('Nexus PC - Normal' -in $packageSuffixes) {
-              $normalPath = Join-Path $releaseRoot "$($variant.ReleaseDisplayName) - Nexus PC - Normal.zip"
+            if ('Nexus PC' -in $packageSuffixes) {
+              $normalPath = Join-Path $releaseRoot "$cleanDisplayName-Nexus.zip"
               "$($key)_normal_path=$normalPath" >> $env:GITHUB_OUTPUT
             }
           }

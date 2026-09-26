@@ -318,7 +318,7 @@ function Global:Get-VariantReleasePackageSuffixes {
 
   $targets = @($Variant.ArchiveTargets)
   $suffixes = @()
-  if ('Main' -in $targets) { $suffixes += 'Nexus PC - Normal'; $suffixes += 'Bethesda PC' }
+  if ('Main' -in $targets) { $suffixes += 'Nexus PC'; $suffixes += 'Bethesda PC' }
   if ('Main_XBox' -in $targets) { $suffixes += 'Bethesda Xbox' }
   if ('Main_PS' -in $targets) { $suffixes += 'Bethesda PS5' }
   return $suffixes
