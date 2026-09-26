@@ -4,10 +4,14 @@ Loads the Canvas build environment and declares its reusable build configuration
 
 .PARAMETER EnvironmentPath
 Environment file selected by the first successful configuration initialization in the current PowerShell session. Start a fresh process to initialize from a different file.
+
+.PARAMETER SkipEnvironment
+Skip importing the build environment file. Use when only configuration constants are needed (e.g., in CI packaging).
 #>
 [CmdletBinding()]
 param(
-  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env')
+  [string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.env'),
+  [switch]$SkipEnvironment
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +19,9 @@ Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sharedVariants.ps1')
 . (Join-Path $PSScriptRoot 'sharedBuild.ps1')
 
-Import-BuildEnvironment -Path $EnvironmentPath
+if (-not $SkipEnvironment) {
+  Import-BuildEnvironment -Path $EnvironmentPath
+}
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $Global:BuildSettings = @{
@@ -97,7 +103,70 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
         )
       }
-    )
+      @{
+        FileName = 'Venworks-Canvas - Main_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Host'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.gfx'; Target = 'Interface/playerhudcomponents_lrg.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.swf'; Target = 'Interface/hudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.gfx'; Target = 'Interface/hudmenu.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas - Textures_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Host'
+        Assets = @()
+      }
+      @{
+        FileName = 'Venworks-Canvas - Main_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Host'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.gfx'; Target = 'Interface/playerhudcomponents_lrg.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.swf'; Target = 'Interface/hudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu.gfx'; Target = 'Interface/hudmenu.gfx' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas - Textures_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Host'
+        Assets = @()
+      }
+    ),
+    'Venworks - Canvas',
+    'Venworks - Canvas',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
   [ModuleVariant]::new(
     'EXAMPLE',
@@ -143,7 +212,56 @@ $Global:ModuleVariants = @(
           @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
-    )
+      @{
+        FileName = 'Venworks-Canvas-Example - Main_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Consumer'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'large' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas-Example - Textures_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Consumer'
+        Assets = @()
+      }
+      @{
+        FileName = 'Venworks-Canvas-Example - Main_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Consumer'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/normal.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example.subscriptions-probe/large.swf'; ConsumerNamespace = 'venworks.canvas.example.subscriptions-probe'; DisplayMode = 'large' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas-Example - Textures_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'Consumer'
+        Assets = @()
+      }
+    ),
+    'Venworks - Canvas - Example',
+    'Venworks - Canvas - Example',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
   [ModuleVariant]::new(
     'COMPONENTGALLERY',
@@ -190,8 +308,72 @@ $Global:ModuleVariants = @(
           @{ Root = 'Repository'; Source = 'Scaleform/component-gallery/resources'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' }
         )
       }
-    )
+      @{
+        FileName = 'Venworks-Canvas-ComponentGallery - Main_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'ConsumerExtension'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas-ComponentGallery - Textures_XBox.ba2'
+        Format = 'DX10'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'ConsumerExtension'
+        Assets = @()
+      }
+      @{
+        FileName = 'Venworks-Canvas-ComponentGallery - Main_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'ConsumerExtension'
+        Assets = @(
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+        )
+      }
+      @{
+        FileName = 'Venworks-Canvas-ComponentGallery - Textures_PS.ba2'
+        Format = 'General'
+        Compression = 'Zlib'
+        MaxSizeMB = 2048
+        IncludePapyrus = $false
+        ScaleformOwnership = 'ConsumerExtension'
+        Assets = @()
+      }
+    ),
+    'Venworks - Canvas - Component Gallery',
+    'Venworks - Canvas - Component Gallery',
+    @('Main', 'Textures', 'Main_XBox', 'Textures_XBox', 'Main_PS', 'Textures_PS')
   )
 )
+
+function Global:Get-VariantReleasePackageSuffixes {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [ModuleVariant]$Variant
+  )
+
+  $targets = @($Variant.ArchiveTargets)
+  $suffixes = @()
+  if ('Main' -in $targets) { $suffixes += 'Nexus PC - Normal'; $suffixes += 'Bethesda PC' }
+  if ('Main_XBox' -in $targets) { $suffixes += 'Bethesda Xbox' }
+  if ('Main_PS' -in $targets) { $suffixes += 'Bethesda PS5' }
+  return $suffixes
+}
 
 $Global:SharedConfigurationLoaded = $true
