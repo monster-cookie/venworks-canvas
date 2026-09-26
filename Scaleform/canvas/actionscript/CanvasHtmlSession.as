@@ -3,9 +3,21 @@ package
    import flash.display.DisplayObjectContainer;
    import flash.display.Sprite;
    import flash.geom.Rectangle;
+   import flash.events.Event;
 
    public final class CanvasHtmlSession
    {
+      private var hostLayout:Object;
+
+      private var hudTargets:CanvasHudTargets;
+      private var consumerId:String;
+
+      private var coalesce:Boolean;
+      private var pendingData:Object;
+      private var updateDiagnostic:CanvasHtmlDiagnostic;
+      private var updateRevision:uint = 0;
+      private var committingData:Boolean = false;
+
       private var mount:DisplayObjectContainer;
 
       private var loadResult:CanvasHtmlLoadResult;
@@ -13,6 +25,8 @@ package
       private var stylesheet:CanvasCssCascade;
 
       private var viewport:Sprite;
+
+      private var retainedBoxes:Array;
 
       private var documentDisplay:Sprite;
 
@@ -34,12 +48,21 @@ package
 
       private var activeState:String;
 
-      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult)
+      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:Boolean = false, param4:CanvasHudTargets = null, param5:String = null, param6:Object = null)
       {
          if(param1 == null || param2 == null || !param2.success)
          {
             throw new Error("Canvas HTML session requires a mount and parsed document");
          }
+         this.hostLayout = param3 ? param6 : null;
+         if(this.hostLayout != null)
+         {
+            this.viewportWidth = Number(this.hostLayout.visibleWidth);
+            this.viewportHeight = Number(this.hostLayout.visibleHeight);
+         }
+         this.hudTargets = param4;
+         this.consumerId = param5;
+         this.coalesce = param3;
          this.mount = param1;
          this.loadResult = param2;
       }
@@ -71,12 +94,59 @@ package
             return;
          }
          var snapshot:Object = CanvasHtmlData.snapshot(param1);
+         if(this.coalesce)
+         {
+            var composed:CanvasHtmlComposeResult = new CanvasHtmlComposer().compose(this.loadResult,snapshot,this.activeState);
+            if(!composed.success) throw new Error(composed.diagnostic.toString());
+            this.pendingData = snapshot;
+            this.mount.addEventListener(Event.ENTER_FRAME,this.applyPending,false,0,true);
+            return;
+         }
          var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
          if(failure != null)
          {
             throw new Error(failure.toString());
          }
          this.data = snapshot;
+      }
+
+      public function getUpdateState() : Object
+      {
+         return {pending:this.pendingData != null,revision:this.updateRevision,diagnostic:this.updateDiagnostic == null ? null : this.updateDiagnostic.toString()};
+      }
+
+      private function applyPending(event:Event) : void
+      {
+         if(this.mount != null) this.mount.removeEventListener(Event.ENTER_FRAME,this.applyPending);
+         if(this.disposed || this.pendingData == null) return;
+         var snapshot:Object = this.pendingData;
+         this.pendingData = null;
+         try
+         {
+            this.committingData = true;
+            this.updateDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
+            if(this.updateDiagnostic == null)
+            {
+               this.data = snapshot;
+               this.updateRevision++;
+            }
+         }
+         catch(updateError:*)
+         {
+            this.updateDiagnostic = new CanvasHtmlDiagnostic("render","update-failed",this.loadResult.entryDocument.resource);
+         }
+         finally { this.committingData = false; }
+      }
+
+      public function setHostLayout(layout:Object) : void
+      {
+         if(!this.coalesce || this.disposed || layout == null) return;
+         var previous:Object = this.hostLayout;
+         this.hostLayout = layout;
+         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,Number(layout.visibleWidth),Number(layout.visibleHeight),this.activeState);
+         if(failure != null) { this.hostLayout = previous; throw new Error(failure.toString()); }
+         this.viewportWidth = Number(layout.visibleWidth);
+         this.viewportHeight = Number(layout.visibleHeight);
       }
 
       public function setViewport(param1:Number, param2:Number) : void
@@ -172,6 +242,11 @@ package
             return;
          }
          this.disposed = true;
+         if(this.hudTargets != null) this.hudTargets.release(this.consumerId);
+         this.hudTargets = null;
+         this.mount.removeEventListener(Event.ENTER_FRAME,this.applyPending);
+         this.pendingData = null;
+         this.updateDiagnostic = null;
          if(this.viewport != null)
          {
             this.viewport.scrollRect = null;
@@ -184,6 +259,7 @@ package
                this.mount.removeChild(this.viewport);
             }
          }
+         this.retainedBoxes = null;
          this.documentDisplay = null;
          this.viewport = null;
          this.stylesheet = null;
@@ -216,11 +292,20 @@ package
          {
             return composed.diagnostic;
          }
-         var rendered:CanvasHtmlRenderResult = new CanvasHtmlRenderer().render(composed.root,this.stylesheet,this.loadResult,param2,param3);
+         var rendered:CanvasHtmlRenderResult = new CanvasHtmlRenderer().render(composed.root,this.stylesheet,this.loadResult,param2,param3,param2 == this.viewportWidth && param3 == this.viewportHeight ? this.retainedBoxes : null,this.hostLayout,this.hudTargets);
          if(!rendered.success)
          {
             return rendered.diagnostic;
          }
+         if(rendered.targets.length > 0)
+         {
+            var targetError:String = this.hudTargets == null ? "HUD targets unavailable in this host" : this.hudTargets.validate(rendered.targets);
+            if(targetError != null) return new CanvasHtmlDiagnostic("render","hud-target-unavailable",this.loadResult.entryDocument.resource,-1,targetError);
+         }
+         if(this.hudTargets != null && (!this.coalesce || this.committingData || this.updateRevision > 0)) this.hudTargets.apply(this.consumerId,rendered.targets);
+         CanvasHtmlRetainedTree.commit(rendered.boxes);
+         rendered.display = rendered.boxes[0].sprite as Sprite;
+         this.retainedBoxes = rendered.boxes;
          if(this.viewport == null)
          {
             this.viewport = new Sprite();
@@ -228,14 +313,16 @@ package
             this.viewport.mouseEnabled = false;
             this.viewport.mouseChildren = false;
          }
-         if(this.documentDisplay != null && this.documentDisplay.parent === this.viewport)
+         if(this.documentDisplay != null && this.documentDisplay !== rendered.display && this.documentDisplay.parent === this.viewport)
          {
             this.viewport.removeChild(this.documentDisplay);
          }
          this.documentDisplay = rendered.display;
          this.documentDisplay.name = "CanvasHtmlDocument";
-         this.viewport.addChild(this.documentDisplay);
+         if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay);
          this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
+         this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
+         this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
          if(this.viewport.parent !== this.mount)
          {
             this.mount.addChild(this.viewport);

@@ -304,6 +304,15 @@
           </div>
         </section>
       </div>
+      <section class="gallery-section">
+        <h2>SVG curves and segmented live meters</h2>
+        <p>Standard SVG paths, primitives and group transforms share the external SVG renderer.</p>
+        <svg width="320" height="64" viewBox="0 0 320 64"><g transform="translate(4 4)" fill="#061722" stroke="#2dcbff" stroke-width="2"><path d="M 16 0 L 296 0 Q 312 0 312 16 L 312 40 C 312 52 300 56 288 56 L 16 56 Q 0 56 0 40 L 0 16 Q 0 0 16 0 Z"></path><circle cx="28" cy="28" r="12" fill="#2dcbff"></circle><polyline points="52,36 68,20 84,36" fill="none"></polyline></g></svg>
+        <p>Health uses an explicit 0–100 range, sixteen segments, and partial fills.</p>
+        <vw-meter class="expanded-meter" value="player.healthpercentage" min="0" max="100" direction="right" segments="16" gap="2" partial="true"></vw-meter>
+        <p>HTML/3 coalesces snapshots within one frame and retains unrelated panels. HTML/2 remains supported.</p>
+        <p>HUD controls are declarations in HUD consumers: &lt;vw-hud-target target=&quot;player.crosshair&quot; disabled=&quot;true&quot;&gt;&lt;/vw-hud-target&gt;. This Gallery does not suppress game controls.</p>
+      </section>
       <footer class="gallery-footer">
         <p>The syntax and the result in every row come from this Gallery document; Canvas owns parsing, binding, layout, and rendering.</p>
       </footer>

@@ -26,6 +26,11 @@ package
          {
             return false;
          }
+         var fillOpacity:Number = param1.getAttribute("fill-opacity") == null ? 1 : Number(param1.getAttribute("fill-opacity"));
+         var strokeOpacity:Number = param1.getAttribute("stroke-opacity") == null ? 1 : Number(param1.getAttribute("stroke-opacity"));
+         if(!isFinite(fillOpacity+strokeOpacity) || fillOpacity < 0 || fillOpacity > 1 || strokeOpacity < 0 || strokeOpacity > 1) return false;
+         fill = {color:fill.color,alpha:Number(fill.alpha)*fillOpacity};
+         stroke = {color:stroke.color,alpha:Number(stroke.alpha)*strokeOpacity};
          var strokeWidth:Number = param1.getAttribute("stroke-width") == null ? 1 : Number(param1.getAttribute("stroke-width"));
          if(!isFinite(strokeWidth) || strokeWidth < 0 || strokeWidth > CanvasHtmlLimits.MAX_SVG_STROKE_WIDTH)
          {
@@ -75,6 +80,9 @@ package
          var command:String = null;
          var index:int = 0;
          var hasMove:Boolean = false;
+         var previous:String = "";
+         var controlX:Number = 0;
+         var controlY:Number = 0;
          while(index < tokens.length)
          {
             if(isCommand(String(tokens[index])))
@@ -108,6 +116,7 @@ package
                currentX = startX;
                currentY = startY;
                command = null;
+               previous = "Z";
                continue;
             }
             if(upper == "M" || upper == "L")
@@ -201,10 +210,58 @@ package
                }
                param2.lineTo(lineX,lineY);
             }
+            else if(upper == "Q" || upper == "T" || upper == "C" || upper == "S")
+            {
+               var count:int = upper == "C" ? 6 : (upper == "T" ? 2 : 4);
+               if(!hasMove || index + count > tokens.length) return false;
+               var points:Array = [];
+               for(var p:int = 0; p < count; p++)
+               {
+                  if(isCommand(String(tokens[index]))) return false;
+                  var value:Number = Number(tokens[index++]) + (relative ? (p % 2 == 0 ? currentX : currentY) : 0);
+                  if(!isBoundedSource(value)) return false;
+                  points.push(value);
+               }
+               if(upper == "T" || upper == "S")
+               {
+                  var reflect:Boolean = upper == "T" ? (previous == "Q" || previous == "T") : (previous == "C" || previous == "S");
+                  points.unshift(reflect ? 2 * currentX - controlX : currentX,reflect ? 2 * currentY - controlY : currentY);
+               }
+               var transformed:Array = [];
+               for(p = 0; p < points.length; p++)
+               {
+                  value = transformCoordinate(Number(points[p]),p % 2 == 0 ? minX : minY,p % 2 == 0 ? param4 : param5);
+                  if(!isFinite(value)) return false;
+                  transformed.push(value);
+               }
+               if(points.length == 4)
+               {
+                  if(param7(1) !== true) return false;
+                  param2.curveTo(transformed[0],transformed[1],transformed[2],transformed[3]);
+               }
+               else
+               {
+                  // Bounded cubic subdivision also works on Scaleform's older Graphics API.
+                  if(param7(12) !== true) return false;
+                  for(var step:int = 1; step <= 12; step++)
+                  {
+                     var t:Number = step / 12;
+                     var u:Number = 1 - t;
+                     var cx:Number = u*u*u*currentX + 3*u*u*t*Number(points[0]) + 3*u*t*t*Number(points[2]) + t*t*t*Number(points[4]);
+                     var cy:Number = u*u*u*currentY + 3*u*u*t*Number(points[1]) + 3*u*t*t*Number(points[3]) + t*t*t*Number(points[5]);
+                     param2.lineTo(transformCoordinate(cx,minX,param4),transformCoordinate(cy,minY,param5));
+                  }
+               }
+               controlX = Number(points[points.length - 4]);
+               controlY = Number(points[points.length - 3]);
+               currentX = Number(points[points.length - 2]);
+               currentY = Number(points[points.length - 1]);
+            }
             else
             {
                return false;
             }
+            previous = upper;
          }
          if(fill.alpha > 0)
          {
@@ -265,6 +322,14 @@ package
                {
                   return null;
                }
+               if(index < param1.length && (param1.charAt(index) == "e" || param1.charAt(index) == "E"))
+               {
+                  index++;
+                  if(param1.charAt(index) == "+" || param1.charAt(index) == "-") index++;
+                  var exponentStart:int = index;
+                  while(index < param1.length && param1.charCodeAt(index) >= 48 && param1.charCodeAt(index) <= 57) index++;
+                  if(index == exponentStart) return null;
+               }
                result.push(param1.substring(start,index));
             }
             if(result.length > CanvasHtmlLimits.MAX_SVG_PATH_TOKENS)
@@ -305,7 +370,7 @@ package
 
       private static function isCommand(param1:String) : Boolean
       {
-         return param1 == "M" || param1 == "m" || param1 == "L" || param1 == "l" || param1 == "H" || param1 == "h" || param1 == "V" || param1 == "v" || param1 == "Z" || param1 == "z";
+         return param1 != null && param1.length == 1 && "MmLlHhVvZzQqTtCcSs".indexOf(param1) >= 0;
       }
    }
 }

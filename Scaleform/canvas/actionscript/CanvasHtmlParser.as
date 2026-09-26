@@ -277,6 +277,8 @@ package
                return false;
             }
          }
+         else if(param1.name == "vw-symbol") { required = ["name"]; }
+         else if(param1.name == "vw-hud-target") { required = ["target"]; }
          else if(param1.name == "vw-meter")
          {
             required = ["value"];
@@ -295,6 +297,10 @@ package
 
       private function isAllowedAttribute(param1:String, param2:String) : Boolean
       {
+         if(param2 == "data-vw-anchor") return this.isGlobalElement(param1) || param1 == "svg" || param1 == "img";
+         if(CanvasHtmlBindings.isAttribute(param2))
+            return param2 == "data-vw-asset" ? param1 == "img" : this.isGlobalElement(param1) || param1 == "svg" || param1 == "img" || param1 == "vw-meter" || param1 == "vw-symbol" || param1 == "vw-hud-target";
+         if(param2 == "data-vw-assets") return param1 == "img";
          if(param2 == "data-vw-for-each")
          {
             return param1 == "div" || param1 == "li";
@@ -311,6 +317,8 @@ package
          {
             return true;
          }
+         if(param1 == "vw-symbol") return ["name","value","id","class","data-vw-visible"].indexOf(param2) >= 0;
+         if(param1 == "vw-hud-target") return ["target","disabled","offset-x","offset-y","id","class","data-vw-visible"].indexOf(param2) >= 0;
          if(param1 == "meta")
          {
             return param2 == "charset";
@@ -327,14 +335,7 @@ package
          {
             return param2 == "src" || param2 == "alt" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible";
          }
-         if(param1 == "svg")
-         {
-            return param2 == "viewbox" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible";
-         }
-         if(param1 == "path")
-         {
-            return param2 == "d" || param2 == "fill" || param2 == "stroke" || param2 == "stroke-width";
-         }
+         if(CanvasSvgGeometry.isElement(param1)) return CanvasSvgGeometry.allowsAttribute(param1,param2);
          if(param1 == "vw-include")
          {
             return param2 == "src";
@@ -353,7 +354,7 @@ package
          }
          if(param1 == "vw-meter")
          {
-            return param2 == "value" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible";
+            return param2 == "value" || param2 == "id" || param2 == "class" || param2 == "data-vw-visible" || ["min","max","direction","segments","gap","partial"].indexOf(param2) >= 0;
          }
          return false;
       }
@@ -362,6 +363,17 @@ package
       {
          var name:String = param2.name;
          var value:String = param2.value;
+         if(name == "data-vw-anchor") return CanvasHtmlTransform.isAnchor(value);
+         if(CanvasHtmlBindings.isAttribute(name)) return CanvasHtmlData.isDataIdentifier(value);
+         if(name == "data-vw-assets")
+         {
+            var assets:Array = value.split(" ");
+            if(assets.length == 0 || assets.length > 32) return false;
+            for each(var asset:String in assets) if(!CanvasHtmlPath.isValid(asset,".svg")) return false;
+            return true;
+         }
+         if(name == "target") return /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$/.test(value);
+         if(name == "disabled") return value == "true" || value == "false";
          if(name == "id" || name == "name")
          {
             return this.isIdentifier(value);
@@ -452,6 +464,9 @@ package
             referenceOffset = CanvasUtf8Decoder.byteOffset(this.source,param1.getAttributeValueOffset("src"));
             param1.referenceOffset = referenceOffset;
             this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.IMAGE,param1.getAttribute("src"),referenceOffset));
+            var assets:String = param1.getAttribute("data-vw-assets");
+            if(assets != null)
+               for each(var asset:String in assets.split(" ")) this.document.references.push(new CanvasHtmlReference(CanvasHtmlReference.IMAGE,asset,referenceOffset));
          }
          else if(param1.name == "vw-include")
          {
@@ -552,9 +567,9 @@ package
          {
             return param2 == "li";
          }
-         if(param1.name == "svg")
+         if(param1.name == "svg" || param1.name == "g")
          {
-            return param2 == "path";
+            return param2 != "svg" && CanvasSvgGeometry.isElement(param2);
          }
          if(this.isFlowContainer(param1.name))
          {
@@ -570,12 +585,12 @@ package
 
       private function isKnownElement(param1:String) : Boolean
       {
-         return param1 == "html" || param1 == "head" || param1 == "title" || param1 == "meta" || param1 == "link" || param1 == "style" || param1 == "body" || this.isFlowElement(param1) || param1 == "li" || param1 == "path";
+         return param1 == "html" || param1 == "head" || param1 == "title" || param1 == "meta" || param1 == "link" || param1 == "style" || param1 == "body" || this.isFlowElement(param1) || param1 == "li" || CanvasSvgGeometry.isElement(param1);
       }
 
       private function isFlowElement(param1:String) : Boolean
       {
-         return param1 == "main" || param1 == "header" || param1 == "footer" || param1 == "section" || param1 == "div" || param1 == "span" || param1 == "h1" || param1 == "h2" || param1 == "h3" || param1 == "h4" || param1 == "h5" || param1 == "h6" || param1 == "p" || param1 == "br" || param1 == "hr" || param1 == "ul" || param1 == "ol" || param1 == "button" || param1 == "template" || param1 == "img" || param1 == "svg" || param1 == "vw-include" || param1 == "vw-use" || param1 == "vw-repeat" || param1 == "vw-state" || param1 == "vw-meter";
+         return param1 == "main" || param1 == "header" || param1 == "footer" || param1 == "section" || param1 == "div" || param1 == "span" || param1 == "h1" || param1 == "h2" || param1 == "h3" || param1 == "h4" || param1 == "h5" || param1 == "h6" || param1 == "p" || param1 == "br" || param1 == "hr" || param1 == "ul" || param1 == "ol" || param1 == "button" || param1 == "template" || param1 == "img" || param1 == "svg" || param1 == "vw-include" || param1 == "vw-use" || param1 == "vw-repeat" || param1 == "vw-state" || param1 == "vw-meter" || param1 == "vw-symbol" || param1 == "vw-hud-target";
       }
 
       private function isFlowContainer(param1:String) : Boolean
@@ -600,7 +615,7 @@ package
 
       private function isEmptyElement(param1:String) : Boolean
       {
-         return param1 == "meta" || param1 == "link" || param1 == "br" || param1 == "hr" || param1 == "img" || param1 == "path" || param1 == "vw-include" || param1 == "vw-use" || param1 == "vw-meter";
+         return param1 == "meta" || param1 == "link" || param1 == "br" || param1 == "hr" || param1 == "img" || CanvasSvgGeometry.isElement(param1) && param1 != "svg" && param1 != "g" || param1 == "vw-include" || param1 == "vw-use" || param1 == "vw-meter" || param1 == "vw-symbol" || param1 == "vw-hud-target";
       }
 
       private function tokenHasAttribute(param1:CanvasHtmlToken, param2:String) : Boolean

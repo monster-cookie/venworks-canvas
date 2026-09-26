@@ -218,6 +218,18 @@ package
             }
          }
          var output:CanvasHtmlNode = this.cloneElement(source);
+         if(!CanvasHtmlBindings.resolve(source,output,scope))
+         {
+            this.reject("invalid-binding",String(param1.resource));
+            return;
+         }
+         if(source.name == "vw-symbol")
+         {
+            var symbolValue:Object = CanvasHtmlData.resolve(scope,source.getAttribute("value"));
+            output.bindingValue = symbolValue.found ? symbolValue.value : null;
+            if(!CanvasHtmlNativeSymbol.valid(source.getAttribute("name"),output.bindingValue))
+            { this.reject("invalid-native-symbol",String(param1.resource)); return; }
+         }
          if(source.name == "vw-meter")
          {
             var meterValue:Object = CanvasHtmlData.resolve(scope,source.getAttribute("value"));

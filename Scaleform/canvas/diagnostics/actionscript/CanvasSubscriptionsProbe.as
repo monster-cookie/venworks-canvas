@@ -5,7 +5,7 @@ package
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
-      private static const TEST_COUNT:int = 12;
+      private static const TEST_COUNT:int = 15;
 
       private var marker:CanvasDiagnosticMarker;
 
@@ -36,6 +36,9 @@ package
          this.runCase("DATAGRAM CODEC",this.testDatagramCodec);
          this.runCase("ATOMIC EFFECT STATE",this.testAtomicEffectState);
          this.runCase("CHRONOMARK SUSTENANCE PRECEDENCE",this.testChronomarkSustenancePrecedence);
+         this.runCase("HTML SVG AND METERS",CanvasHtmlPrimitivesDiagnostics.run);
+         this.runCase("HTML RETAINED UPDATES",CanvasHtmlUpdatesDiagnostics.run);
+         this.runCase("HUD TARGET OWNERSHIP",CanvasHudTargetsDiagnostics.run);
          this.updateMarker();
       }
 

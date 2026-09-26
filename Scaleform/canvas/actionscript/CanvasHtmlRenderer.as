@@ -8,6 +8,13 @@ package
 
    public final class CanvasHtmlRenderer
    {
+      private var safeRect:Rectangle;
+      private var nativeHost:CanvasHudTargets;
+
+      private var targets:Array;
+
+      private var previous:Object;
+
       private var stylesheet:CanvasCssCascade;
 
       private var resources:Object;
@@ -24,8 +31,12 @@ package
 
       private var currentSvgResource:String;
 
-      public function render(param1:CanvasHtmlNode, param2:CanvasCssCascade, param3:CanvasHtmlLoadResult, param4:Number, param5:Number) : CanvasHtmlRenderResult
+      public function render(param1:CanvasHtmlNode, param2:CanvasCssCascade, param3:CanvasHtmlLoadResult, param4:Number, param5:Number, param6:Array = null, param7:Object = null, param8:CanvasHudTargets = null) : CanvasHtmlRenderResult
       {
+         this.safeRect = param7 == null ? new Rectangle(0,0,param4,param5) : new Rectangle(Number(param7.safeX),Number(param7.safeY),param4-2*Number(param7.safeX),param5-2*Number(param7.safeY));
+         this.targets = [];
+         this.nativeHost = param8;
+         this.previous = CanvasHtmlRetainedTree.index(param6);
          this.stylesheet = param2;
          this.resources = {};
          this.viewportWidth = param4;
@@ -56,7 +67,7 @@ package
             this.disposeDisplay(root == null ? null : root.sprite as Sprite);
             return new CanvasHtmlRenderResult(false,null,0,0,this.failure);
          }
-         return new CanvasHtmlRenderResult(true,root.sprite as Sprite,Number(root.width),Number(root.height),null);
+         return new CanvasHtmlRenderResult(true,root.sprite as Sprite,Number(root.width),Number(root.height),null,boxes,this.targets);
       }
 
       private function buildTree(param1:CanvasHtmlNode) : Object
@@ -81,6 +92,11 @@ package
             {
                style["display"] = "inline";
             }
+            if(node.name == "vw-hud-target")
+            {
+               this.targets.push({offsetX:node.getAttribute("offset-x"),offsetY:node.getAttribute("offset-y"),target:node.getAttribute("target"),disabled:node.getAttribute("disabled") == "true",hidden:style["display"] == "none" || style["visibility"] == "hidden"});
+               continue;
+            }
             if(style["display"] == "none")
             {
                continue;
@@ -90,6 +106,7 @@ package
             sprite.mouseChildren = false;
             var box:Object = {
                "node":node,
+               "ancestors":ancestors,
                "style":style,
                "sprite":sprite,
                "parent":parent,
@@ -115,6 +132,12 @@ package
                "sourceIndex":parent == null ? 0 : (parent.children as Array).length,
                "zIndex":int(style["z-index"])
             };
+            box.key = CanvasHtmlRetainedTree.key(node,parent);
+            box.occurrences = {};
+            box.previous = this.previous[box.key];
+            box.measureReused = false;
+            box.drawReused = false;
+            sprite.name = box.key;
             boxes.push(box);
             if(parent == null)
             {
@@ -180,6 +203,7 @@ package
             {
                box.indent = 24;
             }
+            box.measureWidth = box.innerWidth;
             if(!this.assignChildWidths(box))
             {
                return false;
@@ -265,6 +289,13 @@ package
          for each(box in param1)
          {
             var node:CanvasHtmlNode = box.node as CanvasHtmlNode;
+            if(CanvasHtmlRetainedTree.canMeasure(box))
+            {
+               box.measureReused = true;
+               box.contentHeight = box.previous.contentHeight;
+               box.textNaturalWidth = box.previous.textNaturalWidth;
+               continue;
+            }
             if(node.type == CanvasHtmlNode.TEXT)
             {
                var format:TextFormat = this.createTextFormat(box.style);
@@ -295,6 +326,14 @@ package
             else if(node.name == "vw-meter")
             {
                box.contentHeight = 18;
+            }
+            else if(node.name == "vw-symbol")
+            {
+               try {
+                  if(this.nativeHost == null) return this.reject("native-host-unavailable",node.resource);
+                  Sprite(box.sprite).addChild(this.nativeHost.createSymbol(node.getAttribute("name"),node.bindingValue,Number(box.innerWidth),this.length(box.style["height"],this.viewportHeight,24)));
+                  box.contentHeight = this.length(box.style["height"],this.viewportHeight,24);
+               } catch(symbolError:*) { return this.reject("native-symbol-unavailable",node.resource); }
             }
             else if(node.name == "svg" || node.name == "img")
             {
@@ -407,6 +446,7 @@ package
                   Sprite(child.sprite).x += this.length(child.style["left"],Number(box.innerWidth),0);
                   Sprite(child.sprite).y += this.length(child.style["top"],innerHeight,0);
                }
+               if(!CanvasHtmlTransform.apply(child,this.safeRect)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
                if(!this.isBoundedCoordinate(Sprite(child.sprite).x) || !this.isBoundedCoordinate(Sprite(child.sprite).y))
                {
                   return this.reject("invalid-position",CanvasHtmlNode(child.node).resource);
@@ -415,7 +455,7 @@ package
             this.applyZOrder(box);
             this.drawBox(box);
          }
-         return true;
+         return this.failure == null;
       }
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean
@@ -457,23 +497,16 @@ package
          {
             return this.reject("invalid-svg-size",this.currentSvgResource,"asset");
          }
-         var shape:Shape = new Shape();
-         var color:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
-         var paths:Array = svg.children;
-         var path:CanvasHtmlNode = null;
-         if(paths.length == 0)
-         {
-            return this.reject("empty-svg",this.currentSvgResource,"asset");
+         if(svg.children.length == 0) return this.reject("empty-svg",this.currentSvgResource,"asset");
+         var drawWidth:Number = width; var drawHeight:Number = height;
+         if(param2.name == "img" && param1.style["object-fit"] == "contain") {
+            var scale:Number = Math.min(width/Number(viewbox[2]),height/Number(viewbox[3]));
+            drawWidth = Number(viewbox[2])*scale; drawHeight = Number(viewbox[3])*scale;
          }
-         for each(path in paths)
-         {
-            if(path.type != CanvasHtmlNode.ELEMENT || path.name != "path" || !CanvasSvgPathRenderer.render(path,shape.graphics,viewbox,width / Number(viewbox[2]),height / Number(viewbox[3]),color,this.consumeSvgWork))
-            {
-               return this.reject("unsupported-svg-path",this.currentSvgResource,"asset");
-            }
-         }
-         shape.x = Number(param1.border) + Number(param1.paddingLeft);
-         shape.y = Number(param1.border) + Number(param1.paddingTop);
+         var shape:Sprite = CanvasSvgGeometry.render(svg,viewbox,drawWidth,drawHeight,this.stylesheet,param1.style,param1.ancestors as Array,this.consumeSvgWork,param2.name == "svg");
+         if(shape == null) return this.reject("unsupported-svg-path",this.currentSvgResource,"asset");
+         shape.x = Number(param1.border) + Number(param1.paddingLeft)+(width-drawWidth)/2;
+         shape.y = Number(param1.border) + Number(param1.paddingTop)+(height-drawHeight)/2;
          Sprite(param1.sprite).addChild(shape);
          param1.contentHeight = height;
          this.currentSvgResource = null;
@@ -552,8 +585,16 @@ package
          var sprite:Sprite = param1.sprite as Sprite;
          var background:Object = CanvasCssValue.parseColor(String(param1.style["background-color"]));
          var borderColor:Object = CanvasCssValue.parseColor(String(param1.style["border-color"]));
+         sprite.visible = param1.style["visibility"] != "hidden";
+         sprite.alpha = Number(param1.style["opacity"]);
+         if(param1.style["overflow"] == "hidden") sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
+         if(CanvasHtmlRetainedTree.canDraw(param1))
+         {
+            param1.drawReused = true;
+            return;
+         }
          sprite.graphics.clear();
-         if(background != null && Number(background.alpha) > 0)
+         if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
             sprite.graphics.beginFill(uint(background.color),Number(background.alpha));
             sprite.graphics.drawRect(0,0,Number(param1.width),Number(param1.height));
@@ -582,24 +623,14 @@ package
          else if(node.name == "vw-meter")
          {
             var meter:Shape = new Shape();
-            var track:Object = background == null || Number(background.alpha) == 0 ? {"color":3158064,"alpha":1} : background;
+            var track:Object = background == null || Number(background.alpha) == 0 && node.getAttribute("min") == null && node.getAttribute("max") == null ? {"color":3158064,"alpha":1} : background;
             var fill:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
             var meterX:Number = Number(param1.border) + Number(param1.paddingLeft);
             var meterY:Number = Number(param1.border) + Number(param1.paddingTop);
             var meterWidth:Number = Math.max(1,Number(param1.innerWidth));
             var meterHeight:Number = Math.max(1,Number(param1.height) - Number(param1.border) * 2 - Number(param1.paddingTop) - Number(param1.paddingBottom));
-            var meterValue:Number = Number(node.bindingValue);
-            if(meterValue > 1)
-            {
-               meterValue /= 100;
-            }
-            meterValue = Math.max(0,Math.min(1,meterValue));
-            meter.graphics.beginFill(uint(track.color),Number(track.alpha));
-            meter.graphics.drawRect(meterX,meterY,meterWidth,meterHeight);
-            meter.graphics.endFill();
-            meter.graphics.beginFill(uint(fill.color),Number(fill.alpha));
-            meter.graphics.drawRect(meterX,meterY,meterWidth * meterValue,meterHeight);
-            meter.graphics.endFill();
+            if(!CanvasHtmlMeter.draw(meter.graphics,node,meterX,meterY,meterWidth,meterHeight,track,fill))
+               this.reject("invalid-meter",node.resource);
             sprite.addChild(meter);
          }
          if(node.name == "li" && param1.parent != null)
@@ -653,7 +684,7 @@ package
          {
             return Math.min(Math.max(1,param2),64);
          }
-         if(node.name == "vw-meter")
+         if(node.name == "vw-meter" || node.name == "vw-symbol")
          {
             return Math.min(Math.max(1,param2),220);
          }
@@ -667,7 +698,7 @@ package
             return;
          }
          var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
-         if(node.name == "img" || node.name == "svg" || node.name == "vw-meter")
+         if(node.name == "img" || node.name == "svg" || node.name == "vw-meter" || node.name == "vw-symbol")
          {
             return;
          }
@@ -703,7 +734,7 @@ package
 
       private function isLeaf(param1:String) : Boolean
       {
-         return param1 == "br" || param1 == "hr" || param1 == "img" || param1 == "svg" || param1 == "vw-meter";
+         return param1 == "br" || param1 == "hr" || param1 == "img" || param1 == "svg" || param1 == "vw-meter" || param1 == "vw-symbol";
       }
 
       private function applyZOrder(param1:Object) : void

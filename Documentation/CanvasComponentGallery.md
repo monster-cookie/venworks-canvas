@@ -1,5 +1,7 @@
 # Canvas HTML and CSS component gallery
 
+See [HTML/3 HUD authoring](CanvasHtml3.md) for retained updates, SVG curves and primitives, segmented meters, safe-area bindings and semantic player/ship/watch controls. Existing HTML/2 consumers remain supported.
+
 The Canvas Component Gallery is a live in-game reference for mod creators. Every row pairs a supported tag or binding with the exact document syntax and the result Canvas rendered from it.
 
 The images on this page are lossless section crops from the supplied in-game captures. They are split at the Gallery's actual section boundaries so each image supports the table beside it; the original full-page screenshots are not used as document pages.

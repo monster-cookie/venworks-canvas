@@ -41,6 +41,11 @@ package
          }
       }
 
+      public function getUpdateState() : Object
+      {
+         return this.session == null ? {pending:false,revision:0,diagnostic:"disposed"} : this.session.getUpdateState();
+      }
+
       internal function invalidate() : void
       {
          this.session = null;

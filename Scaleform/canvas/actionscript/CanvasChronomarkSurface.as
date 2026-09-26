@@ -8,6 +8,11 @@ package
 
    internal final class CanvasChronomarkSurface extends MovieClip
    {
+      private var presentationHidden:Boolean = false;
+      private var presentationDisabled:Boolean = false;
+      private var engineVisible:Boolean = false;
+      private var latestData:Object = {};
+
       private var view:CanvasChronomarkView;
 
       private var markers:CanvasChronomarkMarkers;
@@ -125,7 +130,32 @@ package
       {
          if(!this.disposed)
          {
-            visible = param1;
+            this.engineVisible = param1;
+            visible = param1 && !this.presentationHidden;
+         }
+      }
+
+      public function setPresentationSuppressed(hidden:Boolean, disabled:Boolean) : void
+      {
+         if(this.disposed) return;
+         this.presentationHidden = hidden || disabled;
+         visible = this.engineVisible && !this.presentationHidden;
+         if(this.presentationDisabled == disabled) return;
+         this.presentationDisabled = disabled;
+         if(disabled)
+         {
+            if(this.animation != null) this.animation.dispose();
+            this.animation = null;
+         }
+         else
+         {
+            this.animation = new CanvasChronomarkAnimation(this,this.view,this.effects,this.sound);
+            this.previousOxygen = -1; this.previousCarbonDioxide = -1;
+            this.hasScannerState = false; this.hasDetectionState = false;
+            this.view.clearAlert();
+            // Restore current state, without replaying expired presentation alerts.
+            for each(var channel:String in ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","EnvironmentEffectsData","HUDOpacityData"])
+               if(this.latestData.hasOwnProperty(channel)) this.onData(channel,this.latestData[channel]);
          }
       }
 
@@ -145,6 +175,7 @@ package
          {
             this.animation.dispose();
          }
+         this.latestData = {};
          this.data = null;
          this.animation = null;
          if(this.effects != null)
@@ -177,6 +208,8 @@ package
          {
             return;
          }
+         if(param1 != "PersonalAlertsData" && param1 != "EnvironmentAlertsData") this.latestData[param1] = param2;
+         if(this.presentationDisabled) return;
          switch(param1)
          {
             case "LocalEnvironmentData":

@@ -170,7 +170,7 @@ Assert-TestNames -Actual $galleryPackagedResourceTargets -Expected @(
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/include-example.html'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/index.html'
 ) -Description 'Component Gallery complete packaged resource target inventory'
-if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
+if (@($configured | Where-Object { @($_.Archives | Where-Object { [bool]$_.IncludePapyrus }).Count -ne 1 }).Count -ne 0) {
   throw 'Each Canvas variant must own one Papyrus-bearing archive.'
 }
 $configuredConsumerMappings = @(

@@ -395,7 +395,8 @@ package
 
       private function addDeclaration(param1:Object, param2:String, param3:String) : Boolean
       {
-         if(param2 == "display")
+         if(param2 == "object-fit") { if(param3 != "fill" && param3 != "contain") return false; }
+         else if(param2 == "display")
          {
             if(param3 != "block" && param3 != "inline" && param3 != "none" && param3 != "flex")
             {
@@ -448,6 +449,22 @@ package
                return false;
             }
          }
+         else if(param2 == "fill" || param2 == "stroke")
+         {
+            if(param3 != "none" && param3 != "currentcolor" && CanvasCssValue.parseColor(param3) == null) return false;
+         }
+         else if(param2 == "stroke-width")
+         {
+            if(!/^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$/.test(param3) || Number(param3) > CanvasHtmlLimits.MAX_SVG_STROKE_WIDTH) return false;
+         }
+         else if(param2 == "transform")
+         {
+            if(CanvasHtmlTransform.parse(param3) == null) return false;
+         }
+         else if(param2 == "visibility")
+         {
+            if(param3 != "visible" && param3 != "hidden") return false;
+         }
          else if(param2 == "border-style")
          {
             if(param3 != "none" && param3 != "solid")
@@ -498,7 +515,7 @@ package
                return false;
             }
          }
-         else if(param2 == "opacity")
+         else if(param2 == "opacity" || param2 == "fill-opacity" || param2 == "stroke-opacity")
          {
             if(!/^(?:0(?:\.[0-9]+)?|1(?:\.0+)?)$/.test(param3))
             {

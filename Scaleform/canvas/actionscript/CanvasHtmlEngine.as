@@ -4,12 +4,18 @@ package
 
    public final class CanvasHtmlEngine
    {
+      private var hostLayout:Object;
+
+      private var hudTargets:CanvasHudTargets;
+
       private var consumers:Object = {};
 
       private var disposed:Boolean;
 
-      public function CanvasHtmlEngine()
+      public function CanvasHtmlEngine(param1:CanvasHudTargets = null, param2:Object = null)
       {
+         this.hudTargets = param1;
+         this.hostLayout = param2;
       }
 
       public function load(param1:String, param2:String, param3:Object, param4:DisplayObjectContainer, param5:Function) : void
@@ -59,6 +65,14 @@ package
             loader.dispose();
             throw loadError;
          }
+      }
+
+      public function setHostLayout(layout:Object) : void
+      {
+         if(this.hostLayout != null && layout != null && CanvasHtmlRetainedTree.sameStyle(this.hostLayout,layout)) return;
+         this.hostLayout = layout;
+         for each(var entry:Object in this.consumers)
+            if(entry.session != null) CanvasHtmlSession(entry.session).setHostLayout(layout);
       }
 
       public function remove(param1:String) : void
@@ -167,7 +181,7 @@ package
                throw new Error("Canvas HTML registration contains an unknown field");
             }
          }
-         if(typeof param2.contract != "string" || param2.contract != "VWCANVAS_HTML/2")
+         if(typeof param2.contract != "string" || (param2.contract != "VWCANVAS_HTML/2" && param2.contract != "VWCANVAS_HTML/3"))
          {
             throw new Error("Canvas HTML registration has an unsupported contract");
          }
@@ -176,7 +190,7 @@ package
             throw new Error("Canvas HTML registration has an invalid entry document");
          }
          return {
-            "contract":"VWCANVAS_HTML/2",
+            "contract":String(param2.contract),
             "entryDocument":String(param2.entryDocument)
          };
       }
@@ -198,7 +212,7 @@ package
          {
             try
             {
-               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3);
+               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3,param2.registration.contract == "VWCANVAS_HTML/3",this.hudTargets,param1,this.hostLayout);
                var diagnostic:CanvasHtmlDiagnostic = session.initialize();
                if(diagnostic == null)
                {

@@ -42,7 +42,7 @@ package
       public function getCanvasHtmlRegistration() : Object
       {
          return {
-            "contract":"VWCANVAS_HTML/2",
+            "contract":"VWCANVAS_HTML/3",
             "entryDocument":"index.html"
          };
       }
