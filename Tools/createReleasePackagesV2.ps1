@@ -259,7 +259,7 @@ foreach ($variant in $variants) {
   )
   $existingVariantZipFiles = @(
     Get-ChildItem -LiteralPath $resolvedOutputDirectory -File -Filter '*.zip' |
-      Where-Object { $_.Name.StartsWith($zipNamePrefix, [System.StringComparison]::Ordinal) }
+      Where-Object { $expectedZipNames -contains $_.Name }
   )
   foreach ($existingVariantZipFile in $existingVariantZipFiles) {
     Remove-Item -LiteralPath $existingVariantZipFile.FullName -Force

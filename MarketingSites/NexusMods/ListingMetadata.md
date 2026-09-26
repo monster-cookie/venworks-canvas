@@ -20,12 +20,12 @@
 
 Main file:
 
-1. `Venworks Canvas`
+1. `Venworks - Canvas`
 
 Optional files:
 
-1. `Venworks Canvas Example`
-2. `Venworks Canvas Component Gallery`
+1. `Venworks - Canvas - Example`
+2. `Venworks - Canvas - Component Gallery`
 
 The Example and Component Gallery are separate optional packages and must not be presented as part of the base download.
 

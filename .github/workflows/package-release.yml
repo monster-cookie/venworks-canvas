@@ -28,7 +28,6 @@ env:
   UPLOAD_EXAMPLE_TO_NEXUSMODS: false
   UPLOAD_COMPONENTGALLERY_TO_NEXUSMODS: false
   NEXUSMODS_CATEGORY: main
-  NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
 
   NEXUSMODS_FILE_ID_CANVAS: ${{ vars.NEXUSMODS_FILE_ID_CANVAS || secrets.NEXUSMODS_FILE_ID_CANVAS }}
   NEXUSMODS_FILE_ID_EXAMPLE: ${{ vars.NEXUSMODS_FILE_ID_EXAMPLE || secrets.NEXUSMODS_FILE_ID_EXAMPLE }}
@@ -63,11 +62,12 @@ jobs:
             exit 1
           fi
 
-          MASTER_SHA="$(gh api "repos/${{ github.repository }}/commits/master" --jq '.sha')"
-          if [ "$TAG_SHA" != "$MASTER_SHA" ]; then
-            echo "Tag is not on the current master HEAD."
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          DEFAULT_BRANCH_SHA="$(gh api "repos/${{ github.repository }}/commits/${DEFAULT_BRANCH}" --jq '.sha')"
+          if [ "$TAG_SHA" != "$DEFAULT_BRANCH_SHA" ]; then
+            echo "Tag is not on the current ${DEFAULT_BRANCH} HEAD."
             echo "Tag SHA: $TAG_SHA"
-            echo "Master SHA: $MASTER_SHA"
+            echo "${DEFAULT_BRANCH} SHA: $DEFAULT_BRANCH_SHA"
             exit 1
           fi
 
@@ -138,6 +138,8 @@ jobs:
           foreach ($variant in $Global:ModuleVariants) {
             $key = $variant.VariantKey.ToLowerInvariant()
             "$($key)_nexus_display_name=$($variant.NexusDisplayName)" >> $env:GITHUB_OUTPUT
+            $category = if ($key -eq 'canvas') { 'main' } else { 'optional' }
+            "$($key)_nexus_category=$category" >> $env:GITHUB_OUTPUT
           }
 
       - name: Download release package artifact
@@ -289,6 +291,7 @@ jobs:
         if: ${{ fromJSON(env.UPLOAD_TO_NEXUSMODS) == true }}
         shell: bash
         env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
           NEXUS_DISPLAY_NAME_CANVAS: ${{ steps.variant-config.outputs.canvas_nexus_display_name }}
           NEXUS_DISPLAY_NAME_EXAMPLE: ${{ steps.variant-config.outputs.example_nexus_display_name }}
           NEXUS_DISPLAY_NAME_COMPONENTGALLERY: ${{ steps.variant-config.outputs.componentgallery_nexus_display_name }}
@@ -353,12 +356,14 @@ jobs:
       - name: Upload Canvas normal release to Nexus Mods
         if: ${{ fromJSON(env.UPLOAD_TO_NEXUSMODS) == true && fromJSON(env.UPLOAD_CANVAS_TO_NEXUSMODS) == true && env.NEXUSMODS_FILE_ID_CANVAS != '' }}
         uses: Nexus-Mods/upload-action@f6e1e2ea683dfe8f88cccf642c6e0e69ab66825e # v1.0.0-beta.8
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
         with:
           api_key: ${{ env.NEXUSMODS_API_KEY }}
           file_id: ${{ env.NEXUSMODS_FILE_ID_CANVAS }}
           filename: ${{ steps.release-package.outputs.canvas_normal_path }}
           version: ${{ env.PACKAGE_VERSION }}
-          category: ${{ env.NEXUSMODS_CATEGORY }}
+          category: ${{ steps.variant-config.outputs.canvas_nexus_category }}
           display_name: ${{ steps.variant-config.outputs.canvas_nexus_display_name }}
           archive_existing_version: true
           primary_mod_manager_download: false
@@ -368,12 +373,14 @@ jobs:
       - name: Upload Example normal release to Nexus Mods
         if: ${{ fromJSON(env.UPLOAD_TO_NEXUSMODS) == true && fromJSON(env.UPLOAD_EXAMPLE_TO_NEXUSMODS) == true && env.NEXUSMODS_FILE_ID_EXAMPLE != '' }}
         uses: Nexus-Mods/upload-action@f6e1e2ea683dfe8f88cccf642c6e0e69ab66825e # v1.0.0-beta.8
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
         with:
           api_key: ${{ env.NEXUSMODS_API_KEY }}
           file_id: ${{ env.NEXUSMODS_FILE_ID_EXAMPLE }}
           filename: ${{ steps.release-package.outputs.example_normal_path }}
           version: ${{ env.PACKAGE_VERSION }}
-          category: ${{ env.NEXUSMODS_CATEGORY }}
+          category: ${{ steps.variant-config.outputs.example_nexus_category }}
           display_name: ${{ steps.variant-config.outputs.example_nexus_display_name }}
           archive_existing_version: true
           primary_mod_manager_download: false
@@ -383,12 +390,14 @@ jobs:
       - name: Upload Component Gallery normal release to Nexus Mods
         if: ${{ fromJSON(env.UPLOAD_TO_NEXUSMODS) == true && fromJSON(env.UPLOAD_COMPONENTGALLERY_TO_NEXUSMODS) == true && env.NEXUSMODS_FILE_ID_COMPONENTGALLERY != '' }}
         uses: Nexus-Mods/upload-action@f6e1e2ea683dfe8f88cccf642c6e0e69ab66825e # v1.0.0-beta.8
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
         with:
           api_key: ${{ env.NEXUSMODS_API_KEY }}
           file_id: ${{ env.NEXUSMODS_FILE_ID_COMPONENTGALLERY }}
           filename: ${{ steps.release-package.outputs.componentgallery_normal_path }}
           version: ${{ env.PACKAGE_VERSION }}
-          category: ${{ env.NEXUSMODS_CATEGORY }}
+          category: ${{ steps.variant-config.outputs.componentgallery_nexus_category }}
           display_name: ${{ steps.variant-config.outputs.componentgallery_nexus_display_name }}
           archive_existing_version: true
           primary_mod_manager_download: false
