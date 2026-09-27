@@ -355,6 +355,7 @@ package
 
       private function resolveHeights(param1:Array) : Boolean
       {
+         var deferredAbsolute:Array = [];
          for(var index:int = param1.length - 1; index >= 0; index--)
          {
             var box:Object = param1[index];
@@ -443,7 +444,8 @@ package
                {
                   if(box.style["position"] == "static")
                   {
-                     return this.reject("absolute-containing-block-required",CanvasHtmlNode(child.node).resource);
+                     deferredAbsolute.push(child);
+                     continue;
                   }
                   Sprite(child.sprite).x = startX + Number(child.marginLeft) + this.length(child.style["left"],Number(box.innerWidth),0);
                   Sprite(child.sprite).y = startY + Number(child.marginTop) + this.length(child.style["top"],innerHeight,0);
@@ -462,7 +464,50 @@ package
             this.applyZOrder(box);
             this.drawBox(box);
          }
+         return deferredAbsolute.length == 0 || this.placeDeferredAbsolute(deferredAbsolute);
+      }
+
+      // A static parent is not a containing block. Place the absolute child against the
+      // nearest relative or absolute ancestor once flow positions exist, or against the
+      // viewport when every ancestor is static.
+      private function placeDeferredAbsolute(param1:Array) : Boolean
+      {
+         for each(var child:Object in param1)
+         {
+            var containing:Object = this.absoluteContainingBlock(child);
+            var basisWidth:Number = containing == null ? this.viewportWidth : Number(containing.innerWidth);
+            var basisHeight:Number = containing == null ? this.viewportHeight : Math.max(1,Number(containing.height) - Number(containing.border) * 2 - Number(containing.paddingTop) - Number(containing.paddingBottom));
+            var originX:Number = containing == null ? 0 : Number(containing.border) + Number(containing.paddingLeft) + Number(containing.indent);
+            var originY:Number = containing == null ? 0 : Number(containing.border) + Number(containing.paddingTop);
+            var x:Number = originX + Number(child.marginLeft) + this.length(child.style["left"],basisWidth,0);
+            var y:Number = originY + Number(child.marginTop) + this.length(child.style["top"],basisHeight,0);
+            var cursor:Object = child.parent;
+            while(cursor != null && cursor != containing)
+            {
+               x -= Sprite(cursor.sprite).x;
+               y -= Sprite(cursor.sprite).y;
+               cursor = cursor.parent;
+            }
+            Sprite(child.sprite).x = x;
+            Sprite(child.sprite).y = y;
+            if(!CanvasHtmlTransform.apply(child,this.safeRect)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
+            if(!this.isBoundedCoordinate(Sprite(child.sprite).x) || !this.isBoundedCoordinate(Sprite(child.sprite).y))
+            {
+               return this.reject("invalid-position",CanvasHtmlNode(child.node).resource);
+            }
+         }
          return this.failure == null;
+      }
+
+      private function absoluteContainingBlock(param1:Object) : Object
+      {
+         var cursor:Object = param1.parent;
+         while(cursor != null)
+         {
+            if(cursor.style["position"] == "relative" || cursor.style["position"] == "absolute") return cursor;
+            cursor = cursor.parent;
+         }
+         return null;
       }
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean

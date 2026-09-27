@@ -9,6 +9,7 @@
 - Improved live data updates so unchanged interface elements are retained and rejected updates preserve the last valid display.
 - Added runtime package checks that reject stale Canvas host or Registry files before release packaging.
 - Documented that every Canvas document must start with `<!doctype html>`, that element names are lowercase, and that paint keywords such as `currentcolor` are lowercase.
+- Accept a static parent of an absolutely positioned element. The element is placed against the nearest relative or absolute ancestor, or against the viewport when every ancestor is static.
 
 ## Version 1.0.3 (September 25, 2026)
 

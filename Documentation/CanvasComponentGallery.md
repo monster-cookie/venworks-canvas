@@ -100,6 +100,8 @@ The exact Gallery CSS is:
 .demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; }
 ```
 
+A static parent is valid. Canvas places the absolute element against the nearest ancestor whose position is `relative` or `absolute`. When every ancestor is static, the viewport is the containing block. `data-vw-anchor` is separate and still requires the anchored element itself to be `position: absolute`.
+
 ## Safe-area placement and presentation bindings
 
 Use `data-vw-anchor` on absolutely positioned content to attach it to `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, or `bottom-right` in the host safe area. CSS offsets remain in Canvas's 1920×1080 design space.
