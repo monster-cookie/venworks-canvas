@@ -10,7 +10,7 @@ package
          {
             return {};
          }
-         if(param1 is Array || typeof param1 != "object")
+         if(isDataArray(param1) || typeof param1 != "object")
          {
             throw new Error("Canvas HTML data root must be an object");
          }
@@ -30,21 +30,21 @@ package
             }
             var source:Object = frame.source;
             var target:Object = frame.target;
-            if(source is Array)
+            if(isDataArray(source))
             {
-               var sourceArray:Array = source as Array;
-               if(sourceArray.length > CanvasHtmlLimits.MAX_REPEAT_ITEMS)
+               var sourceLength:int = int(source["length"]);
+               if(sourceLength > CanvasHtmlLimits.MAX_REPEAT_ITEMS)
                {
                   throw new Error("Canvas HTML data array exceeds item limit");
                }
-               for(var arrayIndex:int = 0; arrayIndex < sourceArray.length; arrayIndex++)
+               for(var arrayIndex:int = 0; arrayIndex < sourceLength; arrayIndex++)
                {
                   entryCount++;
                   if(entryCount > CanvasHtmlLimits.MAX_DATA_ENTRIES)
                   {
                      throw new Error("Canvas HTML data exceeds entry limit");
                   }
-                  var arrayValue:* = sourceArray[arrayIndex];
+                  var arrayValue:* = source[arrayIndex];
                   if(isScalar(arrayValue))
                   {
                      target[arrayIndex] = copyScalar(arrayValue);
@@ -74,9 +74,13 @@ package
                var key:String = null;
                for(key in source)
                {
-                  if(!source.hasOwnProperty(key) || !isDataIdentifier(key))
+                  if(!source.hasOwnProperty(key))
                   {
-                     throw new Error("Canvas HTML data contains an invalid property");
+                     continue;
+                  }
+                  if(!isDataIdentifier(key))
+                  {
+                     throw new Error("Canvas HTML data contains an invalid property: " + key);
                   }
                   propertyCount++;
                   entryCount++;
@@ -220,9 +224,49 @@ package
             throw new Error("Canvas HTML data cannot contain cycles or aliases");
          }
          param2[param1] = true;
-         var child:Object = param1 is Array ? [] : {};
+         var child:Object = isDataArray(param1) ? [] : {};
          param3.push({"source":param1,"target":child,"depth":param4});
          return child;
+      }
+
+      // A consumer movie can create arrays in another application domain, where `is Array` is false.
+      // Those values still have a dense length and index keys. Index keys are not data identifiers.
+      private static function isDataArray(param1:*) : Boolean
+      {
+         if(param1 is Array)
+         {
+            return true;
+         }
+         if(param1 == null || typeof param1 != "object")
+         {
+            return false;
+         }
+         var lengthValue:* = param1["length"];
+         if(typeof lengthValue != "number" || !isFinite(Number(lengthValue)) || Number(lengthValue) < 0 || int(lengthValue) != Number(lengthValue))
+         {
+            return false;
+         }
+         var length:int = int(lengthValue);
+         var key:String = null;
+         var sawIndex:Boolean = false;
+         for(key in param1)
+         {
+            if(!param1.hasOwnProperty(key) || key == "length")
+            {
+               continue;
+            }
+            if(key.length == 0 || key.length > 10 || key.charAt(0) == "0" && key.length > 1)
+            {
+               return false;
+            }
+            var index:Number = Number(key);
+            if(!isFinite(index) || int(index) != index || index < 0 || index >= length || String(int(index)) != key)
+            {
+               return false;
+            }
+            sawIndex = true;
+         }
+         return length == 0 || sawIndex;
       }
 
       private static function isScalar(param1:*) : Boolean
