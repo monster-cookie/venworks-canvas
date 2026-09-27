@@ -22,7 +22,7 @@ The Gallery is an authoring reference and separate example package. Players do n
 
 ## Write tags in lowercase
 
-Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with `vw-include`, must begin with `<!doctype html>`. Element names are lowercase: `<html>`, `<div>`, `<svg>`, `<vw-hud-target>`. `<!DOCTYPE html>`, `<HTML>`, and `<Div>` fail parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. `viewBox` is the one accepted exception, and Canvas treats it as `viewbox`. Text inside an element keeps the case you write.
+Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with `vw-include`, must begin with `<!doctype html>`. Element names are lowercase: `<html>`, `<div>`, `<svg>`, `<vw-hud-target>`. `<!DOCTYPE html>`, `<HTML>`, and `<Div>` fail parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. `viewBox` is the one accepted exception, and Canvas treats it as `viewbox`. Paint keywords are lowercase as well: `none`, `currentcolor`, and `transparent`. `currentColor` is rejected. Text inside an element keeps the case you write.
 
 ## Text and document flow
 
