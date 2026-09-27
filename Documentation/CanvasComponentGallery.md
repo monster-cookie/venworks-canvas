@@ -20,6 +20,10 @@ The Gallery is an authoring reference and separate example package. Players do n
 | Syntax | The exact declarative syntax used by the Gallery document. |
 | Rendered result | What the captured Gallery displayed from that syntax and its sample data. |
 
+## Write tags in lowercase
+
+Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with `vw-include`, must begin with `<!doctype html>`. Element names are lowercase: `<html>`, `<div>`, `<svg>`, `<vw-hud-target>`. `<!DOCTYPE html>`, `<HTML>`, and `<Div>` fail parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. `viewBox` is the one accepted exception, and Canvas treats it as `viewbox`. Text inside an element keeps the case you write.
+
 ## Text and document flow
 
 ![Lossless crop of the Text and Document Flow Gallery table from H1 through DIV](Images/ComponentGallery/text-and-document-flow.png)

@@ -33,6 +33,10 @@ The Gallery is an authoring reference and separate example package. Players do n
 [/tr]
 [/table]
 
+[size=4][b]Write tags in lowercase[/b][/size]
+
+Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with vw-include, must begin with <!doctype html>. Element names are lowercase: html, div, svg, and vw-hud-target. An uppercase preamble or a mixed-case tag such as Div fails parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. viewBox is the one accepted exception, and Canvas treats it as viewbox. Text inside an element keeps the case you write.
+
 [size=4][b]Text and document flow[/b][/size]
 
 [img]https://cdn.venworkscreations.com/NexusMods/Canvas/ComponentGallery/text-and-document-flow.png[/img]

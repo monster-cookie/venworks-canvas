@@ -8,6 +8,7 @@
 - Expanded meters and layout tools with configurable ranges, directions, segments, partial fills, safe-area anchors, and live visual bindings.
 - Improved live data updates so unchanged interface elements are retained and rejected updates preserve the last valid display.
 - Added runtime package checks that reject stale Canvas host or Registry files before release packaging.
+- Documented that every Canvas document must start with `<!doctype html>` and that element names are lowercase.
 
 ## Version 1.0.3 (September 25, 2026)
 

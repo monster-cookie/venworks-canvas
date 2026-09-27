@@ -95,6 +95,8 @@ Create `index.html` and `panel.css` in a local resource folder. This starter dis
 .health-meter { width: 420px; height: 14px; color: #66ffff; background-color: #26313a; }
 ```
 
+Write the preamble as `<!doctype html>` and keep every element name lowercase. Canvas rejects `<!DOCTYPE html>` and mixed-case tags such as `<Div>` or `<SVG>`. The same rule applies to documents pulled in with `vw-include`. Attribute names are lowercase, except `viewBox`, which Canvas accepts and treats as `viewbox`.
+
 Keep every linked file beneath your consumer folder. Use relative paths such as `panel.css`, `icons/status.svg`, or `partials/effects.html`; do not use absolute paths, parent-directory traversal, or remote URLs.
 
 ## 3. Create the Scaleform consumer
