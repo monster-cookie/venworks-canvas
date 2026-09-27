@@ -241,32 +241,45 @@ package
          {
             return false;
          }
-         var lengthValue:* = param1["length"];
+         var lengthValue:* = undefined;
+         try
+         {
+            lengthValue = param1["length"];
+         }
+         catch(lengthError:*)
+         {
+            return false;
+         }
          if(typeof lengthValue != "number" || !isFinite(Number(lengthValue)) || Number(lengthValue) < 0 || int(lengthValue) != Number(lengthValue))
          {
             return false;
          }
          var length:int = int(lengthValue);
          var key:String = null;
-         var sawIndex:Boolean = false;
-         for(key in param1)
+         try
          {
-            if(!param1.hasOwnProperty(key) || key == "length")
+            for(key in param1)
             {
-               continue;
+               if(key == "length")
+               {
+                  continue;
+               }
+               if(key.length == 0 || key.length > 10 || (key.charAt(0) == "0" && key.length > 1))
+               {
+                  return false;
+               }
+               var index:Number = Number(key);
+               if(!isFinite(index) || int(index) != index || index < 0 || index >= length || String(int(index)) != key)
+               {
+                  return false;
+               }
             }
-            if(key.length == 0 || key.length > 10 || key.charAt(0) == "0" && key.length > 1)
-            {
-               return false;
-            }
-            var index:Number = Number(key);
-            if(!isFinite(index) || int(index) != index || index < 0 || index >= length || String(int(index)) != key)
-            {
-               return false;
-            }
-            sawIndex = true;
          }
-         return length == 0 || sawIndex;
+         catch(enumerateError:*)
+         {
+            return true;
+         }
+         return true;
       }
 
       private static function isScalar(param1:*) : Boolean
