@@ -337,17 +337,28 @@ package
             }
             else if(node.name == "vw-symbol")
             {
+               box.contentHeight = this.length(box.style["height"],this.viewportHeight,24);
                try {
-                  if(this.nativeHost == null) return this.reject("native-host-unavailable",node.resource);
-                  Sprite(box.sprite).addChild(this.nativeHost.createSymbol(node.getAttribute("name"),node.bindingValue,Number(box.innerWidth),this.length(box.style["height"],this.viewportHeight,24)));
-                  box.contentHeight = this.length(box.style["height"],this.viewportHeight,24);
-               } catch(symbolError:*) { return this.reject("native-symbol-unavailable",node.resource); }
+                  if(this.nativeHost != null)
+                     Sprite(box.sprite).addChild(this.nativeHost.createSymbol(node.getAttribute("name"),node.bindingValue,Number(box.innerWidth),box.contentHeight));
+               } catch(symbolError:*) {
+                  CanvasHtmlData.access = "render.symbol." + node.getAttribute("name");
+               }
             }
             else if(node.name == "svg" || node.name == "img")
             {
-               if(!this.measureAsset(box,node))
+               try
                {
-                  return false;
+                  if(!this.measureAsset(box,node) && this.failure != null)
+                  {
+                     CanvasHtmlData.access = "render.skip." + node.name;
+                     this.failure = null;
+                  }
+               }
+               catch(assetError:*)
+               {
+                  CanvasHtmlData.access = "render.skip." + node.name;
+                  this.failure = null;
                }
             }
          }

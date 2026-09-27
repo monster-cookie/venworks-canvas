@@ -493,7 +493,7 @@ package
          }
          catch(callbackError:*)
          {
-            this.report("UI DATA CALLBACK ERROR | " + param1.consumerId + " | " + param2);
+            this.report("UI DATA CALLBACK ERROR | " + param1.consumerId + " | " + param2 + " | " + CanvasHtmlData.access + " | " + callbackError);
          }
       }
 

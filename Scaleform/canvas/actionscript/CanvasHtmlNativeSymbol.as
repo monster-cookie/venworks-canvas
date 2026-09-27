@@ -43,24 +43,36 @@ package
       public static function marker(value:Object) : DisplayObject
       {
          if(value == null) return new Sprite();
-         CanvasHtmlData.access = "symbol.marker.define";
-         var type:Class = getDefinitionByName("CompassMarkerWidget") as Class;
-         var utility:Class = getDefinitionByName("Shared.MapMarkerUtils") as Class;
-         CanvasHtmlData.access = "symbol.marker.create";
-         var marker:MovieClip = new type() as MovieClip;
-         marker.mouseEnabled = false; marker.mouseChildren = false;
-         CanvasHtmlData.access = "symbol.marker.frame";
-         marker.gotoAndStop(utility["GetMajorFrameFromMitMarkerType"](uint(value.type)));
-         CanvasHtmlData.access = "symbol.marker.location";
-         if(value.type == 7) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate);
-         else Object(marker)["ClearLocation"]();
-         CanvasHtmlData.access = "symbol.marker.relative";
-         if(value.relative > 0) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
-         CanvasHtmlData.access = "symbol.marker.category";
-         if(value.subcategory > 0) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
-         CanvasHtmlData.access = "symbol.marker.effect";
-         if(value.effect != "") MovieClip(Object(marker)["MarkerIcon_mc"]).gotoAndStop(String(value.effect));
-         return marker;
+         try
+         {
+            CanvasHtmlData.access = "symbol.marker.define";
+            var type:Class = getDefinitionByName("CompassMarkerWidget") as Class;
+            var utility:Class = getDefinitionByName("Shared.MapMarkerUtils") as Class;
+            CanvasHtmlData.access = "symbol.marker.create";
+            var marker:MovieClip = new type() as MovieClip;
+            marker.mouseEnabled = false; marker.mouseChildren = false;
+            CanvasHtmlData.access = "symbol.marker.frame";
+            marker.gotoAndStop(utility["GetMajorFrameFromMitMarkerType"](uint(value.type)));
+            CanvasHtmlData.access = "symbol.marker.location";
+            if(value.type == 7) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate);
+            else Object(marker)["ClearLocation"]();
+            CanvasHtmlData.access = "symbol.marker.relative";
+            if(value.relative > 0) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
+            CanvasHtmlData.access = "symbol.marker.category";
+            if(value.subcategory > 0) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
+            CanvasHtmlData.access = "symbol.marker.effect";
+            if(value.effect != "") MovieClip(Object(marker)["MarkerIcon_mc"]).gotoAndStop(String(value.effect));
+            return marker;
+         }
+         catch(markerError:*)
+         {
+            var fallback:Sprite = new Sprite();
+            fallback.graphics.beginFill(0xF4FBFF,1);
+            fallback.graphics.drawCircle(0,0,4);
+            fallback.graphics.endFill();
+            return fallback;
+         }
+         return new Sprite();
       }
 
       public function CanvasHtmlNativeSymbol(resolver:Function, width:Number, height:Number)
