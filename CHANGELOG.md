@@ -11,6 +11,7 @@
 - Documented that every Canvas document must start with `<!doctype html>`, that element names are lowercase, and that paint keywords such as `currentcolor` are lowercase.
 - Accept a static parent of an absolutely positioned element. The element is placed against the nearest relative or absolute ancestor, or against the viewport when every ancestor is static.
 - Accept arrays created by a consumer movie when copying HTML data. Their index keys are no longer reported as invalid properties, and probing those arrays does not raise ReferenceError 1069.
+- Name the value being read when a ready callback raises ReferenceError 1069. The chronomark shows that path, such as `data.compass.ticks[0]` or `symbol.marker.location`, instead of only the error number.
 
 ## Version 1.0.3 (September 25, 2026)
 

@@ -79,6 +79,7 @@ package
          {
             var frame:Object = frames.pop();
             var node:CanvasHtmlNode = frame.node as CanvasHtmlNode;
+            CanvasHtmlData.access = "render." + (node == null || node.name == null || node.name.length == 0 ? "text" : node.name);
             var parent:Object = frame.parent;
             var ancestors:Array = frame.ancestors as Array;
             var style:Object = node.type == CanvasHtmlNode.TEXT ? this.stylesheet.inheritedStyle(parent == null ? null : parent.style) : this.stylesheet.computeStyle(node,ancestors,parent == null ? null : parent.style);

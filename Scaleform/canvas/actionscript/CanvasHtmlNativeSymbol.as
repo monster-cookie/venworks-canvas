@@ -32,24 +32,33 @@ package
          if(value == null) return true;
          for each(var field:String in ["type","relative","subcategory","locationtype","locationcategory","locationstate"])
          {
+            CanvasHtmlData.access = "symbol.valid." + name + "." + field;
             var limit:int = field == "type" ? 255 : field == "relative" || field == "subcategory" ? 3 : 65535;
             if(typeof value[field] != "number" || !isFinite(Number(value[field])) || value[field] != int(value[field]) || value[field] < 0 || value[field] > limit) return false;
          }
+         CanvasHtmlData.access = "symbol.valid." + name + ".effect";
          return typeof value.effect == "string" && /^[A-Za-z0-9_-]{0,96}$/.test(String(value.effect));
       }
 
       public static function marker(value:Object) : DisplayObject
       {
          if(value == null) return new Sprite();
+         CanvasHtmlData.access = "symbol.marker.define";
          var type:Class = getDefinitionByName("CompassMarkerWidget") as Class;
          var utility:Class = getDefinitionByName("Shared.MapMarkerUtils") as Class;
+         CanvasHtmlData.access = "symbol.marker.create";
          var marker:MovieClip = new type() as MovieClip;
          marker.mouseEnabled = false; marker.mouseChildren = false;
+         CanvasHtmlData.access = "symbol.marker.frame";
          marker.gotoAndStop(utility["GetMajorFrameFromMitMarkerType"](uint(value.type)));
+         CanvasHtmlData.access = "symbol.marker.location";
          if(value.type == 7) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate);
          else Object(marker)["ClearLocation"]();
+         CanvasHtmlData.access = "symbol.marker.relative";
          if(value.relative > 0) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
+         CanvasHtmlData.access = "symbol.marker.category";
          if(value.subcategory > 0) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
+         CanvasHtmlData.access = "symbol.marker.effect";
          if(value.effect != "") MovieClip(Object(marker)["MarkerIcon_mc"]).gotoAndStop(String(value.effect));
          return marker;
       }

@@ -1734,6 +1734,7 @@ package
          this.loaderStates[consumerId] = "completing";
          if(contract.contractVersion >= MIN_HOST_CONTRACT_VERSION)
          {
+            CanvasHtmlData.access = "ready.callback";
             try
             {
                contract.bridge["handleLifecycle"]("ready",this.createLifecycleContext(contract));
@@ -1754,7 +1755,9 @@ package
             {
                if(this.isConsumerCurrent(consumerId,loader,generation))
                {
-                  this.appendDiagnostic("INVALID " + consumerId + " | READY CALLBACK | " + this.sanitizeText(lifecycleError,80));
+                  var readyAccess:String = this.sanitizeText(CanvasHtmlData.access,72);
+                  var readyError:String = this.sanitizeText(lifecycleError,64);
+                  this.appendDiagnostic("INVALID " + consumerId + " | READY | " + readyAccess + " | " + readyError);
                   if(this.isConsumerCurrent(consumerId,loader,generation))
                   {
                      this.unloadConsumer(consumerId);

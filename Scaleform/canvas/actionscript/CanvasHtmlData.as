@@ -4,20 +4,25 @@ package
 
    public final class CanvasHtmlData
    {
+      // Last value the HTML data copier or renderer was touching. The ready-callback
+      // diagnostic prints this because Scaleform's ReferenceError #1069 text omits the property.
+      public static var access:String = "";
+
       public static function snapshot(param1:Object) : Object
       {
+         access = "data";
          if(param1 == null)
          {
             return {};
          }
-         if(isDataArray(param1) || typeof param1 != "object")
+         if(isDataArray(param1,"data") || typeof param1 != "object")
          {
             throw new Error("Canvas HTML data root must be an object");
          }
          var result:Object = {};
          var seen:Dictionary = new Dictionary(false);
          seen[param1] = true;
-         var frames:Array = [{"source":param1,"target":result,"depth":1}];
+         var frames:Array = [{"source":param1,"target":result,"depth":1,"path":"data"}];
          var nodeCount:int = 1;
          var entryCount:int = 0;
          var stringCodeUnits:int = 0;
@@ -30,9 +35,11 @@ package
             }
             var source:Object = frame.source;
             var target:Object = frame.target;
-            if(isDataArray(source))
+            var path:String = frame.path == null ? "data" : String(frame.path);
+            access = path;
+            if(isDataArray(source,path))
             {
-               var sourceLength:int = int(source["length"]);
+               var sourceLength:int = int(readProperty(source,"length",path + "#length"));
                if(sourceLength > CanvasHtmlLimits.MAX_REPEAT_ITEMS)
                {
                   throw new Error("Canvas HTML data array exceeds item limit");
@@ -44,7 +51,8 @@ package
                   {
                      throw new Error("Canvas HTML data exceeds entry limit");
                   }
-                  var arrayValue:* = source[arrayIndex];
+                  var indexPath:String = path + "[" + arrayIndex + "]";
+                  var arrayValue:* = readProperty(source,String(arrayIndex),indexPath);
                   if(isScalar(arrayValue))
                   {
                      target[arrayIndex] = copyScalar(arrayValue);
@@ -55,7 +63,7 @@ package
                   }
                   else
                   {
-                     target[arrayIndex] = makeChild(arrayValue,seen,frames,int(frame.depth) + 1);
+                     target[arrayIndex] = makeChild(arrayValue,seen,frames,int(frame.depth) + 1,indexPath);
                      nodeCount++;
                   }
                   if(nodeCount > CanvasHtmlLimits.MAX_DATA_NODES)
@@ -72,9 +80,12 @@ package
             {
                var propertyCount:int = 0;
                var key:String = null;
-               for(key in source)
+               var keys:Array = enumerateKeys(source,path);
+               for(var keyIndex:int = 0; keyIndex < keys.length; keyIndex++)
                {
-                  if(!source.hasOwnProperty(key))
+                  key = String(keys[keyIndex]);
+                  var propertyPath:String = path + "." + key;
+                  if(!ownsProperty(source,key,propertyPath))
                   {
                      continue;
                   }
@@ -93,7 +104,7 @@ package
                      throw new Error("Canvas HTML data exceeds entry limit");
                   }
                   stringCodeUnits += key.length;
-                  var propertyValue:* = source[key];
+                  var propertyValue:* = readProperty(source,key,propertyPath);
                   if(isScalar(propertyValue))
                   {
                      target[key] = copyScalar(propertyValue);
@@ -104,7 +115,7 @@ package
                   }
                   else
                   {
-                     target[key] = makeChild(propertyValue,seen,frames,int(frame.depth) + 1);
+                     target[key] = makeChild(propertyValue,seen,frames,int(frame.depth) + 1,propertyPath);
                      nodeCount++;
                   }
                   if(nodeCount > CanvasHtmlLimits.MAX_DATA_NODES)
@@ -213,7 +224,7 @@ package
          return result;
       }
 
-      private static function makeChild(param1:*, param2:Dictionary, param3:Array, param4:int) : Object
+      private static function makeChild(param1:*, param2:Dictionary, param3:Array, param4:int, param5:String) : Object
       {
          if(param1 == null || typeof param1 != "object")
          {
@@ -224,14 +235,14 @@ package
             throw new Error("Canvas HTML data cannot contain cycles or aliases");
          }
          param2[param1] = true;
-         var child:Object = isDataArray(param1) ? [] : {};
-         param3.push({"source":param1,"target":child,"depth":param4});
+         var child:Object = isDataArray(param1,param5) ? [] : {};
+         param3.push({"source":param1,"target":child,"depth":param4,"path":param5});
          return child;
       }
 
       // A consumer movie can create arrays in another application domain, where `is Array` is false.
       // Those values still have a dense length and index keys. Index keys are not data identifiers.
-      private static function isDataArray(param1:*) : Boolean
+      private static function isDataArray(param1:*, param2:String) : Boolean
       {
          if(param1 is Array)
          {
@@ -241,6 +252,7 @@ package
          {
             return false;
          }
+         access = param2 + "#length";
          var lengthValue:* = undefined;
          try
          {
@@ -248,6 +260,10 @@ package
          }
          catch(lengthError:*)
          {
+            if(isReportedAccessFailure(lengthError))
+            {
+               throw describeAccess(param2 + "#length",lengthError);
+            }
             return false;
          }
          if(typeof lengthValue != "number" || !isFinite(Number(lengthValue)) || Number(lengthValue) < 0 || int(lengthValue) != Number(lengthValue))
@@ -255,6 +271,7 @@ package
             return false;
          }
          var length:int = int(lengthValue);
+         access = param2 + "#keys";
          var key:String = null;
          try
          {
@@ -277,9 +294,123 @@ package
          }
          catch(enumerateError:*)
          {
+            if(isReportedAccessFailure(enumerateError))
+            {
+               throw describeAccess(param2 + "#keys",enumerateError);
+            }
             return true;
          }
          return true;
+      }
+
+      public static function describeAccess(path:String, error:*) : Error
+      {
+         var text:String = "error";
+         try
+         {
+            text = String(error);
+         }
+         catch(ignored:*)
+         {
+            text = "unprintable";
+         }
+         if((text.indexOf("Canvas HTML") == 0 || text.indexOf("1069 ") == 0 || text.indexOf("PUBLISH ") == 0) && error is Error)
+         {
+            return error as Error;
+         }
+         var where:String = path == null || path.length == 0 ? "?" : path;
+         if(where.length > 72)
+         {
+            where = where.substr(0,69) + "...";
+         }
+         var code:String = "ERR";
+         var marker:int = text.indexOf("#");
+         if(marker >= 0)
+         {
+            var digits:String = "";
+            var cursor:int = marker + 1;
+            while(cursor < text.length && digits.length < 6)
+            {
+               var character:String = text.charAt(cursor);
+               if(character < "0" || character > "9")
+               {
+                  break;
+               }
+               digits += character;
+               cursor++;
+            }
+            if(digits.length > 0)
+            {
+               code = digits;
+            }
+         }
+         access = where;
+         return new Error(code + " " + where);
+      }
+
+      private static function readProperty(source:Object, key:String, path:String) : *
+      {
+         access = path;
+         try
+         {
+            return source[key];
+         }
+         catch(error:*)
+         {
+            throw describeAccess(path,error);
+         }
+         return undefined;
+      }
+
+      private static function ownsProperty(source:Object, key:String, path:String) : Boolean
+      {
+         access = path + "#own";
+         try
+         {
+            return source.hasOwnProperty(key);
+         }
+         catch(error:*)
+         {
+            throw describeAccess(path + "#own",error);
+         }
+         return false;
+      }
+
+      private static function enumerateKeys(source:Object, path:String) : Array
+      {
+         access = path + "#keys";
+         var keys:Array = [];
+         var key:String = null;
+         try
+         {
+            for(key in source)
+            {
+               keys.push(key);
+            }
+         }
+         catch(error:*)
+         {
+            throw describeAccess(path + "#keys",error);
+         }
+         return keys;
+      }
+
+      private static function isReportedAccessFailure(error:*) : Boolean
+      {
+         if(error is ReferenceError)
+         {
+            return true;
+         }
+         var text:String = "";
+         try
+         {
+            text = String(error);
+         }
+         catch(ignored:*)
+         {
+            return false;
+         }
+         return text.indexOf("#1069") >= 0;
       }
 
       private static function isScalar(param1:*) : Boolean

@@ -85,7 +85,9 @@ package
          {
             return;
          }
+         CanvasHtmlData.access = "setdata.snapshot";
          var snapshot:Object = CanvasHtmlData.snapshot(param1);
+         CanvasHtmlData.access = "setdata.rebuild";
          var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
          if(failure != null)
          {
