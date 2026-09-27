@@ -1,5 +1,13 @@
 # Venworks Canvas and UI Data Layer
 
+## Version 1.0.4 (UNRELEASED)
+
+- Added support for the HTML privatives that Venworks Customizable HUD needs.
+- Added standard inline and external SVG support, including paths, shapes, transforms, and CSS fill and stroke styling.
+- Added semantic controls for hiding, disabling, and positioning individual player HUD, spaceship HUD, and Canvas watch elements.
+- Expanded meters and layout tools with configurable ranges, directions, segments, partial fills, safe-area anchors, and live visual bindings.
+- Improved live data updates so unchanged interface elements are retained and rejected updates preserve the last valid display.
+
 ## Version 1.0.3 (September 25, 2026)
 
 - Misc documentation updates and hooking up to Nexus API for automatic uploads.
