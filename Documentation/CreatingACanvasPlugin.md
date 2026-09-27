@@ -1,7 +1,5 @@
 # Create a Canvas plugin from scratch
 
-See [HTML/3 HUD authoring](CanvasHtml3.md) for retained updates, SVG curves and primitives, segmented meters, safe-area bindings and semantic player/ship/watch controls. Existing HTML/2 consumers remain supported.
-
 This guide is for Starfield mod creators who want to build an independently packaged Canvas panel. It follows the same boundaries as the shipped Venworks Canvas Example: an ESM registers the panel, a Papyrus script publishes game state, a small Scaleform movie connects the panel to Canvas, and local HTML/CSS defines what the player sees.
 
 The examples target the current Canvas 1.0 development contract. Canvas is a focused game UI renderer, not a web browser, so start with the elements and styles shown in the [Component Gallery](CanvasComponentGallery.md).

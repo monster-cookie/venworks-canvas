@@ -1,12 +1,11 @@
 package
 {
    import flash.display.MovieClip;
-   import flash.display.Sprite;
    import flash.utils.getDefinitionByName;
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
-      private static const TEST_COUNT:int = 17;
+      private static const TEST_COUNT:int = 16;
 
       private var marker:CanvasDiagnosticMarker;
 
@@ -41,15 +40,6 @@ package
          this.runCase("HTML SVG AND METERS",CanvasHtmlPrimitivesDiagnostics.run);
          this.runCase("HTML RETAINED UPDATES",CanvasHtmlUpdatesDiagnostics.run);
          this.runCase("HUD TARGET OWNERSHIP",CanvasHudTargetsDiagnostics.run);
-         var frameMount:Sprite = new Sprite();
-         addChild(frameMount);
-         var probe:CanvasSubscriptionsProbe = this;
-         CanvasHtmlUpdatesDiagnostics.runFrames(frameMount,function(failure:String):void {
-            if(failure == null) probe.passed++;
-            else probe.failures.push("HTML REAL FRAMES: "+failure);
-            if(frameMount.parent != null) frameMount.parent.removeChild(frameMount);
-            probe.updateMarker();
-         });
          this.updateMarker();
       }
 

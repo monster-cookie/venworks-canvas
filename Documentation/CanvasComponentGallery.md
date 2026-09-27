@@ -1,7 +1,5 @@
 # Canvas HTML and CSS component gallery
 
-See [HTML/3 HUD authoring](CanvasHtml3.md) for retained updates, SVG curves and primitives, segmented meters, safe-area bindings and semantic player/ship/watch controls. Existing HTML/2 consumers remain supported.
-
 The Canvas Component Gallery is a live in-game reference for mod creators. Every row pairs a supported tag or binding with the exact document syntax and the result Canvas rendered from it.
 
 The images on this page are lossless section crops from the supplied in-game captures. They are split at the Gallery's actual section boundaries so each image supports the table beside it; the original full-page screenshots are not used as document pages.
@@ -61,6 +59,27 @@ The button row demonstrates rendering only. Canvas does not turn arbitrary HTML 
 
 Keep all images, stylesheets, includes, and entry documents beneath `Interface/VenworksCanvas/Consumers/<your-namespace>/`. Canvas rejects absolute paths, parent-directory traversal, and remote URLs.
 
+## HUD artwork and live meters
+
+Canvas HTML/2 accepts standard inline SVG elements including `path`, `rect`, `circle`, `ellipse`, `polygon`, `polyline`, and bounded `g` transforms. The same geometry and styling rules apply to packaged `.svg` images. Use SVG `fill` and `stroke` attributes or the matching CSS properties.
+
+```html
+<svg viewBox="0 0 320 64">
+  <g transform="translate(4 4)" fill="#061722" stroke="#2dcbff" stroke-width="2">
+    <path d="M 16 0 L 296 0 Q 312 0 312 16 L 312 40 C 312 52 300 56 288 56 L 16 56 Q 0 56 0 40 L 0 16 Q 0 0 16 0 Z"></path>
+    <circle cx="28" cy="28" r="12" fill="#2dcbff"></circle>
+  </g>
+</svg>
+```
+
+Meters accept an explicit numeric range, fill direction, segment count, gap, and partial-segment behavior. Existing meters without these attributes retain their prior 0–1 behavior and also accept percentage values above 1.
+
+```html
+<vw-meter class="health" value="player.healthpercentage" min="0" max="100" direction="right" segments="16" gap="2" partial="true"></vw-meter>
+```
+
+Valid directions are `right`, `left`, `up`, and `down`. Set `partial="false"` when only complete segments should fill.
+
 ## Position and stacking
 
 ![Lossless crop of the Position and Stacking Gallery table](Images/ComponentGallery/position-and-stacking.png)
@@ -76,6 +95,49 @@ The exact Gallery CSS is:
 .demo-position-back { position: absolute; left: 20px; top: 20px; z-index: 1; }
 .demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; }
 ```
+
+## Safe-area placement and presentation bindings
+
+Use `data-vw-anchor` on absolutely positioned content to attach it to `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, or `bottom-right` in the host safe area. CSS offsets remain in Canvas's 1920×1080 design space.
+
+```html
+<div class="status-panel" data-vw-anchor="bottom-right">Status</div>
+```
+
+Bind live position and presentation values from the consumer's current data snapshot. Canvas validates finite values and bounded ranges before changing the display.
+
+```html
+<div data-vw-x="marker.x" data-vw-y="marker.y" data-vw-rotation="marker.rotation" data-vw-opacity="marker.opacity" data-vw-scale="marker.scale">Contact</div>
+```
+
+An image can select only from the packaged paths declared by `data-vw-assets`.
+
+```html
+<img src="icons/default.svg" data-vw-asset="theme.icon" data-vw-assets="icons/default.svg icons/alert.svg"></img>
+```
+
+## Semantic HUD targets and native symbols
+
+Player and ship consumers can declare presentation suppression with stable target names instead of Bethesda display-object paths. `disabled="true"` hides the target and suspends Canvas-owned work for targets such as the custom watch. CSS `visibility: hidden` and `display: none` suppress the declaration's presentation.
+
+```html
+<vw-hud-target target="player.crosshair" disabled="true"></vw-hud-target>
+<vw-hud-target target="player.meters" disabled="true"></vw-hud-target>
+<vw-hud-target target="ship.reticle" disabled="true"></vw-hud-target>
+<vw-hud-target target="canvas.watch" disabled="true"></vw-hud-target>
+```
+
+Use `player.all` or `ship.all` only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, never forces an engine-hidden object visible, and releases one consumer's requests on replacement, failure, or unload. Disabling presentation does not disable game actions, shared event delivery, or vanilla scripts.
+
+Approved host artwork is exposed through named symbols. The current names are `vehicle-exit-prompt`, `weapon-icon`, and `compass-marker`.
+
+```html
+<vw-symbol name="vehicle-exit-prompt"></vw-symbol>
+<vw-symbol name="weapon-icon" value="weapon.icon"></vw-symbol>
+<vw-symbol name="compass-marker" value="marker"></vw-symbol>
+```
+
+Canvas copies the approved artwork into the consumer. The native control retains its placement and input ownership. A missing target or unsupported symbol produces a contained render diagnostic.
 
 ## Canvas data layer
 
@@ -94,7 +156,7 @@ The exact Gallery CSS is:
 | `data-vw-for-each` | `<div data-vw-for-each="sampleitems" data-vw-text="item"></div>` | `ALPHA ITEM`, `BETA ITEM`, and `GAMMA ITEM`. |
 | `vw-meter` | `<vw-meter class="demo-meter" value="samplemeter"></vw-meter>` | A meter filled to the sample value of 72. |
 
-The consumer owns the values. It obtains the HTML bridge during lifecycle `ready`, keeps a complete view model, and calls `setData(model)` after an accepted change. Calling `setData()` rebuilds the document's bound state, so publish the full model rather than a one-field patch.
+The consumer owns the values. It obtains the HTML bridge during lifecycle `ready`, keeps a complete view model, and calls `setData(model)` after an accepted change. Calling `setData()` synchronously validates and applies the document's complete bound state, so publish the full model rather than a one-field patch. Canvas retains compatible display objects during data-only updates; if validation rejects a snapshot, `setData()` throws and the last valid display remains.
 
 Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 256 items.
 

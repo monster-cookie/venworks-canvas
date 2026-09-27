@@ -3,7 +3,6 @@ package
    import flash.display.DisplayObjectContainer;
    import flash.display.Sprite;
    import flash.geom.Rectangle;
-   import flash.events.Event;
 
    public final class CanvasHtmlSession
    {
@@ -11,12 +10,6 @@ package
 
       private var hudTargets:CanvasHudTargets;
       private var consumerId:String;
-
-      private var coalesce:Boolean;
-      private var pendingData:Object;
-      private var updateDiagnostic:CanvasHtmlDiagnostic;
-      private var updateRevision:uint = 0;
-      private var contract:String;
 
       private var mount:DisplayObjectContainer;
 
@@ -48,22 +41,20 @@ package
 
       private var activeState:String;
 
-      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:Boolean = false, param4:CanvasHudTargets = null, param5:String = null, param6:Object = null, param7:String = null)
+      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:CanvasHudTargets = null, param4:String = null, param5:Object = null)
       {
          if(param1 == null || param2 == null || !param2.success)
          {
             throw new Error("Canvas HTML session requires a mount and parsed document");
          }
-         this.hostLayout = param3 ? param6 : null;
+         this.hostLayout = param5;
          if(this.hostLayout != null)
          {
             this.viewportWidth = Number(this.hostLayout.visibleWidth);
             this.viewportHeight = Number(this.hostLayout.visibleHeight);
          }
-         this.hudTargets = param4;
-         this.consumerId = param5;
-         this.contract = param7 == null ? (param3 ? "VWCANVAS_HTML/3" : "VWCANVAS_HTML/2") : param7;
-         this.coalesce = this.contract == "VWCANVAS_HTML/3";
+         this.hudTargets = param3;
+         this.consumerId = param4;
          this.mount = param1;
          this.loadResult = param2;
       }
@@ -74,8 +65,6 @@ package
          {
             return new CanvasHtmlDiagnostic("lifecycle","disposed",null);
          }
-         var capabilityFailure:CanvasHtmlDiagnostic = this.validateCapabilities();
-         if(capabilityFailure != null) return capabilityFailure;
          var stateFailure:CanvasHtmlDiagnostic = this.indexEventStates();
          if(stateFailure != null)
          {
@@ -97,14 +86,6 @@ package
             return;
          }
          var snapshot:Object = CanvasHtmlData.snapshot(param1);
-         if(this.coalesce)
-         {
-            var composed:CanvasHtmlComposeResult = new CanvasHtmlComposer().compose(this.loadResult,snapshot,this.activeState);
-            if(!composed.success) throw new Error(composed.diagnostic.toString());
-            this.pendingData = snapshot;
-            this.mount.addEventListener(Event.ENTER_FRAME,this.applyPending,false,0,false);
-            return;
-         }
          var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
          if(failure != null)
          {
@@ -113,35 +94,9 @@ package
          this.data = snapshot;
       }
 
-      public function getUpdateState() : Object
-      {
-         return {pending:this.pendingData != null,revision:this.updateRevision,diagnostic:this.updateDiagnostic == null ? null : this.updateDiagnostic.toString()};
-      }
-
-      private function applyPending(event:Event) : void
-      {
-         if(this.mount != null) this.mount.removeEventListener(Event.ENTER_FRAME,this.applyPending);
-         if(this.disposed || this.pendingData == null) return;
-         var snapshot:Object = this.pendingData;
-         this.pendingData = null;
-         try
-         {
-            this.updateDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
-            if(this.updateDiagnostic == null)
-            {
-               this.data = snapshot;
-               this.updateRevision++;
-            }
-         }
-         catch(updateError:*)
-         {
-            this.updateDiagnostic = new CanvasHtmlDiagnostic("render","update-failed",this.loadResult.entryDocument.resource,-1,String(updateError).substr(0,256));
-         }
-      }
-
       public function setHostLayout(layout:Object) : void
       {
-         if(!this.coalesce || this.disposed || layout == null) return;
+         if(this.disposed || layout == null) return;
          var previous:Object = this.hostLayout;
          this.hostLayout = layout;
          try
@@ -249,9 +204,6 @@ package
          this.disposed = true;
          if(this.hudTargets != null) this.hudTargets.release(this.consumerId);
          this.hudTargets = null;
-         this.mount.removeEventListener(Event.ENTER_FRAME,this.applyPending);
-         this.pendingData = null;
-         this.updateDiagnostic = null;
          if(this.viewport != null)
          {
             this.viewport.scrollRect = null;
@@ -335,28 +287,6 @@ package
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
          if(this.hudTargets != null) this.hudTargets.apply(this.consumerId,rendered.targets);
-         return null;
-      }
-
-      private function validateCapabilities() : CanvasHtmlDiagnostic
-      {
-         if(this.contract == "VWCANVAS_HTML/3") return null;
-         if(this.contract != "VWCANVAS_HTML/2") return new CanvasHtmlDiagnostic("parse","unsupported-contract",null);
-         // Inspect every resource, including inactive templates and included documents.
-         for each(var resource:CanvasHtmlResource in this.loadResult.resources)
-         {
-            if(resource.document == null || resource.document.root == null) continue;
-            var nodes:Array = [resource.document.root];
-            while(nodes.length > 0)
-            {
-               var node:CanvasHtmlNode = nodes.pop() as CanvasHtmlNode;
-               var unsupported:Boolean = node.name == "vw-hud-target" || node.name == "vw-symbol";
-               for each(var attribute:CanvasHtmlAttribute in node.attributes)
-                  unsupported ||= CanvasHtmlBindings.isAttribute(attribute.name) || attribute.name == "data-vw-anchor" || attribute.name == "data-vw-assets" || node.name == "vw-meter" && ["min","max","direction","segments","gap","partial"].indexOf(attribute.name) >= 0;
-               if(unsupported) return new CanvasHtmlDiagnostic("parse","requires-html3",node.resource,node.offset);
-               for each(var child:CanvasHtmlNode in node.children) nodes.push(child);
-            }
-         }
          return null;
       }
 

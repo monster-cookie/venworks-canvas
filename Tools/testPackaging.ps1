@@ -118,8 +118,12 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 3 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
+}
+if (@($configuredExample.ScaleformBuilds | Where-Object { [string]$_.Name -ceq 'subscriptions-probe' }).Count -ne 0 -or
+    @($configuredExample.Archives.Assets | Where-Object { [string]$_.Source -match 'CanvasSubscriptionsProbe|subscriptions-probe' -or [string]$_.Target -match 'subscriptions-probe' }).Count -ne 0) {
+  throw 'Developer diagnostics must not be configured as Example release assets.'
 }
 $exampleResourceAssets = @($configuredExample.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
 if ($exampleResourceAssets.Count -ne 1 -or
@@ -175,7 +179,6 @@ if (@($configured | Where-Object { @($_.Archives | Where-Object { [bool]$_.Inclu
 }
 $configuredConsumerMappings = @(
   [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example'; Source = 'movies/CanvasExample.swf' }
-  [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example.subscriptions-probe'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf' }
   [pscustomobject]@{ Variant = $configuredGallery; Namespace = 'venworks.canvas.component-gallery'; Source = 'movies/CanvasComponentGallery.swf' }
 )
 foreach ($mapping in $configuredConsumerMappings) {

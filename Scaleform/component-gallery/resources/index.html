@@ -304,15 +304,46 @@
           </div>
         </section>
       </div>
-      <section class="gallery-section">
-        <h2>SVG curves and segmented live meters</h2>
-        <p>Standard SVG paths, primitives and group transforms share the external SVG renderer.</p>
-        <svg width="320" height="64" viewBox="0 0 320 64"><g transform="translate(4 4)" fill="#061722" stroke="#2dcbff" stroke-width="2"><path d="M 16 0 L 296 0 Q 312 0 312 16 L 312 40 C 312 52 300 56 288 56 L 16 56 Q 0 56 0 40 L 0 16 Q 0 0 16 0 Z"></path><circle cx="28" cy="28" r="12" fill="#2dcbff"></circle><polyline points="52,36 68,20 84,36" fill="none"></polyline></g></svg>
-        <p>Health uses an explicit 0–100 range, sixteen segments, and partial fills.</p>
-        <vw-meter class="expanded-meter" value="player.healthpercentage" min="0" max="100" direction="right" segments="16" gap="2" partial="true"></vw-meter>
-        <p>HTML/3 coalesces snapshots within one frame and retains unrelated panels. HTML/2 remains supported.</p>
-        <p>HUD controls are declarations in HUD consumers: &lt;vw-hud-target target=&quot;player.crosshair&quot; disabled=&quot;true&quot;&gt;&lt;/vw-hud-target&gt;. This Gallery does not suppress game controls.</p>
-      </section>
+      <div class="gallery-table">
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">HUD artwork, placement, and controls</h2>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>SVG curves</span></div>
+            <div class="gallery-syntax"><p>&lt;svg viewBox=&quot;0 0 320 64&quot;&gt;&lt;g transform=&quot;translate(4 4)&quot;&gt;&lt;path d=&quot;M 16 0 L 296 0 Q 312 0 312 16 ... Z&quot;&gt;&lt;/path&gt;&lt;circle cx=&quot;28&quot; cy=&quot;28&quot; r=&quot;12&quot;&gt;&lt;/circle&gt;&lt;/g&gt;&lt;/svg&gt;</p></div>
+            <div class="gallery-result"><svg width="320" height="64" viewBox="0 0 320 64"><g transform="translate(4 4)" fill="#061722" stroke="#2dcbff" stroke-width="2"><path d="M 16 0 L 296 0 Q 312 0 312 16 L 312 40 C 312 52 300 56 288 56 L 16 56 Q 0 56 0 40 L 0 16 Q 0 0 16 0 Z"></path><circle cx="28" cy="28" r="12" fill="#2dcbff"></circle><polyline points="52,36 68,20 84,36" fill="none"></polyline></g></svg></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>Segmented meter</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-meter value=&quot;samplemeter&quot; min=&quot;0&quot; max=&quot;100&quot; direction=&quot;right&quot; segments=&quot;16&quot; gap=&quot;2&quot; partial=&quot;true&quot;&gt;&lt;/vw-meter&gt;</p></div>
+            <div class="gallery-result"><vw-meter class="expanded-meter" value="samplemeter" min="0" max="100" direction="right" segments="16" gap="2" partial="true"></vw-meter></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>Safe-area anchor</span></div>
+            <div class="gallery-syntax"><p>&lt;div class=&quot;status-panel&quot; data-vw-anchor=&quot;bottom-right&quot;&gt;...&lt;/div&gt;</p></div>
+            <div class="gallery-result"><p>Anchors absolute content to the host safe area while author offsets stay in the 1920×1080 design space.</p></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>Presentation bindings</span></div>
+            <div class="gallery-syntax"><p>&lt;div data-vw-x=&quot;samplex&quot; data-vw-y=&quot;sampley&quot; data-vw-rotation=&quot;samplerotation&quot; data-vw-opacity=&quot;sampleopacity&quot; data-vw-scale=&quot;samplescale&quot;&gt;Live placement&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div class="demo-binding" data-vw-x="samplex" data-vw-y="sampley" data-vw-rotation="samplerotation" data-vw-opacity="sampleopacity" data-vw-scale="samplescale">Live placement</div></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>Allowlisted asset</span></div>
+            <div class="gallery-syntax"><p>&lt;img src=&quot;gallery-icon.svg&quot; data-vw-asset=&quot;sampleasset&quot; data-vw-assets=&quot;gallery-icon.svg&quot;&gt;&lt;/img&gt;</p></div>
+            <div class="gallery-result"><img class="demo-image" src="gallery-icon.svg" alt="Selected Gallery asset" data-vw-asset="sampleasset" data-vw-assets="gallery-icon.svg"></img></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>HUD target</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-hud-target target=&quot;player.crosshair&quot; disabled=&quot;true&quot;&gt;&lt;/vw-hud-target&gt;</p></div>
+            <div class="gallery-result"><p>Player and ship consumers can suppress a semantic HUD surface. The menu Gallery shows the declaration without changing game controls.</p></div>
+          </div>
+          <div class="gallery-row">
+            <div class="gallery-tag"><span>Native symbol</span></div>
+            <div class="gallery-syntax"><p>&lt;vw-symbol name=&quot;vehicle-exit-prompt&quot;&gt;&lt;/vw-symbol&gt;</p></div>
+            <div class="gallery-result"><p>Player and ship consumers can copy approved host artwork without taking ownership of its input handler.</p></div>
+          </div>
+        </section>
+      </div>
       <footer class="gallery-footer">
         <p>The syntax and the result in every row come from this Gallery document; Canvas owns parsing, binding, layout, and rendering.</p>
       </footer>

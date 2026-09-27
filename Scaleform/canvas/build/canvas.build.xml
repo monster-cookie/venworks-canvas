@@ -20,13 +20,11 @@
     <token>getCanvasRegistration</token>
     <token>getCanvasHtmlRegistration</token>
     <token>VWCANVAS_HTML/2</token>
-    <token>VWCANVAS_HTML/3</token>
     <token>CanvasSvgGeometry</token>
     <token>CanvasHtmlRetainedTree</token>
     <token>CanvasHudTargets</token>
     <token>CanvasHtmlNativeSymbol</token>
     <token>CanvasHtmlMeter</token>
-    <token>getUpdateState</token>
     <token>CanvasHtmlEngine</token>
     <token>CanvasHtmlDocumentLoader</token>
     <token>CanvasHtmlTokenizer</token>

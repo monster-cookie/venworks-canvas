@@ -21,6 +21,8 @@ Alternative build output directory used instead of publishing final loose files 
 Temporary build directory. Defaults beneath BuildSettings.WorkRoot and also accepts the WorkDir alias.
 .PARAMETER KeepWork
 Retains temporary compiler, patch, and recovery work for inspection.
+.PARAMETER IncludeDiagnostics
+Builds the developer-only subscriptions probe for the selected Example variant. The probe is never staged or packaged.
 #>
 [CmdletBinding()]
 param(
@@ -42,7 +44,9 @@ param(
   [Alias('WorkDir')]
   [string]$WorkDirectory,
 
-  [switch]$KeepWork
+  [switch]$KeepWork,
+
+  [switch]$IncludeDiagnostics
 )
 
 $PSNativeCommandUseErrorActionPreference = $true
@@ -60,6 +64,23 @@ if ($null -eq $sharedConfiguration -or ![bool]$sharedConfiguration.Value) {
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $allVariants = @(Get-ModuleVariants)
 $allJobs = @(ConvertTo-BuildScaleformJobs -Variants $allVariants -RepositoryRoot $repositoryRoot)
+if ($IncludeDiagnostics) {
+  $diagnosticVariant = [pscustomobject]@{
+    VariantKey = 'EXAMPLE'
+    ScaleformBuilds = @(
+      @{
+        Name = 'subscriptions-probe'
+        Kind = 'Flex'
+        OutputSet = 'diagnostics'
+        ManifestPath = 'Scaleform/canvas/diagnostics/build/subscriptions-probe.build.xml'
+        Outputs = @(
+          @{ OutputFile = 'CanvasSubscriptionsProbe.swf' }
+        )
+      }
+    )
+  }
+  $allJobs += @(ConvertTo-BuildScaleformJobs -Variants @($diagnosticVariant) -RepositoryRoot $repositoryRoot)
+}
 $variants = @(Get-ModuleVariants -VariantKeys $VariantKeys)
 $selectedVariantKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($variant in $variants) {
@@ -69,6 +90,10 @@ $jobs = @($allJobs | Where-Object { $selectedVariantKeys.Contains([string]$_.Var
 if ($jobs.Count -eq 0) {
   Write-Host -ForegroundColor Green "No Scaleform builds are configured for $([string]::Join(', ', @($variants.VariantKey)))."
   return
+}
+
+if ($IncludeDiagnostics -and [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+  throw '-IncludeDiagnostics requires -OutputDirectory because diagnostic outputs are not staging or package assets.'
 }
 
 $useStagingOutput = [string]::IsNullOrWhiteSpace($OutputDirectory)

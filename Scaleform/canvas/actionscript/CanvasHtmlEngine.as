@@ -192,7 +192,7 @@ package
                throw new Error("Canvas HTML registration contains an unknown field");
             }
          }
-         if(typeof param2.contract != "string" || (param2.contract != "VWCANVAS_HTML/2" && param2.contract != "VWCANVAS_HTML/3"))
+         if(typeof param2.contract != "string" || param2.contract != "VWCANVAS_HTML/2")
          {
             throw new Error("Canvas HTML registration has an unsupported contract");
          }
@@ -223,7 +223,7 @@ package
          {
             try
             {
-               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3,param2.registration.contract == "VWCANVAS_HTML/3",this.hudTargets,param1,this.hostLayout,String(param2.registration.contract));
+               var session:CanvasHtmlSession = new CanvasHtmlSession(param2.mount as DisplayObjectContainer,param3,this.hudTargets,param1,this.hostLayout);
                var diagnostic:CanvasHtmlDiagnostic = session.initialize();
                if(diagnostic == null)
                {

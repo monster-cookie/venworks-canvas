@@ -42,7 +42,7 @@ package
       public function getCanvasHtmlRegistration() : Object
       {
          return {
-            "contract":"VWCANVAS_HTML/3",
+            "contract":"VWCANVAS_HTML/2",
             "entryDocument":"index.html"
          };
       }
@@ -136,6 +136,12 @@ package
             "samplevisible":true,
             "sampleitems":["Alpha item","Beta item","Gamma item"],
             "samplemeter":72,
+            "samplex":18,
+            "sampley":2,
+            "samplerotation":2,
+            "sampleopacity":0.85,
+            "samplescale":1,
+            "sampleasset":"gallery-icon.svg",
             "sampleupdates":this.hostKind == "menu" ? "Menu-local sample data" : "PlayerData snapshots received: " + this.playerDataUpdates
          };
          var key:String = null;
