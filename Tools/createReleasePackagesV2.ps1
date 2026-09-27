@@ -30,6 +30,7 @@ if (!(Test-Path Variable:Global:SharedConfigurationLoaded) -or !$Global:SharedCo
   . "$PSScriptRoot/sharedConfig.ps1" -SkipEnvironment:$SkipEnvironment
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+. (Join-Path $PSScriptRoot 'sharedRuntimeArtifacts.ps1')
 
 function Assert-NotGitLfsPointer {
   param(
@@ -219,6 +220,9 @@ foreach ($variant in $variants) {
   $windowsArchiveFiles = @()
   if (@($packageSuffixes | Where-Object { $_ -in @('Nexus PC - Normal', 'Bethesda PC') }).Count -ne 0) {
     $mainPath = Resolve-RequiredFile -Path (Join-Path $stagingPath $mainName) -Description "$($variant.VariantName) Windows Main archive"
+    if ([string]$variant.VariantKey -ceq 'CANVAS') {
+      Assert-CanvasRuntimeArchive -Path $mainPath -ContractPath (Join-Path $PSScriptRoot '../Scaleform/canvas/build/runtime-package.contract.psd1') -RequireRegistry
+    }
     $windowsArchiveFiles = @(New-PackageFile -SourcePath $mainPath -EntryName $mainName)
     $texturesPath = Resolve-OptionalFile -Path (Join-Path $stagingPath $texturesName) -Description "$($variant.VariantName) Windows Textures archive"
     if ($texturesPath) {
@@ -228,6 +232,9 @@ foreach ($variant in $variants) {
   $xboxArchiveFiles = @()
   if ('Bethesda Xbox' -in $packageSuffixes) {
     $mainXboxPath = Resolve-RequiredFile -Path (Join-Path $stagingPath $mainXboxName) -Description "$($variant.VariantName) Xbox Main archive"
+    if ([string]$variant.VariantKey -ceq 'CANVAS') {
+      Assert-CanvasRuntimeArchive -Path $mainXboxPath -ContractPath (Join-Path $PSScriptRoot '../Scaleform/canvas/build/runtime-package.contract.psd1')
+    }
     $xboxArchiveFiles = @(New-PackageFile -SourcePath $mainXboxPath -EntryName $mainXboxName)
     $texturesXboxPath = Resolve-OptionalFile -Path (Join-Path $stagingPath $texturesXboxName) -Description "$($variant.VariantName) Xbox Textures archive"
     if ($texturesXboxPath) {
@@ -237,6 +244,9 @@ foreach ($variant in $variants) {
   $psArchiveFiles = @()
   if ('Bethesda PS5' -in $packageSuffixes) {
     $mainPsPath = Resolve-RequiredFile -Path (Join-Path $stagingPath $mainPsName) -Description "$($variant.VariantName) PS5 Main archive"
+    if ([string]$variant.VariantKey -ceq 'CANVAS') {
+      Assert-CanvasRuntimeArchive -Path $mainPsPath -ContractPath (Join-Path $PSScriptRoot '../Scaleform/canvas/build/runtime-package.contract.psd1')
+    }
     $psArchiveFiles = @(New-PackageFile -SourcePath $mainPsPath -EntryName $mainPsName)
     $texturesPsPath = Resolve-OptionalFile -Path (Join-Path $stagingPath $texturesPsName) -Description "$($variant.VariantName) PS5 Textures archive"
     if ($texturesPsPath) {

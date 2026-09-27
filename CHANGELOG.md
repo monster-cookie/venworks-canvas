@@ -7,6 +7,7 @@
 - Added semantic controls for hiding, disabling, and positioning individual player HUD, spaceship HUD, and Canvas watch elements.
 - Expanded meters and layout tools with configurable ranges, directions, segments, partial fills, safe-area anchors, and live visual bindings.
 - Improved live data updates so unchanged interface elements are retained and rejected updates preserve the last valid display.
+- Added runtime package checks that reject stale Canvas host or Registry files before release packaging.
 
 ## Version 1.0.3 (September 25, 2026)
 

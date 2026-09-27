@@ -41,6 +41,8 @@ package
 
       private static const DATAGRAM_CONSUMER_PROTOCOL:String = "VWCANVAS_CONSUMER/3";
 
+      private static const RUNTIME_CONTRACT:String = "VWCANVAS_RUNTIME/1";
+
       private static const HOST_PROTOCOL:String = "VWCANVAS_HOST/1";
 
       private static const HOST_STATE_NEW:String = "new";
@@ -1204,7 +1206,7 @@ package
          }
          if(typeof protocol != "string" || protocol != CONSUMER_PROTOCOL && protocol != DATAGRAM_CONSUMER_PROTOCOL)
          {
-            throw new Error("unsupported consumer protocol");
+            throw new Error("unsupported consumer protocol | received=" + this.describeConsumerProtocol(protocol) + " | supported=" + LEGACY_CONSUMER_PROTOCOL + "," + CONSUMER_PROTOCOL + "," + DATAGRAM_CONSUMER_PROTOCOL + " | runtime=" + RUNTIME_CONTRACT);
          }
          var expectedNamespace:String = this.getAssetNamespace(String(this.paths[param2.name]));
          if(typeof param1.consumerId != "string" || this.normalizeUuid(param1.consumerId) != param2.name || typeof param1.assetNamespace != "string" || param1.assetNamespace.toLowerCase() != expectedNamespace)
@@ -1995,6 +1997,16 @@ package
       private function sanitizePath(param1:Object) : String
       {
          return this.sanitizeText(param1,200).replace(/\\/g,"/");
+      }
+
+      private function describeConsumerProtocol(param1:Object) : String
+      {
+         var valueType:String = typeof param1;
+         if(valueType != "string")
+         {
+            return valueType;
+         }
+         return valueType + ":" + this.sanitizeText(param1,64);
       }
 
       private function sanitizeText(param1:*, param2:int) : String
