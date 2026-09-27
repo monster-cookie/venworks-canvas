@@ -57,7 +57,7 @@ The button row demonstrates rendering only. Canvas does not turn arbitrary HTML 
 | `template` / `vw-use` | `<template id="sampletemplate"><p>Reusable content</p></template><vw-use template="#sampletemplate"></vw-use>` | The template instance displays `REUSABLE CONTENT`. |
 | `vw-include` | `<vw-include src="include-example.html"></vw-include>` | The packaged include displays `LOADED FROM INCLUDE-EXAMPLE.HTML`. |
 
-Keep all images, stylesheets, includes, and entry documents beneath `Interface/VenworksCanvas/Consumers/<your-namespace>/`. Canvas rejects absolute paths, parent-directory traversal, and remote URLs.
+Keep all consumer-owned images, stylesheets, includes, entry documents, and consumer SWFs beneath the fixed loader root `Interface/VenworksCanvas/Consumers/<your-namespace>/`. Registration URLs omit the leading `Interface/`. This directory does not contain copied Canvas framework files; Canvas rejects absolute paths, parent-directory traversal, remote URLs, and custom resource roots.
 
 ## HUD artwork and live meters
 
