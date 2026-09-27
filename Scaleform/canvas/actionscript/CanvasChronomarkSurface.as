@@ -8,6 +8,11 @@ package
 
    internal final class CanvasChronomarkSurface extends MovieClip
    {
+      private var presentationHidden:Boolean = false;
+      private var presentationDisabled:Boolean = false;
+      private var engineVisible:Boolean = false;
+      private var latestData:Object = {};
+
       private var view:CanvasChronomarkView;
 
       private var markers:CanvasChronomarkMarkers;
@@ -33,6 +38,7 @@ package
       private var ownerAppliesOpacity:Boolean = true;
 
       private var localEnvironment:Object;
+      private var restoringPresentation:Boolean = false;
 
       private var playerFrequent:Object;
 
@@ -125,7 +131,37 @@ package
       {
          if(!this.disposed)
          {
-            visible = param1;
+            this.engineVisible = param1;
+            visible = param1 && !this.presentationHidden;
+         }
+      }
+
+      public function setPresentationSuppressed(hidden:Boolean, disabled:Boolean) : void
+      {
+         if(this.disposed) return;
+         this.presentationHidden = hidden || disabled;
+         visible = this.engineVisible && !this.presentationHidden;
+         if(this.presentationDisabled == disabled) return;
+         this.presentationDisabled = disabled;
+         if(disabled)
+         {
+            if(this.animation != null) this.animation.dispose();
+            this.animation = null;
+         }
+         else
+         {
+            this.animation = new CanvasChronomarkAnimation(this,this.view,this.effects,this.sound);
+            this.previousOxygen = -1; this.previousCarbonDioxide = -1;
+            this.hasScannerState = false; this.hasDetectionState = false;
+            this.view.clearAlert();
+            // Restore current state, without replaying expired presentation alerts.
+            this.restoringPresentation = true;
+            try
+            {
+               for each(var channel:String in ["LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","HudCompassData","PersonalEffectsData","EnvironmentEffectsData","HUDOpacityData"])
+                  if(this.latestData.hasOwnProperty(channel)) this.onData(channel,this.latestData[channel]);
+            }
+            finally { this.restoringPresentation = false; }
          }
       }
 
@@ -145,6 +181,7 @@ package
          {
             this.animation.dispose();
          }
+         this.latestData = {};
          this.data = null;
          this.animation = null;
          if(this.effects != null)
@@ -177,6 +214,8 @@ package
          {
             return;
          }
+         if(param1 != "PersonalAlertsData" && param1 != "EnvironmentAlertsData") this.latestData[param1] = param2;
+         if(this.presentationDisabled) return;
          switch(param1)
          {
             case "LocalEnvironmentData":
@@ -238,7 +277,7 @@ package
          }
          this.hasScannerState = true;
          this.scanning = nextScanning;
-         if(leftSpaceship && !nextScanning && !scannerChanged)
+         if(!this.restoringPresentation && leftSpaceship && !nextScanning && !scannerChanged)
          {
             this.animation.showPlanetInformation(Number(param1.alertTimeMs));
          }
@@ -257,7 +296,7 @@ package
          oxygen = CanvasChronomarkStyle.clamp(oxygen,0,1);
          carbonDioxide = CanvasChronomarkStyle.clamp(carbonDioxide,0,1);
          this.view.setOxygen(oxygen,carbonDioxide);
-         if(this.previousOxygen >= 0 && this.previousCarbonDioxide >= 0)
+         if(!this.restoringPresentation && this.previousOxygen >= 0 && this.previousCarbonDioxide >= 0)
          {
             if(this.previousOxygen > CanvasChronomarkStyle.OXYGEN_THRESHOLD_TOLERANCE && oxygen <= CanvasChronomarkStyle.OXYGEN_THRESHOLD_TOLERANCE)
             {

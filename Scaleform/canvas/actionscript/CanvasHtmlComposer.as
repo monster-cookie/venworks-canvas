@@ -53,6 +53,8 @@ package
          output.children.push(outputBody);
          this.generatedNodes = 2;
          var rootScope:Object = {"values":param2 == null ? {} : param2,"parent":null};
+         if(!CanvasHtmlBindings.resolve(body,outputBody,rootScope))
+            return new CanvasHtmlComposeResult(false,null,new CanvasHtmlDiagnostic("compose","invalid-binding",body.resource));
          var frames:Array = [];
          this.pushChildren(frames,body.children,outputBody,rootScope,3,[],body.resource);
          while(frames.length > 0 && this.failure == null)
@@ -218,6 +220,18 @@ package
             }
          }
          var output:CanvasHtmlNode = this.cloneElement(source);
+         if(!CanvasHtmlBindings.resolve(source,output,scope))
+         {
+            this.reject("invalid-binding",String(param1.resource));
+            return;
+         }
+         if(source.name == "vw-symbol")
+         {
+            var symbolValue:Object = CanvasHtmlData.resolve(scope,source.getAttribute("value"));
+            output.bindingValue = symbolValue.found ? symbolValue.value : null;
+            if(!CanvasHtmlNativeSymbol.valid(source.getAttribute("name"),output.bindingValue))
+            { this.reject("invalid-native-symbol",String(param1.resource)); return; }
+         }
          if(source.name == "vw-meter")
          {
             var meterValue:Object = CanvasHtmlData.resolve(scope,source.getAttribute("value"));

@@ -36,3 +36,6 @@
 .demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; width: 220px; padding: 12px; color: #071015; background-color: #66ffff; font-weight: bold; }
 .gallery-footer { padding: 12px; color: #a9bccb; background-color: #101923; font-size: 15px; line-height: 20px; opacity: 0.9; }
 .gallery-footer p { margin: 0px; }
+
+.expanded-meter { width: 320px; height: 16px; color: #2dcbff; background-color: #061722; }
+.demo-binding { width: 260px; padding: 8px; color: #071015; background-color: #66ffff; font-weight: bold; }

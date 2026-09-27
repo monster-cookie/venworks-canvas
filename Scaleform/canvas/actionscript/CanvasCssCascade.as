@@ -4,9 +4,11 @@ package
 
    public final class CanvasCssCascade
    {
-      private static const INHERITED:Array = ["color","font-family","font-size","font-weight","text-align","line-height"];
+      private static const INHERITED:Array = ["color","font-family","font-size","font-weight","text-align","line-height","fill","stroke","stroke-width","fill-opacity","stroke-opacity","visibility"];
 
       private var rules:Array;
+      private var ruleIndex:Object = {};
+      private var universalRules:Array = [];
 
       private var matchWork:int;
 
@@ -17,6 +19,13 @@ package
       public function CanvasCssCascade(param1:Array)
       {
          this.rules = param1 == null ? [] : param1.concat();
+         for each(var rule:Object in this.rules)
+         {
+            var last:Object = rule.selector[rule.selector.length-1];
+            var key:String = last.id != null ? "#"+last.id : last.classes.length > 0 ? "."+last.classes[0] : last.tag != null && last.tag != "*" ? last.tag : null;
+            if(key == null) this.universalRules.push(rule);
+            else { if(this.ruleIndex[key] == null) this.ruleIndex[key] = []; this.ruleIndex[key].push(rule); }
+         }
       }
 
       public function beginPass() : void
@@ -34,12 +43,20 @@ package
       public function computeStyle(param1:CanvasHtmlNode, param2:Array, param3:Object) : Object
       {
          var style:Object = this.defaultStyle(param1 == null ? "" : param1.name,param3);
+         if(param1 != null && CanvasSvgGeometry.isElement(param1.name))
+         {
+            for each(var property:String in ["fill","stroke","stroke-width","fill-opacity","stroke-opacity","opacity"])
+               if(param1.getAttribute(property) != null) style[property] = param1.getAttribute(property);
+         }
+         if(param1 != null && param1.name == "svg")
+            for each(var dimension:String in ["width","height"])
+               if(param1.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(param1.getAttribute(dimension));
          var priorities:Object = {};
          var rule:Object = null;
          var declaration:Object = null;
          var priority:Number = 0;
          var name:String = null;
-         for each(rule in this.rules)
+         for each(rule in this.candidates(param1))
          {
             if(this.matches(rule.selector,param1,param2))
             {
@@ -62,6 +79,17 @@ package
          return style;
       }
 
+      private function candidates(node:CanvasHtmlNode) : Array
+      {
+         var result:Array = this.universalRules.concat();
+         if(node == null) return result;
+         var keys:Array = [node.name,"#"+node.getAttribute("id")];
+         var classes:String = node.getAttribute("class");
+         if(classes != null) for each(var name:String in classes.split(" ")) keys.push("."+name);
+         for each(var key:String in keys) if(this.ruleIndex[key] != null) result = result.concat(this.ruleIndex[key]);
+         return result;
+      }
+
       public function inheritedStyle(param1:Object) : Object
       {
          return this.defaultStyle("",param1);
@@ -70,6 +98,14 @@ package
       private function defaultStyle(param1:String, param2:Object) : Object
       {
          var style:Object = {
+            "object-fit":"fill",
+            "fill-opacity":"1",
+            "stroke-opacity":"1",
+            "fill":"currentcolor",
+            "stroke":"none",
+            "stroke-width":"1",
+            "visibility":"visible",
+            "transform":"none",
             "display":this.defaultDisplay(param1),
             "flex-direction":"column",
             "width":"auto",

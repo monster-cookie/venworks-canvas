@@ -4,6 +4,10 @@ package
 
    public final class CanvasHtmlRenderResult
    {
+      public var targets:Array;
+
+      public var boxes:Array;
+
       public var success:Boolean;
 
       public var display:Sprite;
@@ -14,8 +18,10 @@ package
 
       public var diagnostic:CanvasHtmlDiagnostic;
 
-      public function CanvasHtmlRenderResult(param1:Boolean, param2:Sprite, param3:Number, param4:Number, param5:CanvasHtmlDiagnostic)
+      public function CanvasHtmlRenderResult(param1:Boolean, param2:Sprite, param3:Number, param4:Number, param5:CanvasHtmlDiagnostic, param6:Array = null, param7:Array = null)
       {
+         this.targets = param7 == null ? [] : param7;
+         this.boxes = param6;
          this.success = param1;
          this.display = param2;
          this.width = param3;

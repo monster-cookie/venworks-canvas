@@ -5,7 +5,7 @@ package
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
-      private static const TEST_COUNT:int = 12;
+      private static const TEST_COUNT:int = 16;
 
       private var marker:CanvasDiagnosticMarker;
 
@@ -36,6 +36,10 @@ package
          this.runCase("DATAGRAM CODEC",this.testDatagramCodec);
          this.runCase("ATOMIC EFFECT STATE",this.testAtomicEffectState);
          this.runCase("CHRONOMARK SUSTENANCE PRECEDENCE",this.testChronomarkSustenancePrecedence);
+         this.runCase("WATCH DISABLED RESTORATION",this.testWatchRestoration);
+         this.runCase("HTML SVG AND METERS",CanvasHtmlPrimitivesDiagnostics.run);
+         this.runCase("HTML RETAINED UPDATES",CanvasHtmlUpdatesDiagnostics.run);
+         this.runCase("HUD TARGET OWNERSHIP",CanvasHudTargetsDiagnostics.run);
          this.updateMarker();
       }
 
@@ -471,6 +475,26 @@ package
          this.assertTrue(adapter.view().waiting === true,"effect reset did not restore pending state");
       }
 
+      private function testWatchRestoration() : void
+      {
+         var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
+         var surface:CanvasChronomarkSurface = new CanvasChronomarkSurface();
+         var sounds:Array = [];
+         this.assertTrue(surface.initialize(manager,"normal",function(name:String):void { sounds.push(name); },null,null),"watch initialization failed");
+         manager.emit("LocalEnvironmentData",{bInSpaceship:true});
+         manager.emit("PlayerFrequentData",{fMaxO2CO2:100,fOxygen:100,fCarbonDioxide:0});
+         var subscriptions:int = manager.subscribeCalls.length;
+         surface.setPresentationSuppressed(true,true);
+         manager.emit("PlayerFrequentData",{fMaxO2CO2:100,fOxygen:0,fCarbonDioxide:100});
+         manager.emit("LocalEnvironmentData",{bInSpaceship:false});
+         surface.setPresentationSuppressed(false,false);
+         this.assertTrue(sounds.length == 0,"watch replayed disabled oxygen transition");
+         this.assertTrue(manager.subscribeCalls.length == subscriptions && manager.unsubscribeCalls.length == 0,"watch disable changed provider ownership");
+         manager.emit("PlayerFrequentData",{fMaxO2CO2:100,fOxygen:100,fCarbonDioxide:0});
+         this.assertTrue(sounds.length > 0,"watch did not resume live oxygen transitions");
+         surface.dispose();
+      }
+
       private function testChronomarkSustenancePrecedence() : void
       {
          var manager:CanvasSubscriptionsFakeManager = new CanvasSubscriptionsFakeManager();
@@ -586,10 +610,11 @@ package
             lines.push(String(this.failures[index]));
             index++;
          }
-         if(this.failures.length == 0)
+         if(this.failures.length == 0 && this.passed == TEST_COUNT)
          {
             lines.push("ALL REGISTRY DIAGNOSTICS PASSED");
          }
+         else if(this.failures.length == 0) lines.push("WAITING FOR REAL FRAME DIAGNOSTIC");
          this.marker.update(lines);
       }
 

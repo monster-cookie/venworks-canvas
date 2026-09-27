@@ -113,7 +113,7 @@ package
                return null;
             }
             var attributeOffset:int = this.position;
-            var attributeName:String = this.readName();
+            var attributeName:String = this.readName(true);
             if(attributeName == null)
             {
                this.reject("malformed-syntax",attributeOffset);
@@ -328,7 +328,7 @@ package
          return value;
       }
 
-      private function readName() : String
+      private function readName(attribute:Boolean = false) : String
       {
          var start:int = this.position;
          if(this.position >= this.source.length || !this.isLowerLetter(this.source.charCodeAt(this.position)))
@@ -336,11 +336,12 @@ package
             return null;
          }
          this.position++;
-         while(this.position < this.source.length && this.isNameCharacter(this.source.charCodeAt(this.position)))
+         while(this.position < this.source.length && (this.isNameCharacter(this.source.charCodeAt(this.position)) || attribute && this.source.charCodeAt(this.position) >= 65 && this.source.charCodeAt(this.position) <= 90))
          {
             this.position++;
          }
-         return this.source.substring(start,this.position);
+         var name:String = this.source.substring(start,this.position);
+         return attribute && name == "viewBox" ? "viewbox" : name;
       }
 
       private function skipWhitespace() : Boolean

@@ -20,6 +20,11 @@
     <token>getCanvasRegistration</token>
     <token>getCanvasHtmlRegistration</token>
     <token>VWCANVAS_HTML/2</token>
+    <token>CanvasSvgGeometry</token>
+    <token>CanvasHtmlRetainedTree</token>
+    <token>CanvasHudTargets</token>
+    <token>CanvasHtmlNativeSymbol</token>
+    <token>CanvasHtmlMeter</token>
     <token>CanvasHtmlEngine</token>
     <token>CanvasHtmlDocumentLoader</token>
     <token>CanvasHtmlTokenizer</token>
@@ -139,8 +144,8 @@
     <token>parseCSS</token>
     <token>URLLoaderDataFormat.TEXT</token>
     <token>loadBytes</token>
-    <token>Bitmap</token>
-    <token>BitmapData</token>
+
+
     <token>http://</token>
     <token>https://</token>
     <token>url(</token>

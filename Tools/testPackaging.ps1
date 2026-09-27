@@ -118,8 +118,12 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 3 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
   throw 'Canvas Scaleform archive mapping counts changed.'
+}
+if (@($configuredExample.ScaleformBuilds | Where-Object { [string]$_.Name -ceq 'subscriptions-probe' }).Count -ne 0 -or
+    @($configuredExample.Archives.Assets | Where-Object { [string]$_.Source -match 'CanvasSubscriptionsProbe|subscriptions-probe' -or [string]$_.Target -match 'subscriptions-probe' }).Count -ne 0) {
+  throw 'Developer diagnostics must not be configured as Example release assets.'
 }
 $exampleResourceAssets = @($configuredExample.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
 if ($exampleResourceAssets.Count -ne 1 -or
@@ -170,12 +174,11 @@ Assert-TestNames -Actual $galleryPackagedResourceTargets -Expected @(
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/include-example.html'
   'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/index.html'
 ) -Description 'Component Gallery complete packaged resource target inventory'
-if (@($configured | Where-Object { @($_.Archives).Count -ne 1 -or ![bool]$_.Archives[0].IncludePapyrus }).Count -ne 0) {
+if (@($configured | Where-Object { @($_.Archives | Where-Object { [bool]$_.IncludePapyrus }).Count -ne 1 }).Count -ne 0) {
   throw 'Each Canvas variant must own one Papyrus-bearing archive.'
 }
 $configuredConsumerMappings = @(
   [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example'; Source = 'movies/CanvasExample.swf' }
-  [pscustomobject]@{ Variant = $configuredExample; Namespace = 'venworks.canvas.example.subscriptions-probe'; Source = 'diagnostics/CanvasSubscriptionsProbe.swf' }
   [pscustomobject]@{ Variant = $configuredGallery; Namespace = 'venworks.canvas.component-gallery'; Source = 'movies/CanvasComponentGallery.swf' }
 )
 foreach ($mapping in $configuredConsumerMappings) {
@@ -353,6 +356,17 @@ try {
     PapyrusNamespace = 'Venworks:Canvas'; StagingFolderPath = $stagingTarget; EnvironmentVariableName = 'TEST_PACKAGE_TARGET'
     ScaleformBuilds = @(); Archives = @($mainArchive, $textureArchive)
   }
+
+  $isolatedVariant = [pscustomobject]@{
+    VariantKey = 'ISOLATED'; EsmFileName = $variant.EsmFileName; Archives = $variant.Archives
+    StagingFolderPath = Join-Path $fixtureRoot 'does-not-exist'; EnvironmentVariableName = 'UNCONFIGURED_ISOLATED_DESTINATION'
+  }
+  $pluginInputs = Join-Path $fixtureRoot 'plugin-inputs'
+  New-Item -ItemType Directory -Path (Join-Path $pluginInputs 'ISOLATED') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $stagingTarget $variant.EsmFileName) -Destination (Join-Path $pluginInputs 'ISOLATED')
+  $isolated = @(Get-BuildPackageIsolatedOperations -SelectedVariants @($isolatedVariant) -OutputDirectory (Join-Path $fixtureRoot 'isolated-output') -PluginDirectory $pluginInputs)
+  if ($isolated.Count -ne 1 -or $isolated[0].SourcePluginPath -ne (Join-Path $pluginInputs "ISOLATED/$($variant.EsmFileName)")) { throw 'Isolated packaging required staging or lost explicit plugin input.' }
+  Assert-TestRejected -Action { Get-BuildPackageIsolatedOperations -SelectedVariants @($isolatedVariant) -OutputDirectory (Join-Path $fixtureRoot 'isolated-output') } -Description 'Missing isolated source plugin'
 
   $plans = @(Get-BuildPackageArchivePlans -Variants @($variant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot -ScriptsDirectory $scriptsDirectory -ScaleformDirectory $scaleformDirectory)
   if ($plans.Count -ne 2) { throw 'Fixture variant did not produce one plan per archive.' }

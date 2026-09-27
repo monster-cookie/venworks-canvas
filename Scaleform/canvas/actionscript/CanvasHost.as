@@ -93,6 +93,8 @@ package
 
       private var consumerSubscriptions:CanvasSubscriptions;
 
+      private var hudTargets:CanvasHudTargets;
+
       private var htmlEngine:CanvasHtmlEngine;
 
       private var chronomarkSurface:CanvasChronomarkSurface;
@@ -205,7 +207,8 @@ package
             this.displayMode = context.displayMode;
             this.chronomarkLayout = context.layout;
             this.createDiagnostics();
-            this.htmlEngine = new CanvasHtmlEngine();
+            this.hudTargets = new CanvasHudTargets(this.owner,this.hostKind,this.suppressWatch,this.appendDiagnostic);
+            this.htmlEngine = new CanvasHtmlEngine(this.hudTargets,this.chronomarkLayout);
             this.appendDiagnostic("VWCANVAS EXPLICIT UI LOAD TEST");
             this.appendDiagnostic("HOST " + this.resolveHostKind() + " | MODE " + this.displayMode.toUpperCase());
             this.appendDiagnostic("OWNER " + this.ownerLabel);
@@ -255,13 +258,20 @@ package
          if(this.chronomarkSurface != null && this.chronomarkLayout != null)
          {
             this.chronomarkSurface.updateLayout(this.chronomarkLayout);
+
          }
+         if(this.htmlEngine != null && this.chronomarkLayout != null) this.htmlEngine.setHostLayout(this.chronomarkLayout);
          if(this.diagnostics != null)
          {
             rightEdge = this.chronomarkLayout != null ? Number(this.chronomarkLayout.visibleX) + Number(this.chronomarkLayout.visibleWidth) - Number(this.chronomarkLayout.safeX) : (stage != null ? stage.stageWidth : 1920);
             this.diagnostics.x = Math.max(24,rightEdge - this.diagnostics.width - 24);
             this.diagnostics.y = 24;
          }
+      }
+
+      private function suppressWatch(hidden:Boolean, disabled:Boolean) : void
+      {
+         if(this.chronomarkSurface != null) this.chronomarkSurface.setPresentationSuppressed(hidden,disabled);
       }
 
       public function updateVanillaHudModeVisibility(param1:Boolean) : void
@@ -377,6 +387,8 @@ package
             this.htmlEngine.dispose();
          }
          this.htmlEngine = null;
+         if(this.hudTargets != null) this.hudTargets.dispose();
+         this.hudTargets = null;
          if(this.consumerSubscriptions != null)
          {
             this.consumerSubscriptions.dispose();

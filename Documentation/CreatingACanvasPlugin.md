@@ -183,6 +183,8 @@ Bind these quest properties:
 | `ExpectedRegistration` | `True` |
 | `InitialDelaySeconds` | `0.0`; retained by the current baseline for saved-script compatibility and not used as a startup delay |
 
+The two movie properties are Interface-relative URLs, so they omit the installed path's leading `Interface/`. Canvas currently accepts only `VenworksCanvas/Consumers/<consumer-namespace>/normal.swf` and `large.swf`, and both movies must use the same namespace. This fixed prefix is an enforced loader contract rather than a declaration that Canvas owns the files.
+
 For the exact shipped Example, also create its buff and debuff FormLists and matching label arrays. Keep the list and label order aligned. Those records are application-specific and are not required by Canvas itself.
 
 ## 6. Add mod-owned data
@@ -226,7 +228,7 @@ Save the plugin, reopen it in your authoring tool, and verify the masters, quest
 
 ## 8. Package the files
 
-The installed layout must resolve to these paths:
+The installed layout must resolve to these paths. Installed files and BA2 entries include the leading `Interface/` that registration URLs omit:
 
 ```text
 Data/
@@ -240,6 +242,8 @@ Acme-Canvas-Example - Main.ba2
   Interface/VenworksCanvas/Consumers/acme.canvas-example/index.html
   Interface/VenworksCanvas/Consumers/acme.canvas-example/panel.css
 ```
+
+Everything beneath `Interface/VenworksCanvas/Consumers/acme.canvas-example/` in this example is owned by the Acme consumer: its SWFs, HTML, CSS, SVG, and other local assets. A consumer package must not copy Canvas's host movies, renderer, registry, ESM, or Example implementation. The isolated directory gives Canvas one deterministic resource root and prevents relative document paths from escaping into another consumer's files.
 
 Keep source files out of the player package unless you intentionally distribute a separate source archive. Do not place loose copies of packaged Interface or Script files beside the BA2; loose files can shadow the archive during testing.
 

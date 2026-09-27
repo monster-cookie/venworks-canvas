@@ -6,6 +6,11 @@ package
 
    public final class CanvasHtmlSession
    {
+      private var hostLayout:Object;
+
+      private var hudTargets:CanvasHudTargets;
+      private var consumerId:String;
+
       private var mount:DisplayObjectContainer;
 
       private var loadResult:CanvasHtmlLoadResult;
@@ -13,6 +18,8 @@ package
       private var stylesheet:CanvasCssCascade;
 
       private var viewport:Sprite;
+
+      private var retainedBoxes:Array;
 
       private var documentDisplay:Sprite;
 
@@ -34,12 +41,20 @@ package
 
       private var activeState:String;
 
-      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult)
+      public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:CanvasHudTargets = null, param4:String = null, param5:Object = null)
       {
          if(param1 == null || param2 == null || !param2.success)
          {
             throw new Error("Canvas HTML session requires a mount and parsed document");
          }
+         this.hostLayout = param5;
+         if(this.hostLayout != null)
+         {
+            this.viewportWidth = Number(this.hostLayout.visibleWidth);
+            this.viewportHeight = Number(this.hostLayout.visibleHeight);
+         }
+         this.hudTargets = param3;
+         this.consumerId = param4;
          this.mount = param1;
          this.loadResult = param2;
       }
@@ -77,6 +92,21 @@ package
             throw new Error(failure.toString());
          }
          this.data = snapshot;
+      }
+
+      public function setHostLayout(layout:Object) : void
+      {
+         if(this.disposed || layout == null) return;
+         var previous:Object = this.hostLayout;
+         this.hostLayout = layout;
+         try
+         {
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,Number(layout.visibleWidth),Number(layout.visibleHeight),this.activeState);
+            if(failure != null) throw new Error(failure.toString());
+         }
+         catch(error:*) { this.hostLayout = previous; throw error; }
+         this.viewportWidth = Number(layout.visibleWidth);
+         this.viewportHeight = Number(layout.visibleHeight);
       }
 
       public function setViewport(param1:Number, param2:Number) : void
@@ -172,6 +202,8 @@ package
             return;
          }
          this.disposed = true;
+         if(this.hudTargets != null) this.hudTargets.release(this.consumerId);
+         this.hudTargets = null;
          if(this.viewport != null)
          {
             this.viewport.scrollRect = null;
@@ -184,6 +216,7 @@ package
                this.mount.removeChild(this.viewport);
             }
          }
+         this.retainedBoxes = null;
          this.documentDisplay = null;
          this.viewport = null;
          this.stylesheet = null;
@@ -216,11 +249,19 @@ package
          {
             return composed.diagnostic;
          }
-         var rendered:CanvasHtmlRenderResult = new CanvasHtmlRenderer().render(composed.root,this.stylesheet,this.loadResult,param2,param3);
+         var rendered:CanvasHtmlRenderResult = new CanvasHtmlRenderer().render(composed.root,this.stylesheet,this.loadResult,param2,param3,param2 == this.viewportWidth && param3 == this.viewportHeight ? this.retainedBoxes : null,this.hostLayout,this.hudTargets);
          if(!rendered.success)
          {
             return rendered.diagnostic;
          }
+         if(rendered.targets.length > 0)
+         {
+            var targetError:String = this.hudTargets == null ? "HUD targets unavailable in this host" : this.hudTargets.validate(rendered.targets);
+            if(targetError != null) return new CanvasHtmlDiagnostic("render","hud-target-unavailable",this.loadResult.entryDocument.resource,-1,targetError);
+         }
+         CanvasHtmlRetainedTree.commit(rendered.boxes);
+         rendered.display = rendered.boxes[0].sprite as Sprite;
+         this.retainedBoxes = rendered.boxes;
          if(this.viewport == null)
          {
             this.viewport = new Sprite();
@@ -228,14 +269,16 @@ package
             this.viewport.mouseEnabled = false;
             this.viewport.mouseChildren = false;
          }
-         if(this.documentDisplay != null && this.documentDisplay.parent === this.viewport)
+         if(this.documentDisplay != null && this.documentDisplay !== rendered.display && this.documentDisplay.parent === this.viewport)
          {
             this.viewport.removeChild(this.documentDisplay);
          }
          this.documentDisplay = rendered.display;
          this.documentDisplay.name = "CanvasHtmlDocument";
-         this.viewport.addChild(this.documentDisplay);
+         if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay);
          this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
+         this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
+         this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
          if(this.viewport.parent !== this.mount)
          {
             this.mount.addChild(this.viewport);
@@ -243,6 +286,7 @@ package
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
+         if(this.hudTargets != null) this.hudTargets.apply(this.consumerId,rendered.targets);
          return null;
       }
 

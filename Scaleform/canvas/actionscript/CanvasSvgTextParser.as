@@ -24,6 +24,7 @@ package
          this.position = 0;
          this.failure = null;
          this.elementCount = 0;
+         if(this.source.length > CanvasHtmlLimits.MAX_SOURCE_BYTES) { this.reject("limit-exceeded",0,"svg-source"); return null; }
          this.skipWhitespace();
          if(this.source.substr(this.position,5) == "<?xml")
          {
@@ -53,54 +54,7 @@ package
             }
             return null;
          }
-         while(this.failure == null)
-         {
-            this.skipWhitespace();
-            if(this.source.substr(this.position,2) == "</")
-            {
-               if(!this.readEndElement("svg"))
-               {
-                  return null;
-               }
-               break;
-            }
-            if(this.position >= this.source.length || this.source.charAt(this.position) != "<")
-            {
-               this.reject("invalid-svg-syntax",this.position);
-               return null;
-            }
-            var pathRecord:Object = this.readStartElement();
-            if(pathRecord == null)
-            {
-               return null;
-            }
-            if(String(pathRecord.name) != "path")
-            {
-               this.reject("unsupported-svg-element",int(pathRecord.offset));
-               return null;
-            }
-            var path:CanvasHtmlNode = pathRecord.node as CanvasHtmlNode;
-            if(path.getAttribute("d") == null || path.getAttribute("d").length == 0)
-            {
-               this.reject("invalid-svg-path",int(pathRecord.offset));
-               return null;
-            }
-            this.elementCount++;
-            if(this.elementCount > CanvasHtmlLimits.MAX_SVG_ELEMENTS)
-            {
-               this.reject("limit-exceeded",int(pathRecord.offset),"svg-elements");
-               return null;
-            }
-            root.children.push(path);
-            if(!Boolean(pathRecord.selfClosing))
-            {
-               this.skipWhitespace();
-               if(!this.readEndElement("path"))
-               {
-                  return null;
-               }
-            }
-         }
+         if(!this.readChildren(root,1)) return null;
          this.skipWhitespace();
          if(this.failure != null || this.position != this.source.length)
          {
@@ -116,6 +70,24 @@ package
             return null;
          }
          return root;
+      }
+
+      private function readChildren(parent:CanvasHtmlNode, depth:int) : Boolean
+      {
+         if(depth > CanvasHtmlLimits.MAX_DOM_DEPTH) return this.reject("limit-exceeded",this.position,"svg-depth");
+         while(this.failure == null)
+         {
+            this.skipWhitespace();
+            if(this.source.substr(this.position,2) == "</") return this.readEndElement(parent.name);
+            var record:Object = this.readStartElement();
+            if(record == null) return false;
+            if(parent.name != "svg" && parent.name != "g" || record.name == "svg") return this.reject("unsupported-svg-element",int(record.offset));
+            if(++this.elementCount > CanvasHtmlLimits.MAX_SVG_ELEMENTS) return this.reject("limit-exceeded",int(record.offset),"svg-elements");
+            var child:CanvasHtmlNode = record.node as CanvasHtmlNode;
+            parent.children.push(child);
+            if(!Boolean(record.selfClosing) && !this.readChildren(child,depth + 1)) return false;
+         }
+         return false;
       }
 
       private function readDeclaration() : Boolean
@@ -181,7 +153,7 @@ package
             this.reject("invalid-svg-syntax",start);
             return null;
          }
-         if(name != "svg" && name != "path")
+         if(!CanvasSvgGeometry.isElement(name))
          {
             this.reject("unsupported-svg-element",start);
             return null;
@@ -313,6 +285,8 @@ package
             return this.reject("invalid-svg-viewbox",viewbox.valueOffset);
          }
          viewbox.value = normalized;
+         for each(var dimension:String in ["width","height"])
+            if(param1.getAttribute(dimension) != null && CanvasSvgGeometry.dimension(param1.getAttribute(dimension)) == null) return this.reject("invalid-svg-size",param1.getAttributeValueOffset(dimension));
          var namespaceValue:String = param1.getAttribute("xmlns");
          if(namespaceValue != null && !this.isSvgNamespace(namespaceValue))
          {
@@ -373,15 +347,7 @@ package
 
       private function isAllowedAttribute(param1:String, param2:String) : Boolean
       {
-         if(param1 == "svg")
-         {
-            return param2 == "viewBox" || param2 == "viewbox" || param2 == "xmlns";
-         }
-         if(param1 == "path")
-         {
-            return param2 == "d" || param2 == "fill" || param2 == "stroke" || param2 == "stroke-width";
-         }
-         return false;
+         return CanvasSvgGeometry.allowsAttribute(param1,param2);
       }
 
       private function readName() : String

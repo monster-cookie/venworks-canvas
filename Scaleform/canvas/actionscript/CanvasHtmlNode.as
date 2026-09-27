@@ -24,6 +24,8 @@ package
 
       public var bindingValue:Object;
 
+      public var presentation:Object;
+
       public function CanvasHtmlNode(param1:String, param2:int)
       {
          this.type = param1;
