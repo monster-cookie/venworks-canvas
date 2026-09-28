@@ -133,7 +133,7 @@ Player and ship consumers can declare presentation suppression with stable targe
 <vw-hud-target target="canvas.watch" disabled="true"></vw-hud-target>
 ```
 
-Use `player.all` or `ship.all` only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, never forces an engine-hidden object visible, and releases one consumer's requests on replacement, failure, or unload. Disabling presentation does not disable game actions, shared event delivery, or vanilla scripts.
+Use `player.all` or `ship.all` only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, holds each requested target invisible until that consumer releases it, and never forces an engine-hidden object visible. Alpha stays with the engine. Disabling presentation does not stop shared event delivery.
 
 Approved host artwork is exposed through named symbols. The current names are `vehicle-exit-prompt`, `weapon-icon`, and `compass-marker`.
 

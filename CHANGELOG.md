@@ -14,7 +14,7 @@
 - Name the value being read when a ready callback raises ReferenceError 1069. The chronomark shows that path, such as `data.compass.ticks[0]` or `symbol.marker.location`, instead of only the error number.
 - Keep a HUD data update when one SVG image or native symbol fails. A missing compass marker draws a small dot, and the callback error names the channel and the value being read.
 - Skip compass-marker effect frames. Their timeline code raises ReferenceError 1069 through a catch and aborts every compass and environment update.
-- Keep copying a native weapon icon when an ancestor clip is hidden. Canvas does not hide the vanilla health and weapon cluster.
+- Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
 
 ## Version 1.0.3 (September 25, 2026)
 
