@@ -24,9 +24,6 @@ package
          var suppression:Object = reticle.mask;
          check(suppression != null && suppression !== native,"presentation mask not installed");
          check(!reticle.visible && reticle.alpha == 0.4,"engine visibility was overwritten");
-         reticle.visible = true;
-         root.dispatchEvent(new Event(Event.ENTER_FRAME));
-         check(!reticle.visible && reticle.alpha == 0.4,"shown target stayed visible");
          check(hidden && disabled,"watch disable not forwarded");
          manager.apply("two",[{target:"player.crosshair",hidden:false,disabled:true}]);
          manager.release("one");
