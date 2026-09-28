@@ -112,7 +112,8 @@ package
                {
                   return false;
                }
-               param2.lineTo(closeX,closeY);
+               var closePoint:Array = CanvasStageGuard.place(closeX,closeY);
+               param2.lineTo(closePoint[0],closePoint[1]);
                currentX = startX;
                currentY = startY;
                command = null;
@@ -155,7 +156,8 @@ package
                   {
                      return false;
                   }
-                  param2.moveTo(drawX,drawY);
+                  var movePoint:Array = CanvasStageGuard.place(drawX,drawY);
+                  param2.moveTo(movePoint[0],movePoint[1]);
                   startX = currentX;
                   startY = currentY;
                   hasMove = true;
@@ -171,7 +173,8 @@ package
                   {
                      return false;
                   }
-                  param2.lineTo(drawX,drawY);
+                  var linePoint:Array = CanvasStageGuard.place(drawX,drawY);
+                  param2.lineTo(linePoint[0],linePoint[1]);
                }
             }
             else if(upper == "H" || upper == "V")
@@ -208,7 +211,8 @@ package
                {
                   return false;
                }
-               param2.lineTo(lineX,lineY);
+               var flatPoint:Array = CanvasStageGuard.place(lineX,lineY);
+               param2.lineTo(flatPoint[0],flatPoint[1]);
             }
             else if(upper == "Q" || upper == "T" || upper == "C" || upper == "S")
             {
@@ -237,7 +241,9 @@ package
                if(points.length == 4)
                {
                   if(param7(1) !== true) return false;
-                  param2.curveTo(transformed[0],transformed[1],transformed[2],transformed[3]);
+                  var curveControl:Array = CanvasStageGuard.place(transformed[0],transformed[1]);
+                  var curveEnd:Array = CanvasStageGuard.place(transformed[2],transformed[3]);
+                  param2.curveTo(curveControl[0],curveControl[1],curveEnd[0],curveEnd[1]);
                }
                else
                {
@@ -249,7 +255,8 @@ package
                      var u:Number = 1 - t;
                      var cx:Number = u*u*u*currentX + 3*u*u*t*Number(points[0]) + 3*u*t*t*Number(points[2]) + t*t*t*Number(points[4]);
                      var cy:Number = u*u*u*currentY + 3*u*u*t*Number(points[1]) + 3*u*t*t*Number(points[3]) + t*t*t*Number(points[5]);
-                     param2.lineTo(transformCoordinate(cx,minX,param4),transformCoordinate(cy,minY,param5));
+                     var cubicPoint:Array = CanvasStageGuard.place(transformCoordinate(cx,minX,param4),transformCoordinate(cy,minY,param5));
+                     param2.lineTo(cubicPoint[0],cubicPoint[1]);
                   }
                }
                controlX = Number(points[points.length - 4]);

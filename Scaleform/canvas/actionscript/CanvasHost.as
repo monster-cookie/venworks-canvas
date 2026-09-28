@@ -1886,6 +1886,8 @@ package
          this.diagnostics.mouseEnabled = false;
          this.diagnostics.visible = false;
          addChild(this.diagnostics);
+         var host:CanvasHost = this;
+         CanvasStageGuard.reporter = function(message:String):void { host.appendDiagnostic(message); };
          this.reapplyVanillaPlacements();
       }
 

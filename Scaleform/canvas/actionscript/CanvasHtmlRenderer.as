@@ -41,6 +41,7 @@ package
          this.resources = {};
          this.viewportWidth = param4;
          this.viewportHeight = param5;
+         CanvasStageGuard.setScreen(param4,param5);
          this.failure = null;
          this.svgCache = {};
          this.svgWork = 0;
@@ -667,13 +668,15 @@ package
          if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
             sprite.graphics.beginFill(uint(background.color),Number(background.alpha));
-            sprite.graphics.drawRect(0,0,Number(param1.width),Number(param1.height));
+            var backgroundRect:Array = CanvasStageGuard.rectangle(0,0,Number(param1.width),Number(param1.height));
+            sprite.graphics.drawRect(backgroundRect[0],backgroundRect[1],backgroundRect[2],backgroundRect[3]);
             sprite.graphics.endFill();
          }
          if(Number(param1.border) > 0 && borderColor != null && Number(borderColor.alpha) > 0)
          {
             sprite.graphics.lineStyle(Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
-            sprite.graphics.drawRect(Number(param1.border) * 0.5,Number(param1.border) * 0.5,Math.max(0,Number(param1.width) - Number(param1.border)),Math.max(0,Number(param1.height) - Number(param1.border)));
+            var borderRect:Array = CanvasStageGuard.rectangle(Number(param1.border) * 0.5,Number(param1.border) * 0.5,Math.max(0,Number(param1.width) - Number(param1.border)),Math.max(0,Number(param1.height) - Number(param1.border)));
+            sprite.graphics.drawRect(borderRect[0],borderRect[1],borderRect[2],borderRect[3]);
          }
          sprite.alpha = Number(param1.style["opacity"]);
          if(param1.style["overflow"] == "hidden")
@@ -685,8 +688,10 @@ package
             var rule:Shape = new Shape();
             var ruleColor:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
             rule.graphics.lineStyle(Math.max(1,Number(param1.border)),uint(ruleColor.color),Number(ruleColor.alpha));
-            rule.graphics.moveTo(Number(param1.border) + Number(param1.paddingLeft),Number(param1.height) * 0.5);
-            rule.graphics.lineTo(Number(param1.width) - Number(param1.border) - Number(param1.paddingRight),Number(param1.height) * 0.5);
+            var ruleStart:Array = CanvasStageGuard.place(Number(param1.border) + Number(param1.paddingLeft),Number(param1.height) * 0.5);
+            var ruleEnd:Array = CanvasStageGuard.place(Number(param1.width) - Number(param1.border) - Number(param1.paddingRight),Number(param1.height) * 0.5);
+            rule.graphics.moveTo(ruleStart[0],ruleStart[1]);
+            rule.graphics.lineTo(ruleEnd[0],ruleEnd[1]);
             sprite.addChild(rule);
          }
          else if(node.name == "vw-meter")
