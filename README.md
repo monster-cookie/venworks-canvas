@@ -69,6 +69,20 @@ If a Canvas add-on does not appear:
 4. Reproduce the problem on a disposable save with Canvas and one add-on enabled.
 5. Report the exact Canvas/add-on versions, package order, save type, and visible behavior to the package maintainer.
 
+### ActionScript runtime errors
+
+The chronomark and the Papyrus log can show ActionScript runtime error numbers. Scaleform's `ReferenceError` text omits the property name, so Canvas also prints the value it was reading, such as `symbol.marker.location` or `data.compass.ticks[0]`.
+
+| Number | Meaning |
+| --- | --- |
+| 1009 | Called a method on `null` |
+| 1010 | Called a method on `undefined` |
+| 1034 | A value could not be converted to the expected type |
+| 1056 | Tried to create a property on a sealed object |
+| 1069 | Tried to read a property that the sealed object does not have |
+
+A sealed object is a class instance, including nearly every game UI clip. Reading a missing property throws 1069. A dynamic object returns `undefined` instead. The `in` operator checks for the property without throwing. Bracket access and dot access both throw.
+
 ## Maintainer and contributor workflow
 
 Work from the repository root with PowerShell 7. [Tools/sharedConfig.ps1](Tools/sharedConfig.ps1) defines the `CANVAS`, `EXAMPLE`, and `COMPONENTGALLERY` variants, their Papyrus namespaces, Scaleform jobs, and package contents. Edit sources under `Papyrus/` and `Scaleform/`; use the configured tools to produce build outputs rather than treating generated files as source.
