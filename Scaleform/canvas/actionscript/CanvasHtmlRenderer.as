@@ -317,10 +317,14 @@ package
                field.width = Math.max(1,Number(box.innerWidth));
                field.text = node.text == null ? "" : node.text;
                field.setTextFormat(format);
-               field.height = Math.max(1,field.textHeight + 6);
+               var measuredHeight:Number = this.lineHeight(box.style);
+               var measuredWidth:Number = Number(box.innerWidth);
+               // Scaleform throws ReferenceError 1069 from textWidth and textHeight on some offstage fields.
+               try { measuredHeight = field.textHeight; measuredWidth = field.textWidth; } catch(measureError:*) {}
+               field.height = Math.max(1,measuredHeight + 6);
                Sprite(box.sprite).addChild(field);
                box.textField = field;
-               box.textNaturalWidth = Math.min(Number(box.innerWidth),field.textWidth + 6);
+               box.textNaturalWidth = Math.min(Number(box.innerWidth),measuredWidth + 6);
                box.contentHeight = field.height;
             }
             else if(node.name == "br")
@@ -786,7 +790,9 @@ package
          if(field != null)
          {
             field.width = Number(param1.innerWidth);
-            field.height = Math.max(1,field.textHeight + 6);
+            var measuredHeight:Number = this.lineHeight(param1.style);
+            try { measuredHeight = field.textHeight; } catch(measureError:*) {}
+            field.height = Math.max(1,measuredHeight + 6);
             param1.contentHeight = field.height;
          }
       }

@@ -99,10 +99,17 @@ package
          }
          catch(rebuildError:*)
          {
-            var text:String = "";
-            try { text = String(rebuildError); } catch(ignored:*) { text = ""; }
-            if(this.documentDisplay == null || text.indexOf("#1069") < 0 && text.indexOf("1069 ") != 0) throw rebuildError;
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
          }
+      }
+
+      // The menu gallery resizes and dispatches during ready. A 1069 there used to unload the whole document.
+      private function keepLastFrame(rebuildError:*) : Boolean
+      {
+         if(this.documentDisplay == null) return false;
+         var text:String = "";
+         try { text = String(rebuildError); } catch(ignored:*) { text = ""; }
+         return text.indexOf("#1069") >= 0 || text.indexOf("1069 ") == 0;
       }
 
       public function setHostLayout(layout:Object) : void
@@ -134,10 +141,18 @@ package
          {
             return;
          }
-         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,param1,param2,this.activeState);
-         if(failure != null)
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,param1,param2,this.activeState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+         }
+         catch(rebuildError:*)
+         {
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
+            return;
          }
          this.viewportWidth = param1;
          this.viewportHeight = param2;
@@ -198,10 +213,18 @@ package
          {
             return;
          }
-         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,this.viewportWidth,this.viewportHeight,nextState);
-         if(failure != null)
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,this.viewportWidth,this.viewportHeight,nextState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+         }
+         catch(rebuildError:*)
+         {
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
+            return;
          }
          this.activeState = nextState;
       }

@@ -4,6 +4,7 @@ package
    import flash.display.Sprite;
    import flash.display.Shape;
    import flash.text.TextField;
+   import flash.text.TextFormat;
    import flash.utils.Dictionary;
 
    // Layout uses offscreen candidates. Only commit touches the last valid display.
@@ -123,9 +124,18 @@ package
                {
                   var source:TextField = box.textField as TextField;
                   var target:TextField = old.textField as TextField;
-                  target.defaultTextFormat = source.defaultTextFormat;
+                  // Scaleform throws ReferenceError 1069 when defaultTextFormat was never read back.
+                  var copiedFormat:TextFormat = null;
+                  try { copiedFormat = source.defaultTextFormat; } catch(formatError:*) {}
+                  if(copiedFormat != null)
+                  {
+                     try { target.defaultTextFormat = copiedFormat; } catch(formatError:*) {}
+                  }
                   target.text = source.text;
-                  target.setTextFormat(source.defaultTextFormat);
+                  if(copiedFormat != null)
+                  {
+                     try { target.setTextFormat(copiedFormat); } catch(formatError:*) {}
+                  }
                   target.width = source.width; target.height = source.height;
                   target.x = source.x; target.y = source.y;
                   replacements[source] = target;
@@ -134,14 +144,18 @@ package
                if(!box.drawReused && CanvasHtmlNode(box.node).name == "vw-meter" && retained.numChildren == 1 && candidate.numChildren == 1 && retained.getChildAt(0) is Shape && candidate.getChildAt(0) is Shape)
                {
                   var meter:Shape = retained.getChildAt(0) as Shape;
-                  meter.graphics.copyFrom(Shape(candidate.getChildAt(0)).graphics);
+                  try { meter.graphics.copyFrom(Shape(candidate.getChildAt(0)).graphics); } catch(copyError:*) {}
                   replacements[candidate.getChildAt(0)] = meter;
                }
-               if(!box.drawReused) retained.graphics.copyFrom(candidate.graphics);
-               retained.transform.matrix = candidate.transform.matrix;
+               if(!box.drawReused)
+               {
+                  try { retained.graphics.copyFrom(candidate.graphics); } catch(copyError:*) {}
+               }
+               try { retained.transform.matrix = candidate.transform.matrix; } catch(matrixError:*) {}
                retained.alpha = candidate.alpha;
                retained.visible = candidate.visible;
-               retained.scrollRect = candidate.scrollRect;
+               // An unset scrollRect throws ReferenceError 1069 on read. Leave the retained clip alone.
+               try { retained.scrollRect = candidate.scrollRect; } catch(scrollError:*) {}
             }
             for(j = 0; j < candidate.numChildren; j++)
             {
