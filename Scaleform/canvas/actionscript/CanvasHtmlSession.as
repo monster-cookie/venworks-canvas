@@ -88,12 +88,21 @@ package
          CanvasHtmlData.access = "setdata.snapshot";
          var snapshot:Object = CanvasHtmlData.snapshot(param1);
          CanvasHtmlData.access = "setdata.rebuild";
-         var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
-         if(failure != null)
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+            this.data = snapshot;
          }
-         this.data = snapshot;
+         catch(rebuildError:*)
+         {
+            var text:String = "";
+            try { text = String(rebuildError); } catch(ignored:*) { text = ""; }
+            if(this.documentDisplay == null || text.indexOf("#1069") < 0 && text.indexOf("1069 ") != 0) throw rebuildError;
+         }
       }
 
       public function setHostLayout(layout:Object) : void

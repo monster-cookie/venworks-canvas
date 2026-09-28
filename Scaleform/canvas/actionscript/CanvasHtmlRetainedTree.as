@@ -52,9 +52,31 @@ package
 
       public static function sameStyle(a:Object, b:Object) : Boolean
       {
-         for(var name:String in a) if(a[name] !== b[name]) return false;
-         for(name in b) if(!a.hasOwnProperty(name)) return false;
+         if(a == null || b == null) return false;
+         var name:String = null;
+         try
+         {
+            for(name in a) if(readStyle(a,name) !== readStyle(b,name)) return false;
+            for(name in b) if(!ownsStyle(a,name)) return false;
+         }
+         catch(compareError:*) { return false; }
          return true;
+      }
+
+      private static function readStyle(source:Object, name:String) : *
+      {
+         var value:* = undefined;
+         try { value = source[name]; }
+         catch(readError:*) { value = undefined; }
+         return value;
+      }
+
+      private static function ownsStyle(source:Object, name:String) : Boolean
+      {
+         var owns:Boolean = false;
+         try { owns = source.hasOwnProperty(name); }
+         catch(ownError:*) { owns = false; }
+         return owns;
       }
 
       public static function canMeasure(box:Object) : Boolean
