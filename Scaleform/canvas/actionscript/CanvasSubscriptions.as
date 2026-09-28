@@ -462,6 +462,15 @@ package
          {
             return;
          }
+         if(param1 == "HudCompassData")
+         {
+            try
+            {
+               var plain:Object = this.copyCompassData(snapshot,0);
+               if(this.compassCopyUsable(plain)) snapshot = plain;
+            }
+            catch(copyError:*) {}
+         }
          this.channelSnapshots[param1] = snapshot;
          this.channelHasSnapshot[param1] = true;
          var recipients:Array = registered.concat();
@@ -711,6 +720,79 @@ package
             result.push({"topic":topic,"startup":startup});
          }
          return result;
+      }
+
+      private static const COMPASS_FIELDS:Array = ["fDirection","aMarkers","aMissionMarkers","aEnemyMarkers","uiHandle","fHeading","fDistance","fDistanceToPlayer","fDistanceAlpha","fDistanceScale","uiMarkerIconType","uMapMarkerType","uMapMarkerCategory","uLocationMarkerState","uiRelativeMarkerHeightType","uiMapMarkerSubCategoryType","sEffectIcon","bIsNear","strText","bShouldShowText"];
+
+      // The consumer movie cannot read sealed compass fields, so the icon type arrives as 0 and the strip draws dots. Copy them here, in the HUD movie, before delivery.
+      private function copyCompassData(value:*, depth:int) : *
+      {
+         if(value == null || depth > 4) return null;
+         var kind:String = typeof value;
+         if(kind == "number" || kind == "string" || kind == "boolean") return value;
+         if(kind != "object") return null;
+         if(this.isIndexCollection(value))
+         {
+            var list:Array = [];
+            var count:int = int(Math.min(64,Number(value.length)));
+            var index:int = 0;
+            while(index < count)
+            {
+               try { list.push(this.copyCompassData(value[index],depth + 1)); }
+               catch(itemError:*) { break; }
+               ++index;
+            }
+            return list;
+         }
+         var copy:Object = {};
+         var name:String = null;
+         try
+         {
+            for(name in value)
+            {
+               try { copy[name] = this.copyCompassData(value[name],depth + 1); }
+               catch(fieldError:*) {}
+            }
+         }
+         catch(enumerateError:*) {}
+         var fieldIndex:int = 0;
+         while(fieldIndex < COMPASS_FIELDS.length)
+         {
+            name = String(COMPASS_FIELDS[fieldIndex]);
+            if(!copy.hasOwnProperty(name))
+            {
+               try
+               {
+                  var read:* = value[name];
+                  if(read != null) copy[name] = this.copyCompassData(read,depth + 1);
+               }
+               catch(namedError:*) {}
+            }
+            ++fieldIndex;
+         }
+         return copy;
+      }
+
+      private function isIndexCollection(value:Object) : Boolean
+      {
+         try
+         {
+            if(value.fDirection != null || value.uiHandle != null || value.uiMarkerIconType != null) return false;
+         }
+         catch(identityError:*) {}
+         var length:* = null;
+         try { length = value.length; }
+         catch(lengthError:*) { return false; }
+         var count:Number = Number(length);
+         return isFinite(count) && count >= 0 && count == Math.floor(count) && count <= 256;
+      }
+
+      private function compassCopyUsable(copy:Object) : Boolean
+      {
+         if(copy == null || !(copy.aMarkers is Array)) return false;
+         if(copy.aMarkers.length == 0) return copy.fDirection != null;
+         var marker:Object = copy.aMarkers[0];
+         return marker != null && (marker.fHeading != null || marker.uiMarkerIconType != null);
       }
 
       private function isAllowedUiChannel(param1:String) : Boolean
