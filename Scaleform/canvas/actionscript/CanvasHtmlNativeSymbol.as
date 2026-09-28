@@ -4,8 +4,10 @@ package
    import flash.display.BitmapData;
    import flash.display.DisplayObject;
    import flash.display.DisplayObjectContainer;
+   import flash.display.MovieClip;
    import flash.display.Sprite;
    import flash.events.Event;
+   import flash.utils.getDefinitionByName;
    import flash.geom.Matrix;
    import flash.geom.Rectangle;
 
@@ -40,15 +42,58 @@ package
 
       public static function marker(value:Object) : DisplayObject
       {
-         // CompassMarkerWidget raises ReferenceError 1069 when it is added to the document, and that error escapes try/catch.
-         CanvasHtmlData.access = "symbol.marker.dot";
-         var dot:Sprite = new Sprite();
-         dot.mouseEnabled = false;
-         dot.mouseChildren = false;
-         dot.graphics.beginFill(value != null && value.type == 7 ? 0x7EE0FF : 0xF4FBFF,1);
-         dot.graphics.drawCircle(0,0,6);
-         dot.graphics.endFill();
-         return dot;
+         // Adding CompassMarkerWidget to the document raises ReferenceError 1069 through try/catch.
+         var widget:MovieClip = null;
+         try
+         {
+            CanvasHtmlData.access = "symbol.marker.define";
+            var type:Class = getDefinitionByName("CompassMarkerWidget") as Class;
+            var utility:Class = getDefinitionByName("Shared.MapMarkerUtils") as Class;
+            if(type == null || utility == null) return new Sprite();
+            CanvasHtmlData.access = "symbol.marker.create";
+            widget = new type() as MovieClip;
+            if(widget == null) return new Sprite();
+            widget.mouseEnabled = false;
+            widget.mouseChildren = false;
+            if(value != null)
+            {
+               CanvasHtmlData.access = "symbol.marker.frame";
+               widget.gotoAndStop(String(utility["GetMajorFrameFromMitMarkerType"](uint(value.type))));
+               CanvasHtmlData.access = "symbol.marker.location";
+               if(value.type == 7) { if("SetLocation" in widget) Object(widget)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate); }
+               else if("ClearLocation" in widget) Object(widget)["ClearLocation"]();
+               CanvasHtmlData.access = "symbol.marker.relative";
+               if(value.relative > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
+               CanvasHtmlData.access = "symbol.marker.category";
+               if(value.subcategory > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
+            }
+            CanvasHtmlData.access = "symbol.marker.draw";
+            var captured:Bitmap = captureMarker(widget);
+            if(captured == null) return new Sprite();
+            var holder:Sprite = new Sprite();
+            holder.mouseEnabled = false;
+            holder.mouseChildren = false;
+            holder.addChild(captured);
+            CanvasHtmlData.access = "symbol.marker.icon";
+            return holder;
+         }
+         catch(markerError:*)
+         {
+            return new Sprite();
+         }
+         return new Sprite();
+      }
+
+      private static function captureMarker(widget:DisplayObject) : Bitmap
+      {
+         var bounds:Rectangle = widget.getBounds(widget);
+         if(bounds.isEmpty() || !isFinite(bounds.x+bounds.y+bounds.width+bounds.height) || bounds.width <= 0 || bounds.height <= 0 || bounds.width > 512 || bounds.height > 512) return null;
+         var pixels:BitmapData = new BitmapData(Math.ceil(bounds.width),Math.ceil(bounds.height),true,0);
+         pixels.draw(widget,new Matrix(1,0,0,1,-bounds.x,-bounds.y),null,null,null,true);
+         var bitmap:Bitmap = new Bitmap(pixels,"auto",true);
+         bitmap.x = bounds.x;
+         bitmap.y = bounds.y;
+         return bitmap;
       }
 
       public function CanvasHtmlNativeSymbol(resolver:Function, width:Number, height:Number)
