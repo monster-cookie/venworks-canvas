@@ -124,28 +124,17 @@ package
                {
                   var source:TextField = box.textField as TextField;
                   var target:TextField = old.textField as TextField;
-                  // Scaleform throws ReferenceError 1069 when defaultTextFormat was never read back.
-                  var copiedFormat:TextFormat = null;
-                  try { copiedFormat = source.defaultTextFormat; } catch(formatError:*) {}
-                  if(copiedFormat != null)
-                  {
-                     try { target.defaultTextFormat = copiedFormat; } catch(formatError:*) {}
-                  }
+                  // Reading defaultTextFormat back throws ReferenceError 1069 and drops the embedded font.
+                  var copiedFormat:TextFormat = box.textFormat as TextFormat;
+                  if(copiedFormat == null) copiedFormat = old.textFormat as TextFormat;
+                  if(copiedFormat != null) target.defaultTextFormat = copiedFormat;
                   target.text = source.text;
-                  if(copiedFormat != null)
-                  {
-                     try { target.setTextFormat(copiedFormat); } catch(formatError:*) {}
-                  }
+                  if(copiedFormat != null) target.setTextFormat(copiedFormat);
                   target.width = source.width; target.height = source.height;
                   target.x = source.x; target.y = source.y;
                   replacements[source] = target;
                   box.textField = target;
-               }
-               if(!box.drawReused && CanvasHtmlNode(box.node).name == "vw-meter" && retained.numChildren == 1 && candidate.numChildren == 1 && retained.getChildAt(0) is Shape && candidate.getChildAt(0) is Shape)
-               {
-                  var meter:Shape = retained.getChildAt(0) as Shape;
-                  try { meter.graphics.copyFrom(Shape(candidate.getChildAt(0)).graphics); } catch(copyError:*) {}
-                  replacements[candidate.getChildAt(0)] = meter;
+                  box.textFormat = copiedFormat;
                }
                if(!box.drawReused)
                {

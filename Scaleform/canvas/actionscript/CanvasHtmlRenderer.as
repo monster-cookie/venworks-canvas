@@ -317,6 +317,7 @@ package
                field.width = Math.max(1,Number(box.innerWidth));
                field.text = node.text == null ? "" : node.text;
                field.setTextFormat(format);
+               box.textFormat = format;
                var measuredHeight:Number = this.lineHeight(box.style);
                var measuredWidth:Number = Number(box.innerWidth);
                // Scaleform throws ReferenceError 1069 from textWidth and textHeight on some offstage fields.

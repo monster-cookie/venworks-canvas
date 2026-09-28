@@ -16,6 +16,7 @@
 - Paint each compass marker from the game's live POI widget. The widget stays off the document, because placing it raises an uncatchable ReferenceError 1069 and aborts compass and environment updates. Its art is redrawn as the location icon loads, and the compass moves, scales, and fades that art on every step and facing change.
 - Keep the last HTML frame when a later data update raises ReferenceError 1069. Compass and environment updates no longer discard the HUD or flood the callback log.
 - Keep the Component Gallery loaded when its ready callback resizes the menu or activates a state. Those rebuilds now keep the last frame instead of unloading the gallery, and a Scaleform text measurement or an unset scrollRect no longer aborts the rebuild with ReferenceError 1069.
+- Keep embedded text and meter fills when a retained frame is updated. The text format is reapplied from the style instead of being read back from the field, and a meter keeps the shape that was just drawn.
 - Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
 
 ## Version 1.0.3 (September 25, 2026)
