@@ -18,6 +18,7 @@
 - Keep the Component Gallery loaded when its ready callback resizes the menu or activates a state. Those rebuilds now keep the last frame instead of unloading the gallery, and a Scaleform text measurement or an unset scrollRect no longer aborts the rebuild with ReferenceError 1069.
 - Keep embedded text and meter fills when a retained frame is updated. The text format is reapplied from the style instead of being read back from the field, and a meter keeps the shape that was just drawn.
 - Copy compass marker fields into plain data before a consumer receives HudCompassData. Sealed game objects were hiding the icon type from the consumer movie, so the compass strip could only draw dots.
+- Stop rejecting theme documents for size. SVG paths, text, styles, and repeats are no longer capped at the old small budgets. Scaleform still cannot draw a graphics coordinate past 16384.
 - Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
 
 ## Version 1.0.3 (September 25, 2026)
