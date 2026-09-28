@@ -22,7 +22,8 @@ package
       {
          var nextX:Number = x;
          var nextY:Number = y;
-         var outside:Boolean = !isFinite(nextX) || !isFinite(nextY) || nextX < 0 || nextY < 0 || nextX > screenWidth || nextY > screenHeight;
+         // A fraction of a pixel past the edge is the icon viewBox, not a draw off the screen.
+         var outside:Boolean = !isFinite(nextX) || !isFinite(nextY) || nextX < -1 || nextY < -1 || nextX > screenWidth + 1 || nextY > screenHeight + 1;
          if(!isFinite(nextX) || nextX < 0) nextX = 0;
          else if(nextX > screenWidth) nextX = screenWidth;
          if(!isFinite(nextY) || nextY < 0) nextY = 0;
@@ -35,7 +36,7 @@ package
       {
          var right:Number = x + width;
          var bottom:Number = y + height;
-         if(!isFinite(x) || !isFinite(y) || !isFinite(right) || !isFinite(bottom) || x < 0 || y < 0 || right > screenWidth || bottom > screenHeight) note(x,y);
+         if(!isFinite(x) || !isFinite(y) || !isFinite(right) || !isFinite(bottom) || x < -1 || y < -1 || right > screenWidth + 1 || bottom > screenHeight + 1) note(x,y);
          var left:Number = !isFinite(x) || x < 0 ? 0 : (x > screenWidth ? screenWidth : x);
          var top:Number = !isFinite(y) || y < 0 ? 0 : (y > screenHeight ? screenHeight : y);
          var far:Number = !isFinite(right) || right < 0 ? 0 : (right > screenWidth ? screenWidth : right);

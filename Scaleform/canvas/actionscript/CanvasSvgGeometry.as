@@ -40,20 +40,17 @@ package
       public static function render(root:CanvasHtmlNode, viewbox:Array, width:Number, height:Number, cascade:CanvasCssCascade, inherited:Object, ancestors:Array, consume:Function, inline:Boolean = false) : Sprite
       {
          var result:Sprite = new Sprite();
-         var content:Sprite = drawNode(root,cascade,inherited,ancestors,consume,0,{count:0});
+         var scaleX:Number = width / Number(viewbox[2]);
+         var scaleY:Number = height / Number(viewbox[3]);
+         // Draw in the element's pixel size. A later sprite scale would leave viewBox coordinates, including small negatives, in the graphics command and consoles treat those as off-screen.
+         var content:Sprite = drawNode(root,cascade,inherited,ancestors,consume,0,{count:0},scaleX,scaleY,viewbox);
          if(content == null) return null;
          if(inline) content.alpha = 1; // The HTML box already applies root opacity.
-         var viewport:Sprite = new Sprite();
-         viewport.addChild(content);
-         viewport.scaleX = width / Number(viewbox[2]);
-         viewport.scaleY = height / Number(viewbox[3]);
-         viewport.x = -Number(viewbox[0]) * viewport.scaleX;
-         viewport.y = -Number(viewbox[1]) * viewport.scaleY;
-         result.addChild(viewport);
+         result.addChild(content);
          return bounded(result) ? result : null;
       }
 
-      private static function drawNode(node:CanvasHtmlNode, cascade:CanvasCssCascade, inherited:Object, ancestors:Array, consume:Function, depth:int, budget:Object) : Sprite
+      private static function drawNode(node:CanvasHtmlNode, cascade:CanvasCssCascade, inherited:Object, ancestors:Array, consume:Function, depth:int, budget:Object, scaleX:Number, scaleY:Number, viewbox:Array) : Sprite
       {
          if(depth >= CanvasHtmlLimits.MAX_DOM_DEPTH || ++budget.count > CanvasHtmlLimits.MAX_SVG_ELEMENTS || consume(1) !== true || !isElement(node.name)) return null;
          var style:Object = cascade.computeStyle(node,ancestors,inherited);
@@ -64,14 +61,14 @@ package
          result.mouseChildren = false;
          var matrix:Matrix = transform(node.getAttribute("transform"));
          if(matrix == null) return null;
-         result.transform.matrix = matrix;
+         result.transform.matrix = toPixels(matrix,scaleX,scaleY);
          result.alpha = Number(style["opacity"]);
          result.visible = style["display"] != "none" && style["visibility"] != "hidden";
          if(node.name == "svg" || node.name == "g")
          {
             for each(var child:CanvasHtmlNode in node.children)
             {
-               var display:Sprite = drawNode(child,cascade,style,ancestors.concat([node]),consume,depth + 1,budget);
+               var display:Sprite = drawNode(child,cascade,style,ancestors.concat([node]),consume,depth + 1,budget,scaleX,scaleY,viewbox);
                if(display == null) return null;
                result.addChild(display);
             }
@@ -86,10 +83,16 @@ package
             for each(var property:String in ["fill","stroke","stroke-width","fill-opacity","stroke-opacity"])
                geometry.attributes.push(new CanvasHtmlAttribute(property,String(style[property]),0,0));
             var shape:Shape = new Shape();
-            if(!CanvasSvgPathRenderer.render(geometry,shape.graphics,[0,0,8192,8192],1,1,CanvasCssValue.parseColor(String(style["color"])),consume)) return null;
+            if(!CanvasSvgPathRenderer.render(geometry,shape.graphics,viewbox,scaleX,scaleY,CanvasCssValue.parseColor(String(style["color"])),consume)) return null;
             result.addChild(shape);
          }
          return bounded(result) ? result : null;
+      }
+
+      private static function toPixels(matrix:Matrix, scaleX:Number, scaleY:Number) : Matrix
+      {
+         if(scaleX == 0 || scaleY == 0) return matrix;
+         return new Matrix(matrix.a,matrix.b * scaleY / scaleX,matrix.c * scaleX / scaleY,matrix.d,matrix.tx * scaleX,matrix.ty * scaleY);
       }
 
       private static function bounded(sprite:Sprite) : Boolean
