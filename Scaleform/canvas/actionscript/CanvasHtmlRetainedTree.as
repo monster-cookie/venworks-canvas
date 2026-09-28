@@ -133,7 +133,11 @@ package
             for(j = 0; j < desired.length; j++)
             {
                display = desired[j];
-               if(display.parent !== retained) retained.addChildAt(display,Math.min(j,retained.numChildren));
+               if(display.parent !== retained)
+               {
+                  try { retained.addChildAt(display,Math.min(j,retained.numChildren)); }
+                  catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
+               }
                else if(retained.getChildIndex(display) != j) retained.setChildIndex(display,j);
             }
             chosen[candidate] = retained;

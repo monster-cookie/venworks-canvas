@@ -42,7 +42,6 @@ package
 
       public static function marker(value:Object) : DisplayObject
       {
-         // Adding CompassMarkerWidget to the document raises ReferenceError 1069 through try/catch.
          var widget:MovieClip = null;
          try
          {
@@ -67,33 +66,14 @@ package
                CanvasHtmlData.access = "symbol.marker.category";
                if(value.subcategory > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
             }
-            CanvasHtmlData.access = "symbol.marker.draw";
-            var captured:Bitmap = captureMarker(widget);
-            if(captured == null) return new Sprite();
-            var holder:Sprite = new Sprite();
-            holder.mouseEnabled = false;
-            holder.mouseChildren = false;
-            holder.addChild(captured);
-            CanvasHtmlData.access = "symbol.marker.icon";
-            return holder;
+            CanvasHtmlData.access = "symbol.marker.live";
+            return widget;
          }
          catch(markerError:*)
          {
             return new Sprite();
          }
          return new Sprite();
-      }
-
-      private static function captureMarker(widget:DisplayObject) : Bitmap
-      {
-         var bounds:Rectangle = widget.getBounds(widget);
-         if(bounds.isEmpty() || !isFinite(bounds.x+bounds.y+bounds.width+bounds.height) || bounds.width <= 0 || bounds.height <= 0 || bounds.width > 512 || bounds.height > 512) return null;
-         var pixels:BitmapData = new BitmapData(Math.ceil(bounds.width),Math.ceil(bounds.height),true,0);
-         pixels.draw(widget,new Matrix(1,0,0,1,-bounds.x,-bounds.y),null,null,null,true);
-         var bitmap:Bitmap = new Bitmap(pixels,"auto",true);
-         bitmap.x = bounds.x;
-         bitmap.y = bounds.y;
-         return bitmap;
       }
 
       public function CanvasHtmlNativeSymbol(resolver:Function, width:Number, height:Number)

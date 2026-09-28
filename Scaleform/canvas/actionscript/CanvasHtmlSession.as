@@ -277,14 +277,13 @@ package
          }
          this.documentDisplay = rendered.display;
          this.documentDisplay.name = "CanvasHtmlDocument";
-         if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay);
+         try { if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay); }
+         catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
          this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
          this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
          this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
-         if(this.viewport.parent !== this.mount)
-         {
-            this.mount.addChild(this.viewport);
-         }
+         try { if(this.viewport.parent !== this.mount) this.mount.addChild(this.viewport); }
+         catch(mountError:*) { CanvasHtmlData.access = "render.attach"; }
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
