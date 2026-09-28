@@ -4,12 +4,10 @@ package
    import flash.display.BitmapData;
    import flash.display.DisplayObject;
    import flash.display.DisplayObjectContainer;
-   import flash.display.MovieClip;
    import flash.display.Sprite;
    import flash.events.Event;
    import flash.geom.Matrix;
    import flash.geom.Rectangle;
-   import flash.utils.getDefinitionByName;
 
    // Only host-owned, explicitly named artwork is exposed. Native controls never move.
    public final class CanvasHtmlNativeSymbol extends Sprite
@@ -42,37 +40,15 @@ package
 
       public static function marker(value:Object) : DisplayObject
       {
-         if(value == null) return new Sprite();
-         try
-         {
-            CanvasHtmlData.access = "symbol.marker.define";
-            var type:Class = getDefinitionByName("CompassMarkerWidget") as Class;
-            var utility:Class = getDefinitionByName("Shared.MapMarkerUtils") as Class;
-            CanvasHtmlData.access = "symbol.marker.create";
-            var marker:MovieClip = new type() as MovieClip;
-            marker.mouseEnabled = false; marker.mouseChildren = false;
-            CanvasHtmlData.access = "symbol.marker.frame";
-            marker.gotoAndStop(utility["GetMajorFrameFromMitMarkerType"](uint(value.type)));
-            CanvasHtmlData.access = "symbol.marker.location";
-            if(value.type == 7) { if("SetLocation" in marker) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate); }
-            else if("ClearLocation" in marker) Object(marker)["ClearLocation"]();
-            CanvasHtmlData.access = "symbol.marker.relative";
-            if(value.relative > 0 && "SetFrame" in marker) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
-            CanvasHtmlData.access = "symbol.marker.category";
-            if(value.subcategory > 0 && "SetFrame" in marker) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
-            // MarkerIcon_mc frame scripts raise ReferenceError 1069 through try/catch.
-            CanvasHtmlData.access = "symbol.marker.done";
-            return marker;
-         }
-         catch(markerError:*)
-         {
-            var fallback:Sprite = new Sprite();
-            fallback.graphics.beginFill(0xF4FBFF,1);
-            fallback.graphics.drawCircle(0,0,4);
-            fallback.graphics.endFill();
-            return fallback;
-         }
-         return new Sprite();
+         // CompassMarkerWidget raises ReferenceError 1069 when it is added to the document, and that error escapes try/catch.
+         CanvasHtmlData.access = "symbol.marker.dot";
+         var dot:Sprite = new Sprite();
+         dot.mouseEnabled = false;
+         dot.mouseChildren = false;
+         dot.graphics.beginFill(value != null && value.type == 7 ? 0x7EE0FF : 0xF4FBFF,1);
+         dot.graphics.drawCircle(0,0,6);
+         dot.graphics.endFill();
+         return dot;
       }
 
       public function CanvasHtmlNativeSymbol(resolver:Function, width:Number, height:Number)
