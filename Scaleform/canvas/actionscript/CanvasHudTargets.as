@@ -5,7 +5,7 @@ package
    import flash.display.Shape;
    import flash.events.Event;
 
-   // Suppresses presentation without changing native visible, alpha, scripts or input.
+   // RightMeters is a 3D clip, so a mask does not hide it. Suppression holds visible false and restores the captured value. Alpha stays with the engine.
    public final class CanvasHudTargets
    {
       private var owner:DisplayObjectContainer;
@@ -148,11 +148,12 @@ package
                var mask:Shape = new Shape();
                mask.name = "CanvasHudSuppression";
                this.owner.addChild(mask);
-               record = {object:object,mask:mask,nativeMask:object.mask};
+               record = {object:object,mask:mask,nativeMask:object.mask,nativeVisible:object.visible};
                this.active[key] = record;
             }
             else if(object.mask !== record.mask) record.nativeMask = object.mask;
             object.mask = record.mask;
+            object.visible = false;
          }
          if(consumers.length > 0) this.owner.addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,false);
          else this.owner.removeEventListener(Event.ENTER_FRAME,this.refresh);
@@ -162,6 +163,7 @@ package
       {
          var object:DisplayObject = record.object as DisplayObject;
          if(object.mask === record.mask) object.mask = record.nativeMask as DisplayObject;
+         object.visible = record.nativeVisible === true;
          var mask:Shape = record.mask as Shape;
          if(mask.parent != null) mask.parent.removeChild(mask);
       }

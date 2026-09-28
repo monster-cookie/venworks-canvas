@@ -54,14 +54,14 @@ package
             CanvasHtmlData.access = "symbol.marker.frame";
             marker.gotoAndStop(utility["GetMajorFrameFromMitMarkerType"](uint(value.type)));
             CanvasHtmlData.access = "symbol.marker.location";
-            if(value.type == 7) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate);
-            else Object(marker)["ClearLocation"]();
+            if(value.type == 7) { if("SetLocation" in marker) Object(marker)["SetLocation"](value.locationtype,value.locationcategory,value.locationstate); }
+            else if("ClearLocation" in marker) Object(marker)["ClearLocation"]();
             CanvasHtmlData.access = "symbol.marker.relative";
-            if(value.relative > 0) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
+            if(value.relative > 0 && "SetFrame" in marker) Object(marker)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
             CanvasHtmlData.access = "symbol.marker.category";
-            if(value.subcategory > 0) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
-            CanvasHtmlData.access = "symbol.marker.effect";
-            if(value.effect != "") MovieClip(Object(marker)["MarkerIcon_mc"]).gotoAndStop(String(value.effect));
+            if(value.subcategory > 0 && "SetFrame" in marker) Object(marker)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
+            // MarkerIcon_mc frame scripts raise ReferenceError 1069 through try/catch.
+            CanvasHtmlData.access = "symbol.marker.done";
             return marker;
          }
          catch(markerError:*)
@@ -111,9 +111,7 @@ package
             if(!ancestor.visible || ancestor.alpha == 0) return;
          this.pixels.fillRect(this.pixels.rect,0);
          var source:DisplayObject = this.resolve() as DisplayObject;
-         if(source == null) return;
-         for(var sourceAncestor:DisplayObject = source; sourceAncestor != null; sourceAncestor = sourceAncestor.parent)
-            if(!sourceAncestor.visible || sourceAncestor.alpha == 0) return;
+         if(source == null || !source.visible || source.alpha == 0) return;
          var bounds:Rectangle = source.getBounds(source);
          if(bounds.isEmpty() || !isFinite(bounds.x+bounds.y+bounds.width+bounds.height) || bounds.width > 4096 || bounds.height > 4096) return;
          var scale:Number = Math.min(this.outputWidth/bounds.width,this.outputHeight/bounds.height);
