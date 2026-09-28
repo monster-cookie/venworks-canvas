@@ -26,6 +26,7 @@
     <token>CanvasHtmlRetainedTree</token>
     <token>CanvasHudTargets</token>
     <token>CanvasHtmlNativeSymbol</token>
+    <token>CanvasHtmlMarkerIcon</token>
     <token>CanvasHtmlMeter</token>
     <token>CanvasHtmlEngine</token>
     <token>CanvasHtmlDocumentLoader</token>

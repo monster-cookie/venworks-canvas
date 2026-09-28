@@ -66,8 +66,9 @@ package
                CanvasHtmlData.access = "symbol.marker.category";
                if(value.subcategory > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
             }
-            CanvasHtmlData.access = "symbol.marker.live";
-            return widget;
+            // Parenting this widget raises an uncatchable ReferenceError 1069 from its stage hook.
+            CanvasHtmlData.access = "symbol.marker.icon";
+            return new CanvasHtmlMarkerIcon(widget);
          }
          catch(markerError:*)
          {

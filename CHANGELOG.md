@@ -13,7 +13,7 @@
 - Accept arrays created by a consumer movie when copying HTML data. Their index keys are no longer reported as invalid properties, and probing those arrays does not raise ReferenceError 1069.
 - Name the value being read when a ready callback raises ReferenceError 1069. The chronomark shows that path, such as `data.compass.ticks[0]` or `symbol.marker.location`, instead of only the error number.
 - Keep a HUD data update when one SVG image or native symbol fails. A missing compass marker draws a small dot, and the callback error names the channel and the value being read.
-- Keep compass markers as live game widgets so their position follows every step and facing change. Placing the widget can raise ReferenceError 1069 from its stage hook; that error no longer rejects the HUD update.
+- Paint each compass marker from the game's live POI widget. The widget stays off the document, because placing it raises an uncatchable ReferenceError 1069 and aborts compass and environment updates. Its art is redrawn as the location icon loads, and the compass moves, scales, and fades that art on every step and facing change.
 - Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
 
 ## Version 1.0.3 (September 25, 2026)
