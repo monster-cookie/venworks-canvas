@@ -33,6 +33,10 @@ The Gallery is an authoring reference and separate example package. Players do n
 [/tr]
 [/table]
 
+[size=4][b]Write tags in lowercase[/b][/size]
+
+Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with vw-include, must begin with <!doctype html>. Element names are lowercase: html, div, svg, and vw-hud-target. An uppercase preamble or a mixed-case tag such as Div fails parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. viewBox is the one accepted exception, and Canvas treats it as viewbox. Paint keywords are lowercase as well: none, currentcolor, and transparent. currentColor is rejected. Text inside an element keeps the case you write.
+
 [size=4][b]Text and document flow[/b][/size]
 
 [img]https://cdn.venworkscreations.com/NexusMods/Canvas/ComponentGallery/text-and-document-flow.png[/img]
@@ -226,7 +230,7 @@ Player and ship consumers can declare presentation suppression with stable targe
 <vw-hud-target target="canvas.watch" disabled="true"></vw-hud-target>
 [/code-html]
 
-Use player.all or ship.all only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, never forces an engine-hidden object visible, and releases one consumer's requests on replacement, failure, or unload. Disabling presentation does not disable game actions, shared event delivery, or vanilla scripts.
+Use player.all or ship.all only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, holds each requested target invisible until that consumer releases it, and never forces an engine-hidden object visible. Alpha stays with the engine. Disabling presentation does not stop shared event delivery.
 
 Approved host artwork is exposed through named symbols. The current names are vehicle-exit-prompt, weapon-icon, and compass-marker.
 

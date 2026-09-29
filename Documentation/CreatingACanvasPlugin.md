@@ -95,6 +95,8 @@ Create `index.html` and `panel.css` in a local resource folder. This starter dis
 .health-meter { width: 420px; height: 14px; color: #66ffff; background-color: #26313a; }
 ```
 
+Write the preamble as `<!doctype html>` and keep every element name lowercase. Canvas rejects `<!DOCTYPE html>` and mixed-case tags such as `<Div>` or `<SVG>`. The same rule applies to documents pulled in with `vw-include`. Attribute names are lowercase, except `viewBox`, which Canvas accepts and treats as `viewbox`. Paint keywords are lowercase too: use `currentcolor`, not `currentColor`.
+
 Keep every linked file beneath your consumer folder. Use relative paths such as `panel.css`, `icons/status.svg`, or `partials/effects.html`; do not use absolute paths, parent-directory traversal, or remote URLs.
 
 ## 3. Create the Scaleform consumer
@@ -272,6 +274,20 @@ Test each layer separately so a packaging success is not mistaken for a visible 
 9. Test normal and large interface modes separately.
 
 For every failure, record the Canvas version, add-on version, package order, save type, display mode, visible behavior, and relevant Canvas/Papyrus log lines. A registration or `EVENT_SUBMITTED` result confirms only that the request was accepted at that boundary; it does not confirm delivery or rendering.
+
+### ActionScript runtime errors
+
+The chronomark and the Papyrus log can show ActionScript runtime error numbers. Scaleform's `ReferenceError` text omits the property name, so Canvas also prints the value it was reading, such as `symbol.marker.location` or `data.compass.ticks[0]`.
+
+| Number | Meaning |
+| --- | --- |
+| 1009 | Called a method on `null` |
+| 1010 | Called a method on `undefined` |
+| 1034 | A value could not be converted to the expected type |
+| 1056 | Tried to create a property on a sealed object |
+| 1069 | Tried to read a property that the sealed object does not have |
+
+A sealed object is a class instance, including nearly every game UI clip. Reading a missing property throws 1069. A dynamic object returns `undefined` instead. The `in` operator checks for the property without throwing. Bracket access and dot access both throw.
 
 ## Common mistakes
 

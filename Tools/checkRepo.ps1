@@ -33,6 +33,7 @@ if ($null -eq $sharedConfigurationLoaded -or $sharedConfigurationLoaded.Value -n
   . (Join-Path $PSScriptRoot 'sharedConfig.ps1') -EnvironmentPath $EnvironmentPath
 }
 . (Join-Path $PSScriptRoot 'sharedPackaging.ps1')
+. (Join-Path $PSScriptRoot 'sharedRuntimeArtifacts.ps1')
 
 function Assert-BuildConfiguredStagingPath {
   param(
@@ -206,6 +207,15 @@ foreach ($variant in $variants) {
       throw "$($variant.VariantName) is missing expected artifact: $artifactPath"
     }
     Assert-BuildArtifactHeader -Path $artifactPath
+  }
+  if ([string]$variant.VariantKey -ceq 'CANVAS') {
+    $runtimeContractPath = Join-Path $repositoryRoot 'Scaleform/canvas/build/runtime-package.contract.psd1'
+    foreach ($archive in @($variant.Archives)) {
+      Assert-CanvasRuntimeArchive `
+        -Path (Join-Path $artifactRoot ([string]$archive.FileName)) `
+        -ContractPath $runtimeContractPath `
+        -RequireRegistry:([bool]$archive.IncludePapyrus)
+    }
   }
   $variantPayloadTargets = @($configuredPayloadTargets | Where-Object { [string]$_.VariantKey -ceq [string]$variant.VariantKey } | ForEach-Object { [string]$_.Target })
   Assert-BuildNoLoosePackagePayloads -VariantKey ([string]$variant.VariantKey) -InstallPath $artifactRoot -PayloadTargets $variantPayloadTargets

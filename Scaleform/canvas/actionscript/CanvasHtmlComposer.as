@@ -118,6 +118,10 @@ package
       private function expand(param1:Object, param2:Array) : void
       {
          var source:CanvasHtmlNode = param1.source as CanvasHtmlNode;
+         if(source != null)
+         {
+            CanvasHtmlData.access = "compose." + (source.name == null || source.name.length == 0 ? "text" : source.name);
+         }
          if(source == null)
          {
             this.reject("adapter-failure",String(param1.resource),"lifecycle");
@@ -301,6 +305,7 @@ package
 
       private function expandRepeat(source:CanvasHtmlNode, frame:Object, frames:Array, scope:Object, name:String, repeatElement:Boolean) : void
       {
+         CanvasHtmlData.access = "compose.repeat." + name;
          var value:Object = CanvasHtmlData.resolve(scope,name);
          if(!value.found)
          {

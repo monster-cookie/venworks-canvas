@@ -41,6 +41,7 @@ package
          this.resources = {};
          this.viewportWidth = param4;
          this.viewportHeight = param5;
+         CanvasStageGuard.setScreen(param4,param5);
          this.failure = null;
          this.svgCache = {};
          this.svgWork = 0;
@@ -79,6 +80,7 @@ package
          {
             var frame:Object = frames.pop();
             var node:CanvasHtmlNode = frame.node as CanvasHtmlNode;
+            CanvasHtmlData.access = "render." + (node == null || node.name == null || node.name.length == 0 ? "text" : node.name);
             var parent:Object = frame.parent;
             var ancestors:Array = frame.ancestors as Array;
             var style:Object = node.type == CanvasHtmlNode.TEXT ? this.stylesheet.inheritedStyle(parent == null ? null : parent.style) : this.stylesheet.computeStyle(node,ancestors,parent == null ? null : parent.style);
@@ -316,10 +318,15 @@ package
                field.width = Math.max(1,Number(box.innerWidth));
                field.text = node.text == null ? "" : node.text;
                field.setTextFormat(format);
-               field.height = Math.max(1,field.textHeight + 6);
+               box.textFormat = format;
+               var measuredHeight:Number = this.lineHeight(box.style);
+               var measuredWidth:Number = Number(box.innerWidth);
+               // Scaleform throws ReferenceError 1069 from textWidth and textHeight on some offstage fields.
+               try { measuredHeight = field.textHeight; measuredWidth = field.textWidth; } catch(measureError:*) {}
+               field.height = Math.max(1,measuredHeight + 6);
                Sprite(box.sprite).addChild(field);
                box.textField = field;
-               box.textNaturalWidth = Math.min(Number(box.innerWidth),field.textWidth + 6);
+               box.textNaturalWidth = Math.min(Number(box.innerWidth),measuredWidth + 6);
                box.contentHeight = field.height;
             }
             else if(node.name == "br")
@@ -336,17 +343,28 @@ package
             }
             else if(node.name == "vw-symbol")
             {
+               box.contentHeight = this.length(box.style["height"],this.viewportHeight,24);
                try {
-                  if(this.nativeHost == null) return this.reject("native-host-unavailable",node.resource);
-                  Sprite(box.sprite).addChild(this.nativeHost.createSymbol(node.getAttribute("name"),node.bindingValue,Number(box.innerWidth),this.length(box.style["height"],this.viewportHeight,24)));
-                  box.contentHeight = this.length(box.style["height"],this.viewportHeight,24);
-               } catch(symbolError:*) { return this.reject("native-symbol-unavailable",node.resource); }
+                  if(this.nativeHost != null)
+                     Sprite(box.sprite).addChild(this.nativeHost.createSymbol(node.getAttribute("name"),node.bindingValue,Number(box.innerWidth),box.contentHeight));
+               } catch(symbolError:*) {
+                  CanvasHtmlData.access = "render.symbol." + node.getAttribute("name");
+               }
             }
             else if(node.name == "svg" || node.name == "img")
             {
-               if(!this.measureAsset(box,node))
+               try
                {
-                  return false;
+                  if(!this.measureAsset(box,node) && this.failure != null)
+                  {
+                     CanvasHtmlData.access = "render.skip." + node.name;
+                     this.failure = null;
+                  }
+               }
+               catch(assetError:*)
+               {
+                  CanvasHtmlData.access = "render.skip." + node.name;
+                  this.failure = null;
                }
             }
          }
@@ -355,6 +373,7 @@ package
 
       private function resolveHeights(param1:Array) : Boolean
       {
+         var deferredAbsolute:Array = [];
          for(var index:int = param1.length - 1; index >= 0; index--)
          {
             var box:Object = param1[index];
@@ -443,7 +462,8 @@ package
                {
                   if(box.style["position"] == "static")
                   {
-                     return this.reject("absolute-containing-block-required",CanvasHtmlNode(child.node).resource);
+                     deferredAbsolute.push(child);
+                     continue;
                   }
                   Sprite(child.sprite).x = startX + Number(child.marginLeft) + this.length(child.style["left"],Number(box.innerWidth),0);
                   Sprite(child.sprite).y = startY + Number(child.marginTop) + this.length(child.style["top"],innerHeight,0);
@@ -462,7 +482,50 @@ package
             this.applyZOrder(box);
             this.drawBox(box);
          }
+         return deferredAbsolute.length == 0 || this.placeDeferredAbsolute(deferredAbsolute);
+      }
+
+      // A static parent is not a containing block. Place the absolute child against the
+      // nearest relative or absolute ancestor once flow positions exist, or against the
+      // viewport when every ancestor is static.
+      private function placeDeferredAbsolute(param1:Array) : Boolean
+      {
+         for each(var child:Object in param1)
+         {
+            var containing:Object = this.absoluteContainingBlock(child);
+            var basisWidth:Number = containing == null ? this.viewportWidth : Number(containing.innerWidth);
+            var basisHeight:Number = containing == null ? this.viewportHeight : Math.max(1,Number(containing.height) - Number(containing.border) * 2 - Number(containing.paddingTop) - Number(containing.paddingBottom));
+            var originX:Number = containing == null ? 0 : Number(containing.border) + Number(containing.paddingLeft) + Number(containing.indent);
+            var originY:Number = containing == null ? 0 : Number(containing.border) + Number(containing.paddingTop);
+            var x:Number = originX + Number(child.marginLeft) + this.length(child.style["left"],basisWidth,0);
+            var y:Number = originY + Number(child.marginTop) + this.length(child.style["top"],basisHeight,0);
+            var cursor:Object = child.parent;
+            while(cursor != null && cursor != containing)
+            {
+               x -= Sprite(cursor.sprite).x;
+               y -= Sprite(cursor.sprite).y;
+               cursor = cursor.parent;
+            }
+            Sprite(child.sprite).x = x;
+            Sprite(child.sprite).y = y;
+            if(!CanvasHtmlTransform.apply(child,this.safeRect)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
+            if(!this.isBoundedCoordinate(Sprite(child.sprite).x) || !this.isBoundedCoordinate(Sprite(child.sprite).y))
+            {
+               return this.reject("invalid-position",CanvasHtmlNode(child.node).resource);
+            }
+         }
          return this.failure == null;
+      }
+
+      private function absoluteContainingBlock(param1:Object) : Object
+      {
+         var cursor:Object = param1.parent;
+         while(cursor != null)
+         {
+            if(cursor.style["position"] == "relative" || cursor.style["position"] == "absolute") return cursor;
+            cursor = cursor.parent;
+         }
+         return null;
       }
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean
@@ -587,6 +650,84 @@ package
          return result;
       }
 
+      private function clearStagePaint(sprite:Sprite) : void
+      {
+         var index:int = sprite.numChildren - 1;
+         while(index >= 0)
+         {
+            if(sprite.getChildAt(index).name == "CanvasStagePaint") sprite.removeChildAt(index);
+            index--;
+         }
+      }
+
+      // A box can be taller than the stage. Each piece keeps its graphics numbers inside the stage, and the piece position carries the rest.
+      private function paintFill(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, color:uint, alpha:Number) : void
+      {
+         if(!isFinite(x + y + width + height) || width <= 0 || height <= 0 || alpha <= 0) return;
+         var tileW:Number = CanvasStageGuard.screenWidth > 1 ? CanvasStageGuard.screenWidth : 1;
+         var tileH:Number = CanvasStageGuard.screenHeight > 1 ? CanvasStageGuard.screenHeight : 1;
+         var row:Number = 0;
+         while(row < height)
+         {
+            var column:Number = 0;
+            var pieceH:Number = Math.min(tileH,height - row);
+            while(column < width)
+            {
+               var pieceW:Number = Math.min(tileW,width - column);
+               var piece:Shape = new Shape();
+               piece.name = "CanvasStagePaint";
+               piece.x = x + column;
+               piece.y = y + row;
+               piece.graphics.beginFill(color,alpha);
+               piece.graphics.drawRect(0,0,pieceW,pieceH);
+               piece.graphics.endFill();
+               sprite.addChild(piece);
+               column += tileW;
+            }
+            row += tileH;
+         }
+      }
+
+      private function paintBorder(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, thickness:Number, color:uint, alpha:Number) : void
+      {
+         if(!isFinite(x + y + width + height + thickness) || width <= 0 || height <= 0 || thickness <= 0 || alpha <= 0) return;
+         var inset:Number = thickness * 0.5;
+         var left:Number = x + inset;
+         var top:Number = y + inset;
+         var right:Number = x + Math.max(inset,width - inset);
+         var bottom:Number = y + Math.max(inset,height - inset);
+         this.paintLine(sprite,left,top,right,top,thickness,color,alpha);
+         this.paintLine(sprite,left,bottom,right,bottom,thickness,color,alpha);
+         this.paintLine(sprite,left,top,left,bottom,thickness,color,alpha);
+         this.paintLine(sprite,right,top,right,bottom,thickness,color,alpha);
+      }
+
+      private function paintLine(sprite:Sprite, x1:Number, y1:Number, x2:Number, y2:Number, thickness:Number, color:uint, alpha:Number) : void
+      {
+         var dx:Number = x2 - x1;
+         var dy:Number = y2 - y1;
+         var length:Number = Math.sqrt(dx * dx + dy * dy);
+         if(!isFinite(length) || length <= 0) return;
+         var limit:Number = Math.max(CanvasStageGuard.screenWidth,CanvasStageGuard.screenHeight);
+         if(limit < 1) limit = 1;
+         var traveled:Number = 0;
+         while(traveled < length)
+         {
+            var step:Number = Math.min(limit,length - traveled);
+            var start:Number = traveled / length;
+            var end:Number = (traveled + step) / length;
+            var piece:Shape = new Shape();
+            piece.name = "CanvasStagePaint";
+            piece.x = x1 + dx * start;
+            piece.y = y1 + dy * start;
+            piece.graphics.lineStyle(thickness,color,alpha);
+            piece.graphics.moveTo(0,0);
+            piece.graphics.lineTo(dx * (end - start),dy * (end - start));
+            sprite.addChild(piece);
+            traveled += step;
+         }
+      }
+
       private function drawBox(param1:Object) : void
       {
          var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
@@ -602,16 +743,14 @@ package
             return;
          }
          sprite.graphics.clear();
+         this.clearStagePaint(sprite);
          if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
-            sprite.graphics.beginFill(uint(background.color),Number(background.alpha));
-            sprite.graphics.drawRect(0,0,Number(param1.width),Number(param1.height));
-            sprite.graphics.endFill();
+            this.paintFill(sprite,0,0,Number(param1.width),Number(param1.height),uint(background.color),Number(background.alpha));
          }
          if(Number(param1.border) > 0 && borderColor != null && Number(borderColor.alpha) > 0)
          {
-            sprite.graphics.lineStyle(Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
-            sprite.graphics.drawRect(Number(param1.border) * 0.5,Number(param1.border) * 0.5,Math.max(0,Number(param1.width) - Number(param1.border)),Math.max(0,Number(param1.height) - Number(param1.border)));
+            this.paintBorder(sprite,0,0,Number(param1.width),Number(param1.height),Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
          }
          sprite.alpha = Number(param1.style["opacity"]);
          if(param1.style["overflow"] == "hidden")
@@ -623,8 +762,10 @@ package
             var rule:Shape = new Shape();
             var ruleColor:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
             rule.graphics.lineStyle(Math.max(1,Number(param1.border)),uint(ruleColor.color),Number(ruleColor.alpha));
-            rule.graphics.moveTo(Number(param1.border) + Number(param1.paddingLeft),Number(param1.height) * 0.5);
-            rule.graphics.lineTo(Number(param1.width) - Number(param1.border) - Number(param1.paddingRight),Number(param1.height) * 0.5);
+            var ruleStart:Array = CanvasStageGuard.place(Number(param1.border) + Number(param1.paddingLeft),Number(param1.height) * 0.5);
+            var ruleEnd:Array = CanvasStageGuard.place(Number(param1.width) - Number(param1.border) - Number(param1.paddingRight),Number(param1.height) * 0.5);
+            rule.graphics.moveTo(ruleStart[0],ruleStart[1]);
+            rule.graphics.lineTo(ruleEnd[0],ruleEnd[1]);
             sprite.addChild(rule);
          }
          else if(node.name == "vw-meter")
@@ -729,7 +870,9 @@ package
          if(field != null)
          {
             field.width = Number(param1.innerWidth);
-            field.height = Math.max(1,field.textHeight + 6);
+            var measuredHeight:Number = this.lineHeight(param1.style);
+            try { measuredHeight = field.textHeight; } catch(measureError:*) {}
+            field.height = Math.max(1,measuredHeight + 6);
             param1.contentHeight = field.height;
          }
       }

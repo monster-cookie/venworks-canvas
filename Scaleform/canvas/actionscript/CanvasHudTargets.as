@@ -5,7 +5,7 @@ package
    import flash.display.Shape;
    import flash.events.Event;
 
-   // Suppresses presentation without changing native visible, alpha, scripts or input.
+   // A requested target is held invisible. Alpha stays with the engine. 3D clips such as RightMeters ignore a mask, so visible is reapplied every frame and restored on release.
    public final class CanvasHudTargets
    {
       private var owner:DisplayObjectContainer;
@@ -153,6 +153,7 @@ package
             }
             else if(object.mask !== record.mask) record.nativeMask = object.mask;
             object.mask = record.mask;
+            object.visible = false;
          }
          if(consumers.length > 0) this.owner.addEventListener(Event.ENTER_FRAME,this.refresh,false,-1000,false);
          else this.owner.removeEventListener(Event.ENTER_FRAME,this.refresh);

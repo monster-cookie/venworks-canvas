@@ -9,8 +9,10 @@
                            frameRate="30">
   <requiredTokens>
     <token>VWC_EVT/1</token>
+    <token>VWCANVAS_CONSUMER/1</token>
     <token>VWCANVAS_CONSUMER/2</token>
     <token>VWCANVAS_CONSUMER/3</token>
+    <token>VWCANVAS_RUNTIME/1</token>
     <token>canvas.event</token>
     <token>canvas.registry.snapshot</token>
     <token>CustomAlertsData</token>
@@ -24,6 +26,7 @@
     <token>CanvasHtmlRetainedTree</token>
     <token>CanvasHudTargets</token>
     <token>CanvasHtmlNativeSymbol</token>
+    <token>CanvasHtmlMarkerIcon</token>
     <token>CanvasHtmlMeter</token>
     <token>CanvasHtmlEngine</token>
     <token>CanvasHtmlDocumentLoader</token>

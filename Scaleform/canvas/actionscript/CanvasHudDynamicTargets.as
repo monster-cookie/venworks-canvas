@@ -30,7 +30,7 @@ package
          var visited:int = 0;
          while(pending.length > 0)
          {
-            if(++visited > 4096) { this.failure = "node-limit"; return false; }
+            if(++visited > 65536) { this.failure = "node-limit"; return false; }
             var item:Object = pending.pop();
             var object:DisplayObject = item.object as DisplayObject;
             var name:String = getQualifiedClassName(object).split("::").pop();
@@ -45,8 +45,8 @@ package
             var container:DisplayObjectContainer = object as DisplayObjectContainer;
             if(container != null && container.numChildren > 0)
             {
-               if(item.depth >= 12) { this.failure = "depth-limit"; return false; }
-               if(visited + pending.length + container.numChildren > 4096) { this.failure = "node-limit"; return false; }
+               if(item.depth >= 32) { this.failure = "depth-limit"; return false; }
+               if(visited + pending.length + container.numChildren > 65536) { this.failure = "node-limit"; return false; }
                for(var i:int = 0; i < container.numChildren; i++) pending.push({object:container.getChildAt(i),depth:item.depth+1});
             }
          }

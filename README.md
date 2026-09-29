@@ -30,7 +30,7 @@ Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gall
 
 ### HTML data binding for repeated rows
 
-Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and `li`. Give it the name of an array in `setData`; Canvas repeats the element for each item and resolves bindings inside it with the same item scope as `vw-repeat`. Object items expose their properties, while scalar items expose `item`. Missing arrays render no rows; non-array values and arrays over 256 items are rejected by the existing binding limits. `vw-repeat` remains supported for repeating a group of child elements.
+Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and `li`. Give it the name of an array in `setData`; Canvas repeats the element for each item and resolves bindings inside it with the same item scope as `vw-repeat`. Object items expose their properties, while scalar items expose `item`. Missing arrays render no rows; non-array values and arrays over 65536 items are rejected by the existing binding limits. `vw-repeat` remains supported for repeating a group of child elements.
 
 ```html
 <div data-vw-for-each="effects" data-vw-text="label"></div>
@@ -69,6 +69,20 @@ If a Canvas add-on does not appear:
 4. Reproduce the problem on a disposable save with Canvas and one add-on enabled.
 5. Report the exact Canvas/add-on versions, package order, save type, and visible behavior to the package maintainer.
 
+### ActionScript runtime errors
+
+The chronomark and the Papyrus log can show ActionScript runtime error numbers. Scaleform's `ReferenceError` text omits the property name, so Canvas also prints the value it was reading, such as `symbol.marker.location` or `data.compass.ticks[0]`.
+
+| Number | Meaning |
+| --- | --- |
+| 1009 | Called a method on `null` |
+| 1010 | Called a method on `undefined` |
+| 1034 | A value could not be converted to the expected type |
+| 1056 | Tried to create a property on a sealed object |
+| 1069 | Tried to read a property that the sealed object does not have |
+
+A sealed object is a class instance, including nearly every game UI clip. Reading a missing property throws 1069. A dynamic object returns `undefined` instead. The `in` operator checks for the property without throwing. Bracket access and dot access both throw.
+
 ## Maintainer and contributor workflow
 
 Work from the repository root with PowerShell 7. [Tools/sharedConfig.ps1](Tools/sharedConfig.ps1) defines the `CANVAS`, `EXAMPLE`, and `COMPONENTGALLERY` variants, their Papyrus namespaces, Scaleform jobs, and package contents. Edit sources under `Papyrus/` and `Scaleform/`; use the configured tools to produce build outputs rather than treating generated files as source.
@@ -89,7 +103,7 @@ Set the selected variant's `MODULE_VARIANT_*_PATH` value to its intended physica
 
 Verify the pinned Scaleform tools with `pwsh -NoProfile -File .\Tools\VerifyPipelineTooling.ps1` before a native Scaleform build. Compile Papyrus and build Scaleform with the actual configured toolchain when those sources change; a source pattern or separate fixture cannot establish the behavior of the compiled output.
 
-Use [Tools/compileScripts.ps1](Tools/compileScripts.ps1) for Papyrus PEX files and [Tools/buildScaleform.ps1](Tools/buildScaleform.ps1) for SWF/GFX files. Both accept `-VariantKeys` to select a variant. Their default outputs publish temporary loose inputs to the selected staging targets; use each script's `-OutputDirectory` beneath `.work/canvas` when you need isolated candidate outputs. [Tools/createPackages.ps1](Tools/createPackages.ps1) builds and installs the selected archives from current outputs, verifies the installed ESM and BA2 files, and then removes every matching loose archive payload so Starfield cannot shadow the archive with a staged copy. If installation, verification, or cleanup fails, the transaction restores the prior package and prior loose inputs. A later package run must recreate the needed loose inputs or receive them through `-ScriptsDirectory` and `-ScaleformDirectory`. [Tools/checkRepo.ps1](Tools/checkRepo.ps1) checks configured metadata and artifacts and rejects archive-shadowing loose payloads; its `-Committed` mode reads repository staging paths without requiring installed destination values or staging junctions, but still requires the selected local environment file and expected artifacts. Read each script's parameters and side effects before running a build, package, or staging step.
+Use [Tools/compileScripts.ps1](Tools/compileScripts.ps1) for Papyrus PEX files and [Tools/buildScaleform.ps1](Tools/buildScaleform.ps1) for SWF/GFX files. Both accept `-VariantKeys` to select a variant. Their default outputs publish temporary loose inputs to the selected staging targets; use each script's `-OutputDirectory` beneath `.work/canvas` when you need isolated candidate outputs. [Tools/createPackages.ps1](Tools/createPackages.ps1) builds and installs the selected archives from current outputs, verifies the installed ESM and BA2 files, and then removes every matching loose archive payload so Starfield cannot shadow the archive with a staged copy. If installation, verification, or cleanup fails, the transaction restores the prior package and prior loose inputs. A later package run must recreate the needed loose inputs or receive them through `-ScriptsDirectory` and `-ScaleformDirectory`. [Tools/checkRepo.ps1](Tools/checkRepo.ps1) checks configured metadata and artifacts and rejects archive-shadowing loose payloads; its `-Committed` mode reads repository staging paths without requiring installed destination values or staging junctions, but still requires the selected local environment file and expected artifacts. Canvas archive checks apply the packaged runtime contract and require the Windows Registry PEX datagram API, so an older runtime archive cannot pass alongside newer source. Read each script's parameters and side effects before running a build, package, or staging step.
 
 For packages without installation or staging junctions, use `createPackages.ps1 -BuildOnly -OutputDirectory <fresh-work-directory> -ScriptsDirectory <compiled-scripts> -ScaleformDirectory <compiled-movies>`. Source ESM files default to the configured repository staging folders as ordinary read-only inputs. Supply `-PluginDirectory <plugin-inputs>` to read them from `<plugin-inputs>/<VariantKey>/<EsmFileName>` instead; configured installation destinations are not required for isolated output.
 

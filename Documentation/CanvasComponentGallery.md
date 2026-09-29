@@ -20,6 +20,10 @@ The Gallery is an authoring reference and separate example package. Players do n
 | Syntax | The exact declarative syntax used by the Gallery document. |
 | Rendered result | What the captured Gallery displayed from that syntax and its sample data. |
 
+## Write tags in lowercase
+
+Canvas matches the preamble and every element name exactly. Each HTML or SVG document, including a file loaded with `vw-include`, must begin with `<!doctype html>`. Element names are lowercase: `<html>`, `<div>`, `<svg>`, `<vw-hud-target>`. `<!DOCTYPE html>`, `<HTML>`, and `<Div>` fail parsing as malformed syntax at the first differing byte. Attribute names are lowercase too. `viewBox` is the one accepted exception, and Canvas treats it as `viewbox`. Paint keywords are lowercase as well: `none`, `currentcolor`, and `transparent`. `currentColor` is rejected. Text inside an element keeps the case you write.
+
 ## Text and document flow
 
 ![Lossless crop of the Text and Document Flow Gallery table from H1 through DIV](Images/ComponentGallery/text-and-document-flow.png)
@@ -96,6 +100,8 @@ The exact Gallery CSS is:
 .demo-position-front { position: absolute; left: 160px; top: 42px; z-index: 2; }
 ```
 
+A static parent is valid. Canvas places the absolute element against the nearest ancestor whose position is `relative` or `absolute`. When every ancestor is static, the viewport is the containing block. `data-vw-anchor` is separate and still requires the anchored element itself to be `position: absolute`.
+
 ## Safe-area placement and presentation bindings
 
 Use `data-vw-anchor` on absolutely positioned content to attach it to `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, or `bottom-right` in the host safe area. CSS offsets remain in Canvas's 1920×1080 design space.
@@ -127,7 +133,7 @@ Player and ship consumers can declare presentation suppression with stable targe
 <vw-hud-target target="canvas.watch" disabled="true"></vw-hud-target>
 ```
 
-Use `player.all` or `ship.all` only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, never forces an engine-hidden object visible, and releases one consumer's requests on replacement, failure, or unload. Disabling presentation does not disable game actions, shared event delivery, or vanilla scripts.
+Use `player.all` or `ship.all` only when the consumer intentionally suppresses every cataloged surface for that host. Canvas combines requests from multiple consumers, holds each requested target invisible until that consumer releases it, and never forces an engine-hidden object visible. Alpha stays with the engine. Disabling presentation does not stop shared event delivery.
 
 Approved host artwork is exposed through named symbols. The current names are `vehicle-exit-prompt`, `weapon-icon`, and `compass-marker`.
 
@@ -158,7 +164,7 @@ Canvas copies the approved artwork into the consumer. The native control retains
 
 The consumer owns the values. It obtains the HTML bridge during lifecycle `ready`, keeps a complete view model, and calls `setData(model)` after an accepted change. Calling `setData()` synchronously validates and applies the document's complete bound state, so publish the full model rather than a one-field patch. Canvas retains compatible display objects during data-only updates; if validation rejects a snapshot, `setData()` throws and the last valid display remains.
 
-Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 256 items.
+Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 65536 items.
 
 ## Live player placeholders
 

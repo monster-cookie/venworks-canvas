@@ -141,6 +141,8 @@ Create index.html and panel.css in a local resource folder. This starter display
 </html>
 [/code-html]
 
+Write the preamble as <!doctype html> and keep every element name lowercase. Canvas rejects an uppercase DOCTYPE and mixed-case tags such as Div or SVG. The same rule applies to documents pulled in with vw-include. Attribute names are lowercase, except viewBox, which Canvas accepts and treats as viewbox. Paint keywords are lowercase too: use currentcolor, not currentColor.
+
 [code-css]
 .panel { display: flex; flex-direction: column; width: 460px; margin: 28px 32px; padding: 14px; gap: 8px; color: #e3fdff; background-color: #141414d1; border-width: 1px; border-style: solid; border-color: #3aadfc; font-family: $MAIN_Font_Bold; font-size: 18px; line-height: 26px; }
 .panel h1 { margin: 0px; color: #66ffff; font-size: 24px; line-height: 30px; }
@@ -297,6 +299,41 @@ Acme-Canvas-Example - Main.ba2
 [*]Open the Player HUD and confirm the initial HTML appears.
 [*]Change or trigger each data source and confirm the visible values update.
 [/list]
+
+For every failure, record the Canvas version, add-on version, package order, save type, display mode, visible behavior, and relevant Canvas/Papyrus log lines.
+
+[size=4][b]ActionScript runtime errors[/b][/size]
+
+The chronomark and the Papyrus log can show ActionScript runtime error numbers. Scaleform's ReferenceError text omits the property name, so Canvas also prints the value it was reading, such as [i]symbol.marker.location[/i] or [i]data.compass.ticks[0][/i].
+
+[table]
+[tr]
+[td][b]Number[/b][/td]
+[td][b]Meaning[/b][/td]
+[/tr]
+[tr]
+[td]1009[/td]
+[td]Called a method on null[/td]
+[/tr]
+[tr]
+[td]1010[/td]
+[td]Called a method on undefined[/td]
+[/tr]
+[tr]
+[td]1034[/td]
+[td]A value could not be converted to the expected type[/td]
+[/tr]
+[tr]
+[td]1056[/td]
+[td]Tried to create a property on a sealed object[/td]
+[/tr]
+[tr]
+[td]1069[/td]
+[td]Tried to read a property that the sealed object does not have[/td]
+[/tr]
+[/table]
+
+A sealed object is a class instance, including nearly every game UI clip. Reading a missing property throws 1069. A dynamic object returns undefined instead. The [i]in[/i] operator checks for the property without throwing. Bracket access and dot access both throw.
 
 [size=4][b]Common mistakes[/b][/size]
 

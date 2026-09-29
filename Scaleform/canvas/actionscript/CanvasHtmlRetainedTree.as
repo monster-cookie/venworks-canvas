@@ -4,6 +4,7 @@ package
    import flash.display.Sprite;
    import flash.display.Shape;
    import flash.text.TextField;
+   import flash.text.TextFormat;
    import flash.utils.Dictionary;
 
    // Layout uses offscreen candidates. Only commit touches the last valid display.
@@ -52,9 +53,31 @@ package
 
       public static function sameStyle(a:Object, b:Object) : Boolean
       {
-         for(var name:String in a) if(a[name] !== b[name]) return false;
-         for(name in b) if(!a.hasOwnProperty(name)) return false;
+         if(a == null || b == null) return false;
+         var name:String = null;
+         try
+         {
+            for(name in a) if(readStyle(a,name) !== readStyle(b,name)) return false;
+            for(name in b) if(!ownsStyle(a,name)) return false;
+         }
+         catch(compareError:*) { return false; }
          return true;
+      }
+
+      private static function readStyle(source:Object, name:String) : *
+      {
+         var value:* = undefined;
+         try { value = source[name]; }
+         catch(readError:*) { value = undefined; }
+         return value;
+      }
+
+      private static function ownsStyle(source:Object, name:String) : Boolean
+      {
+         var owns:Boolean = false;
+         try { owns = source.hasOwnProperty(name); }
+         catch(ownError:*) { owns = false; }
+         return owns;
       }
 
       public static function canMeasure(box:Object) : Boolean
@@ -101,25 +124,27 @@ package
                {
                   var source:TextField = box.textField as TextField;
                   var target:TextField = old.textField as TextField;
-                  target.defaultTextFormat = source.defaultTextFormat;
+                  // Reading defaultTextFormat back throws ReferenceError 1069 and drops the embedded font.
+                  var copiedFormat:TextFormat = box.textFormat as TextFormat;
+                  if(copiedFormat == null) copiedFormat = old.textFormat as TextFormat;
+                  if(copiedFormat != null) target.defaultTextFormat = copiedFormat;
                   target.text = source.text;
-                  target.setTextFormat(source.defaultTextFormat);
+                  if(copiedFormat != null) target.setTextFormat(copiedFormat);
                   target.width = source.width; target.height = source.height;
                   target.x = source.x; target.y = source.y;
                   replacements[source] = target;
                   box.textField = target;
+                  box.textFormat = copiedFormat;
                }
-               if(!box.drawReused && CanvasHtmlNode(box.node).name == "vw-meter" && retained.numChildren == 1 && candidate.numChildren == 1 && retained.getChildAt(0) is Shape && candidate.getChildAt(0) is Shape)
+               if(!box.drawReused)
                {
-                  var meter:Shape = retained.getChildAt(0) as Shape;
-                  meter.graphics.copyFrom(Shape(candidate.getChildAt(0)).graphics);
-                  replacements[candidate.getChildAt(0)] = meter;
+                  try { retained.graphics.copyFrom(candidate.graphics); } catch(copyError:*) {}
                }
-               if(!box.drawReused) retained.graphics.copyFrom(candidate.graphics);
-               retained.transform.matrix = candidate.transform.matrix;
+               try { retained.transform.matrix = candidate.transform.matrix; } catch(matrixError:*) {}
                retained.alpha = candidate.alpha;
                retained.visible = candidate.visible;
-               retained.scrollRect = candidate.scrollRect;
+               // An unset scrollRect throws ReferenceError 1069 on read. Leave the retained clip alone.
+               try { retained.scrollRect = candidate.scrollRect; } catch(scrollError:*) {}
             }
             for(j = 0; j < candidate.numChildren; j++)
             {
@@ -133,7 +158,11 @@ package
             for(j = 0; j < desired.length; j++)
             {
                display = desired[j];
-               if(display.parent !== retained) retained.addChildAt(display,Math.min(j,retained.numChildren));
+               if(display.parent !== retained)
+               {
+                  try { retained.addChildAt(display,Math.min(j,retained.numChildren)); }
+                  catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
+               }
                else if(retained.getChildIndex(display) != j) retained.setChildIndex(display,j);
             }
             chosen[candidate] = retained;

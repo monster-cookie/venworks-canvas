@@ -37,13 +37,15 @@ package
             var amount:Number = Math.max(0,Math.min(1,value*settings.segments-index));
             if(!settings.partial) amount = amount >= 1 ? 1 : 0;
             graphics.beginFill(uint(track.color),Number(track.alpha));
-            graphics.drawRect(x+(vertical ? 0 : position),y+(vertical ? position : 0),vertical ? width : size,vertical ? size : height);
+            var trackRect:Array = CanvasStageGuard.rectangle(x+(vertical ? 0 : position),y+(vertical ? position : 0),vertical ? width : size,vertical ? size : height);
+            graphics.drawRect(trackRect[0],trackRect[1],trackRect[2],trackRect[3]);
             graphics.endFill();
             if(amount > 0)
             {
                var offset:Number = position + (reverse ? size*(1-amount) : 0);
                graphics.beginFill(uint(fill.color),Number(fill.alpha));
-               graphics.drawRect(x+(vertical ? 0 : offset),y+(vertical ? offset : 0),vertical ? width : size*amount,vertical ? size*amount : height);
+               var fillRect:Array = CanvasStageGuard.rectangle(x+(vertical ? 0 : offset),y+(vertical ? offset : 0),vertical ? width : size*amount,vertical ? size*amount : height);
+               graphics.drawRect(fillRect[0],fillRect[1],fillRect[2],fillRect[3]);
                graphics.endFill();
             }
          }

@@ -85,13 +85,31 @@ package
          {
             return;
          }
+         CanvasHtmlData.access = "setdata.snapshot";
          var snapshot:Object = CanvasHtmlData.snapshot(param1);
-         var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
-         if(failure != null)
+         CanvasHtmlData.access = "setdata.rebuild";
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(snapshot,this.viewportWidth,this.viewportHeight,this.activeState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+            this.data = snapshot;
          }
-         this.data = snapshot;
+         catch(rebuildError:*)
+         {
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
+         }
+      }
+
+      // The menu gallery resizes and dispatches during ready. A 1069 there used to unload the whole document.
+      private function keepLastFrame(rebuildError:*) : Boolean
+      {
+         if(this.documentDisplay == null) return false;
+         var text:String = "";
+         try { text = String(rebuildError); } catch(ignored:*) { text = ""; }
+         return text.indexOf("#1069") >= 0 || text.indexOf("1069 ") == 0;
       }
 
       public function setHostLayout(layout:Object) : void
@@ -123,10 +141,18 @@ package
          {
             return;
          }
-         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,param1,param2,this.activeState);
-         if(failure != null)
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,param1,param2,this.activeState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+         }
+         catch(rebuildError:*)
+         {
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
+            return;
          }
          this.viewportWidth = param1;
          this.viewportHeight = param2;
@@ -187,10 +213,18 @@ package
          {
             return;
          }
-         var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,this.viewportWidth,this.viewportHeight,nextState);
-         if(failure != null)
+         try
          {
-            throw new Error(failure.toString());
+            var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,this.viewportWidth,this.viewportHeight,nextState);
+            if(failure != null)
+            {
+               throw new Error(failure.toString());
+            }
+         }
+         catch(rebuildError:*)
+         {
+            if(!this.keepLastFrame(rebuildError)) throw rebuildError;
+            return;
          }
          this.activeState = nextState;
       }
@@ -275,14 +309,13 @@ package
          }
          this.documentDisplay = rendered.display;
          this.documentDisplay.name = "CanvasHtmlDocument";
-         if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay);
+         try { if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay); }
+         catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
          this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
          this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
          this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
-         if(this.viewport.parent !== this.mount)
-         {
-            this.mount.addChild(this.viewport);
-         }
+         try { if(this.viewport.parent !== this.mount) this.mount.addChild(this.viewport); }
+         catch(mountError:*) { CanvasHtmlData.access = "render.attach"; }
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
