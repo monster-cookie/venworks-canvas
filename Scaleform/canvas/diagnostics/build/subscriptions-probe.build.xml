@@ -33,6 +33,9 @@
     <token>CHRONOMARK SUSTENANCE PRECEDENCE</token>
     <token>ALL REGISTRY DIAGNOSTICS PASSED</token>
     <token>GetDataFromClient</token>
+    <token>PLAYER STATUS DATA</token>
+    <token>PLAYER_STATUS_DATA UNAVAILABLE</token>
+    <token>PLAYER_STATUS_DATA groups=1 effects=2 timers=2 icons=2</token>
     <token>Subscribe</token>
     <token>Unsubscribe</token>
     <token>getCanvasRegistration</token>

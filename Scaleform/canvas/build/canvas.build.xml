@@ -134,6 +134,8 @@
     <token>PROVIDER PAYLOAD REJECTED</token>
     <token>this.diagnostics.visible = false</token>
     <token>isFailureDiagnostic</token>
+    <token>PLAYER_STATUS_DATA</token>
+    <token>PlayerStatusData</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>FileReference</token>

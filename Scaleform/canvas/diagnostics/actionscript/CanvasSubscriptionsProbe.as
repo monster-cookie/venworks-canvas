@@ -5,7 +5,7 @@ package
 
    public final class CanvasSubscriptionsProbe extends MovieClip
    {
-      private static const TEST_COUNT:int = 16;
+      private static const TEST_COUNT:int = 17;
 
       private var marker:CanvasDiagnosticMarker;
 
@@ -40,6 +40,7 @@ package
          this.runCase("HTML SVG AND METERS",CanvasHtmlPrimitivesDiagnostics.run);
          this.runCase("HTML RETAINED UPDATES",CanvasHtmlUpdatesDiagnostics.run);
          this.runCase("HUD TARGET OWNERSHIP",CanvasHudTargetsDiagnostics.run);
+         this.runCase("PLAYER STATUS DATA",this.testPlayerStatusData);
          this.updateMarker();
       }
 
@@ -549,6 +550,52 @@ package
          registry["removeConsumer"]("preflight");
          context.deactivate("preflight");
          registry["dispose"]();
+      }
+
+      private function testPlayerStatusData() : void
+      {
+         var unavailable:CanvasPlayerStatusProbeFake = new CanvasPlayerStatusProbeFake();
+         var unavailableReports:Array = [];
+         var unavailableProbe:CanvasPlayerStatusProbe = new CanvasPlayerStatusProbe(unavailable,function(message:String):void { unavailableReports.push(message); });
+         unavailable.throwOnGet = true;
+         unavailableProbe.attempt();
+         this.assertTrue(unavailable.getCount == 1 && unavailable.subscribeCount == 0,"provider read failure reached subscribe");
+         this.assertTrue(unavailableReports.length == 1 && String(unavailableReports[0]).indexOf("PLAYER_STATUS_DATA ERROR") == 0 && String(unavailableReports[0]).indexOf("denied") >= 0,"provider read failure report");
+         unavailable.throwOnGet = false;
+         unavailableProbe.start();
+         this.assertTrue(unavailable.lastName == "PlayerStatusData" && unavailable.fromClient == true,"provider request");
+         this.assertTrue(unavailableReports.length == 2 && unavailableReports[1] == "PLAYER_STATUS_DATA UNAVAILABLE","missing provider report");
+         unavailableProbe.attempt();
+         this.assertTrue(unavailableReports.length == 2 && unavailable.subscribeCount == 0,"repeated unavailable report");
+         unavailableProbe.dispose();
+         unavailableProbe.dispose();
+         this.assertTrue(unavailable.unsubscribeCount == 0,"missing provider unsubscribed");
+
+         var denied:CanvasPlayerStatusProbeFake = new CanvasPlayerStatusProbeFake();
+         var deniedReports:Array = [];
+         var deniedProbe:CanvasPlayerStatusProbe = new CanvasPlayerStatusProbe(denied,function(message:String):void { deniedReports.push(message); });
+         denied.provider = {};
+         denied.failSubscribe = true;
+         deniedProbe.attempt();
+         this.assertTrue(denied.subscribeCount == 1 && denied.unsubscribeCount == 1,"failed subscribe was not released");
+         this.assertTrue(deniedReports.length == 1 && String(deniedReports[0]).indexOf("PLAYER_STATUS_DATA ERROR") == 0 && String(deniedReports[0]).indexOf("denied") >= 0,"subscribe failure report");
+         denied.failSubscribe = false;
+         denied.payload = {"data":{"aEffectGroups":[{"sEffectIcon":"groupIcon","bShowTimer":true,"fTimeRemaining":4,"aEffects":[{"bPermanent":true,"fTimeRemaining":0},{"bPermanent":false,"fTimeRemaining":9,"sEffectIcon":"rowIcon"}]}]}};
+         deniedProbe.attempt();
+         this.assertTrue(denied.subscribeCount == 2,"retry did not subscribe");
+         this.assertTrue(deniedReports.length == 2 && deniedReports[1] == "PLAYER_STATUS_DATA groups=1 effects=2 timers=2 icons=2","payload summary");
+         deniedProbe.attempt();
+         this.assertTrue(denied.subscribeCount == 2,"subscribed probe subscribed again");
+         denied.pushPayload({"data":{"aEffectGroups":[]}});
+         this.assertTrue(deniedReports.length == 3 && deniedReports[2] == "PLAYER_STATUS_DATA groups=0 effects=0 timers=0 icons=0","later payload");
+         denied.pushPayload({"data":{"aEffectGroups":[]}});
+         this.assertTrue(deniedReports.length == 3,"duplicate payload reported");
+         deniedProbe.dispose();
+         this.assertTrue(denied.unsubscribeCount == 2,"dispose unsubscribe");
+         denied.pushPayload({"data":{"aEffectGroups":[{"aEffects":[{"fTimeRemaining":1}]}]}});
+         this.assertTrue(deniedReports.length == 3,"payload after dispose");
+         deniedProbe.dispose();
+         this.assertTrue(denied.unsubscribeCount == 2,"repeat dispose");
       }
 
       private function createRegistry(param1:CanvasSubscriptionsFakeManager, param2:CanvasSubscriptionsTestContext) : Object

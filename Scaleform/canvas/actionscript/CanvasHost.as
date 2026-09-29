@@ -95,6 +95,8 @@ package
 
       private var consumerSubscriptions:CanvasSubscriptions;
 
+      private var playerStatusProbe:CanvasPlayerStatusProbe;
+
       private var hudTargets:CanvasHudTargets;
 
       private var htmlEngine:CanvasHtmlEngine;
@@ -358,6 +360,11 @@ package
          this.disposed = true;
          this.initializationState = HOST_STATE_DISPOSED;
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
+         if(this.playerStatusProbe != null)
+         {
+            this.playerStatusProbe.dispose();
+            this.playerStatusProbe = null;
+         }
          if(this.subscribed && this.dataManager != null && this.callback != null)
          {
             try
@@ -461,6 +468,9 @@ package
             throw new Error("startup replay exceeded the host queue limit");
          }
          this.appendDiagnostic("LOAD BRIDGE SUBSCRIBED | " + PROVIDER);
+         // Kept off the consumer channel list so a missing provider cannot remove the HUD.
+         this.playerStatusProbe = new CanvasPlayerStatusProbe(this.dataManager,this.appendDiagnostic);
+         this.playerStatusProbe.start();
       }
 
       private function dispatchChronomarkSound(param1:String) : void
@@ -1916,7 +1926,7 @@ package
 
       private function isFailureDiagnostic(param1:String) : Boolean
       {
-         return param1.indexOf("ERROR") >= 0 || param1.indexOf("FAILED") >= 0 || param1.indexOf("INVALID") >= 0 || param1.indexOf("MISSING") >= 0 || param1.indexOf("REJECTED") >= 0 || param1.indexOf("UNAVAILABLE") >= 0;
+         return param1.indexOf("ERROR") >= 0 || param1.indexOf("FAILED") >= 0 || param1.indexOf("INVALID") >= 0 || param1.indexOf("MISSING") >= 0 || param1.indexOf("REJECTED") >= 0 || param1.indexOf("UNAVAILABLE") >= 0 || param1.indexOf("PLAYER_STATUS_DATA") >= 0;
       }
 
       private function resolveHostKind() : String
