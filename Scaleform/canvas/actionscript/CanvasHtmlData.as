@@ -1,6 +1,7 @@
 package
 {
    import flash.utils.Dictionary;
+   import flash.utils.getQualifiedClassName;
 
    public final class CanvasHtmlData
    {
@@ -241,7 +242,7 @@ package
       }
 
       // A consumer movie can create arrays in another application domain, where `is Array` is false.
-      // Those values still have a dense length and index keys. Index keys are not data identifiers.
+      // getQualifiedClassName still reports those as Array. A length property alone is an object field.
       private static function isDataArray(param1:*, param2:String) : Boolean
       {
          if(param1 is Array)
@@ -251,6 +252,16 @@ package
          if(param1 == null || typeof param1 != "object")
          {
             return false;
+         }
+         try
+         {
+            if(getQualifiedClassName(param1) == "Array")
+            {
+               return true;
+            }
+         }
+         catch(classError:*)
+         {
          }
          access = param2 + "#length";
          var lengthValue:* = undefined;
@@ -273,6 +284,7 @@ package
          var length:int = int(lengthValue);
          access = param2 + "#keys";
          var key:String = null;
+         var sawIndex:Boolean = false;
          try
          {
             for(key in param1)
@@ -290,6 +302,7 @@ package
                {
                   return false;
                }
+               sawIndex = true;
             }
          }
          catch(enumerateError:*)
@@ -298,9 +311,9 @@ package
             {
                throw describeAccess(param2 + "#keys",enumerateError);
             }
-            return true;
+            return false;
          }
-         return true;
+         return sawIndex;
       }
 
       public static function describeAccess(path:String, error:*) : Error

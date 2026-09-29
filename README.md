@@ -30,7 +30,7 @@ Use the mouse wheel, Up/Down arrow keys, or Page Up/Page Down to browse the Gall
 
 ### HTML data binding for repeated rows
 
-Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and `li`. Give it the name of an array in `setData`; Canvas repeats the element for each item and resolves bindings inside it with the same item scope as `vw-repeat`. Object items expose their properties, while scalar items expose `item`. Missing arrays render no rows; non-array values and arrays over 256 items are rejected by the existing binding limits. `vw-repeat` remains supported for repeating a group of child elements.
+Canvas HTML contract `VWCANVAS_HTML/2` supports `data-vw-for-each` on `div` and `li`. Give it the name of an array in `setData`; Canvas repeats the element for each item and resolves bindings inside it with the same item scope as `vw-repeat`. Object items expose their properties, while scalar items expose `item`. Missing arrays render no rows; non-array values and arrays over 65536 items are rejected by the existing binding limits. `vw-repeat` remains supported for repeating a group of child elements.
 
 ```html
 <div data-vw-for-each="effects" data-vw-text="label"></div>

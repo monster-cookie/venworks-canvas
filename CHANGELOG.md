@@ -21,6 +21,13 @@
 - Stop rejecting theme documents for size. SVG paths, text, styles, and repeats are no longer capped at the old small budgets. Scaleform still cannot draw a graphics coordinate past 16384.
 - Keep every HTML and SVG graphics command inside the stage. Icons are drawn at their pixel size, so a viewBox coordinate such as `-16` is no longer treated as off-screen. A command more than a pixel outside the stage is clamped, and the diagnostic reads `ERROR: DRAW OUTSIDE STAGE`. Drawing past the screen crashes the consoles.
 - Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
+- Require the SHA-256 of the packaged host movie, the Registry script, and the host ActionScript when checking a Canvas archive.
+- Apply a compass marker's effect frame before its icon is captured.
+- Apply SVG group transforms in user space before the viewBox scale, so a translated viewBox stays aligned and the graphics commands stay in pixel space.
+- Keep an object with only a length field as an object. Repeat data still accepts a real array, including one created in another movie.
+- Leave the engine's visible flag unchanged when a HUD suppression request is released. The target stays invisible while the request is active.
+- Paint a box as stage-sized pieces so a tall fill is complete and each graphics command stays inside the stage.
+- Document the repeat binding limit as 65536 items.
 
 ## Version 1.0.3 (September 25, 2026)
 

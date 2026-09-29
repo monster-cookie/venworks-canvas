@@ -650,6 +650,84 @@ package
          return result;
       }
 
+      private function clearStagePaint(sprite:Sprite) : void
+      {
+         var index:int = sprite.numChildren - 1;
+         while(index >= 0)
+         {
+            if(sprite.getChildAt(index).name == "CanvasStagePaint") sprite.removeChildAt(index);
+            index--;
+         }
+      }
+
+      // A box can be taller than the stage. Each piece keeps its graphics numbers inside the stage, and the piece position carries the rest.
+      private function paintFill(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, color:uint, alpha:Number) : void
+      {
+         if(!isFinite(x + y + width + height) || width <= 0 || height <= 0 || alpha <= 0) return;
+         var tileW:Number = CanvasStageGuard.screenWidth > 1 ? CanvasStageGuard.screenWidth : 1;
+         var tileH:Number = CanvasStageGuard.screenHeight > 1 ? CanvasStageGuard.screenHeight : 1;
+         var row:Number = 0;
+         while(row < height)
+         {
+            var column:Number = 0;
+            var pieceH:Number = Math.min(tileH,height - row);
+            while(column < width)
+            {
+               var pieceW:Number = Math.min(tileW,width - column);
+               var piece:Shape = new Shape();
+               piece.name = "CanvasStagePaint";
+               piece.x = x + column;
+               piece.y = y + row;
+               piece.graphics.beginFill(color,alpha);
+               piece.graphics.drawRect(0,0,pieceW,pieceH);
+               piece.graphics.endFill();
+               sprite.addChild(piece);
+               column += tileW;
+            }
+            row += tileH;
+         }
+      }
+
+      private function paintBorder(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, thickness:Number, color:uint, alpha:Number) : void
+      {
+         if(!isFinite(x + y + width + height + thickness) || width <= 0 || height <= 0 || thickness <= 0 || alpha <= 0) return;
+         var inset:Number = thickness * 0.5;
+         var left:Number = x + inset;
+         var top:Number = y + inset;
+         var right:Number = x + Math.max(inset,width - inset);
+         var bottom:Number = y + Math.max(inset,height - inset);
+         this.paintLine(sprite,left,top,right,top,thickness,color,alpha);
+         this.paintLine(sprite,left,bottom,right,bottom,thickness,color,alpha);
+         this.paintLine(sprite,left,top,left,bottom,thickness,color,alpha);
+         this.paintLine(sprite,right,top,right,bottom,thickness,color,alpha);
+      }
+
+      private function paintLine(sprite:Sprite, x1:Number, y1:Number, x2:Number, y2:Number, thickness:Number, color:uint, alpha:Number) : void
+      {
+         var dx:Number = x2 - x1;
+         var dy:Number = y2 - y1;
+         var length:Number = Math.sqrt(dx * dx + dy * dy);
+         if(!isFinite(length) || length <= 0) return;
+         var limit:Number = Math.max(CanvasStageGuard.screenWidth,CanvasStageGuard.screenHeight);
+         if(limit < 1) limit = 1;
+         var traveled:Number = 0;
+         while(traveled < length)
+         {
+            var step:Number = Math.min(limit,length - traveled);
+            var start:Number = traveled / length;
+            var end:Number = (traveled + step) / length;
+            var piece:Shape = new Shape();
+            piece.name = "CanvasStagePaint";
+            piece.x = x1 + dx * start;
+            piece.y = y1 + dy * start;
+            piece.graphics.lineStyle(thickness,color,alpha);
+            piece.graphics.moveTo(0,0);
+            piece.graphics.lineTo(dx * (end - start),dy * (end - start));
+            sprite.addChild(piece);
+            traveled += step;
+         }
+      }
+
       private function drawBox(param1:Object) : void
       {
          var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
@@ -665,18 +743,14 @@ package
             return;
          }
          sprite.graphics.clear();
+         this.clearStagePaint(sprite);
          if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
-            sprite.graphics.beginFill(uint(background.color),Number(background.alpha));
-            var backgroundRect:Array = CanvasStageGuard.rectangle(0,0,Number(param1.width),Number(param1.height));
-            sprite.graphics.drawRect(backgroundRect[0],backgroundRect[1],backgroundRect[2],backgroundRect[3]);
-            sprite.graphics.endFill();
+            this.paintFill(sprite,0,0,Number(param1.width),Number(param1.height),uint(background.color),Number(background.alpha));
          }
          if(Number(param1.border) > 0 && borderColor != null && Number(borderColor.alpha) > 0)
          {
-            sprite.graphics.lineStyle(Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
-            var borderRect:Array = CanvasStageGuard.rectangle(Number(param1.border) * 0.5,Number(param1.border) * 0.5,Math.max(0,Number(param1.width) - Number(param1.border)),Math.max(0,Number(param1.height) - Number(param1.border)));
-            sprite.graphics.drawRect(borderRect[0],borderRect[1],borderRect[2],borderRect[3]);
+            this.paintBorder(sprite,0,0,Number(param1.width),Number(param1.height),Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
          }
          sprite.alpha = Number(param1.style["opacity"]);
          if(param1.style["overflow"] == "hidden")

@@ -1,10 +1,11 @@
 package
 {
    import flash.display.Graphics;
+   import flash.geom.Matrix;
 
    public final class CanvasSvgPathRenderer
    {
-      public static function render(param1:CanvasHtmlNode, param2:Graphics, param3:Array, param4:Number, param5:Number, param6:Object, param7:Function) : Boolean
+      public static function render(param1:CanvasHtmlNode, param2:Graphics, param3:Array, param4:Number, param5:Number, param6:Object, param7:Function, user:Matrix = null) : Boolean
       {
          if(param1 == null || param2 == null || param3 == null || param3.length != 4 || !isFinite(param4) || !isFinite(param5) || param4 <= 0 || param5 <= 0 || param7 == null)
          {
@@ -102,9 +103,8 @@ package
                {
                   return false;
                }
-               var closeX:Number = transformCoordinate(startX,minX,param4);
-               var closeY:Number = transformCoordinate(startY,minY,param5);
-               if(!isFinite(closeX) || !isFinite(closeY))
+               var closePoint:Array = placeMapped(startX,startY,user,minX,minY,param4,param5);
+               if(closePoint == null)
                {
                   return false;
                }
@@ -112,7 +112,6 @@ package
                {
                   return false;
                }
-               var closePoint:Array = CanvasStageGuard.place(closeX,closeY);
                param2.lineTo(closePoint[0],closePoint[1]);
                currentX = startX;
                currentY = startY;
@@ -144,9 +143,8 @@ package
                }
                currentX = nextX;
                currentY = nextY;
-               var drawX:Number = transformCoordinate(currentX,minX,param4);
-               var drawY:Number = transformCoordinate(currentY,minY,param5);
-               if(!isFinite(drawX) || !isFinite(drawY))
+               var drawPoint:Array = placeMapped(currentX,currentY,user,minX,minY,param4,param5);
+               if(drawPoint == null)
                {
                   return false;
                }
@@ -156,8 +154,7 @@ package
                   {
                      return false;
                   }
-                  var movePoint:Array = CanvasStageGuard.place(drawX,drawY);
-                  param2.moveTo(movePoint[0],movePoint[1]);
+                  param2.moveTo(drawPoint[0],drawPoint[1]);
                   startX = currentX;
                   startY = currentY;
                   hasMove = true;
@@ -173,8 +170,7 @@ package
                   {
                      return false;
                   }
-                  var linePoint:Array = CanvasStageGuard.place(drawX,drawY);
-                  param2.lineTo(linePoint[0],linePoint[1]);
+                  param2.lineTo(drawPoint[0],drawPoint[1]);
                }
             }
             else if(upper == "H" || upper == "V")
@@ -201,9 +197,8 @@ package
                {
                   return false;
                }
-               var lineX:Number = transformCoordinate(currentX,minX,param4);
-               var lineY:Number = transformCoordinate(currentY,minY,param5);
-               if(!isFinite(lineX) || !isFinite(lineY))
+               var flatPoint:Array = placeMapped(currentX,currentY,user,minX,minY,param4,param5);
+               if(flatPoint == null)
                {
                   return false;
                }
@@ -211,7 +206,6 @@ package
                {
                   return false;
                }
-               var flatPoint:Array = CanvasStageGuard.place(lineX,lineY);
                param2.lineTo(flatPoint[0],flatPoint[1]);
             }
             else if(upper == "Q" || upper == "T" || upper == "C" || upper == "S")
@@ -232,11 +226,11 @@ package
                   points.unshift(reflect ? 2 * currentX - controlX : currentX,reflect ? 2 * currentY - controlY : currentY);
                }
                var transformed:Array = [];
-               for(p = 0; p < points.length; p++)
+               for(p = 0; p < points.length; p += 2)
                {
-                  value = transformCoordinate(Number(points[p]),p % 2 == 0 ? minX : minY,p % 2 == 0 ? param4 : param5);
-                  if(!isFinite(value)) return false;
-                  transformed.push(value);
+                  var mappedPoint:Array = mapPoint(Number(points[p]),Number(points[p + 1]),user,minX,minY,param4,param5);
+                  if(mappedPoint == null) return false;
+                  transformed.push(mappedPoint[0],mappedPoint[1]);
                }
                if(points.length == 4)
                {
@@ -255,7 +249,8 @@ package
                      var u:Number = 1 - t;
                      var cx:Number = u*u*u*currentX + 3*u*u*t*Number(points[0]) + 3*u*t*t*Number(points[2]) + t*t*t*Number(points[4]);
                      var cy:Number = u*u*u*currentY + 3*u*u*t*Number(points[1]) + 3*u*t*t*Number(points[3]) + t*t*t*Number(points[5]);
-                     var cubicPoint:Array = CanvasStageGuard.place(transformCoordinate(cx,minX,param4),transformCoordinate(cy,minY,param5));
+                     var cubicPoint:Array = placeMapped(cx,cy,user,minX,minY,param4,param5);
+                     if(cubicPoint == null) return false;
                      param2.lineTo(cubicPoint[0],cubicPoint[1]);
                   }
                }
@@ -360,14 +355,33 @@ package
          return CanvasCssValue.parseColor(param1);
       }
 
-      private static function transformCoordinate(param1:Number, param2:Number, param3:Number) : Number
+      private static function placeMapped(x:Number, y:Number, user:Matrix, minX:Number, minY:Number, scaleX:Number, scaleY:Number) : Array
       {
-         if(!isBoundedSource(param1) || !isBoundedSource(param2) || !isFinite(param3))
+         var mapped:Array = mapPoint(x,y,user,minX,minY,scaleX,scaleY);
+         return mapped == null ? null : CanvasStageGuard.place(mapped[0],mapped[1]);
+      }
+
+      // Group transforms stay in user space. The viewBox origin is applied after that matrix, once.
+      private static function mapPoint(x:Number, y:Number, user:Matrix, minX:Number, minY:Number, scaleX:Number, scaleY:Number) : Array
+      {
+         var userX:Number = x;
+         var userY:Number = y;
+         if(user != null)
          {
-            return NaN;
+            userX = user.a * x + user.c * y + user.tx;
+            userY = user.b * x + user.d * y + user.ty;
          }
-         var result:Number = (param1 - param2) * param3;
-         return isFinite(result) && Math.abs(result) <= CanvasHtmlLimits.MAX_GRAPHICS_COORDINATE ? result : NaN;
+         if(!isBoundedSource(userX) || !isBoundedSource(userY) || !isBoundedSource(minX) || !isBoundedSource(minY) || !isFinite(scaleX) || !isFinite(scaleY))
+         {
+            return null;
+         }
+         var drawX:Number = (userX - minX) * scaleX;
+         var drawY:Number = (userY - minY) * scaleY;
+         if(!isFinite(drawX) || !isFinite(drawY) || Math.abs(drawX) > CanvasHtmlLimits.MAX_GRAPHICS_COORDINATE || Math.abs(drawY) > CanvasHtmlLimits.MAX_GRAPHICS_COORDINATE)
+         {
+            return null;
+         }
+         return [drawX,drawY];
       }
 
       private static function isBoundedSource(param1:Number) : Boolean

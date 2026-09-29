@@ -65,6 +65,13 @@ package
                if(value.relative > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","BelowPlayer","LevelWithPlayer","AbovePlayer"][value.relative],false);
                CanvasHtmlData.access = "symbol.marker.category";
                if(value.subcategory > 0 && "SetFrame" in widget) Object(widget)["SetFrame"](["","Undiscovered","Discovered","Targeted"][value.subcategory],true);
+               var effectName:String = String(value.effect);
+               if(effectName.length > 0)
+               {
+                  CanvasHtmlData.access = "symbol.marker.effect";
+                  var markerIcon:MovieClip = widget.MarkerIcon_mc as MovieClip;
+                  if(markerIcon != null) markerIcon.gotoAndStop(effectName);
+               }
             }
             // Parenting this widget raises an uncatchable ReferenceError 1069 from its stage hook.
             CanvasHtmlData.access = "symbol.marker.icon";

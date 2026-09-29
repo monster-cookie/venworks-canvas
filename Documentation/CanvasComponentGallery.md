@@ -164,7 +164,7 @@ Canvas copies the approved artwork into the consumer. The native control retains
 
 The consumer owns the values. It obtains the HTML bridge during lifecycle `ready`, keeps a complete view model, and calls `setData(model)` after an accepted change. Calling `setData()` synchronously validates and applies the document's complete bound state, so publish the full model rather than a one-field patch. Canvas retains compatible display objects during data-only updates; if validation rejects a snapshot, `setData()` throws and the last valid display remains.
 
-Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 256 items.
+Object items used by `data-vw-for-each` expose their properties. Scalar items expose `item`. A missing array renders no rows. The current binding limit rejects a non-array value or an array containing more than 65536 items.
 
 ## Live player placeholders
 

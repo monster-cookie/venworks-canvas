@@ -148,7 +148,7 @@ package
                var mask:Shape = new Shape();
                mask.name = "CanvasHudSuppression";
                this.owner.addChild(mask);
-               record = {object:object,mask:mask,nativeMask:object.mask,nativeVisible:object.visible};
+               record = {object:object,mask:mask,nativeMask:object.mask};
                this.active[key] = record;
             }
             else if(object.mask !== record.mask) record.nativeMask = object.mask;
@@ -163,7 +163,6 @@ package
       {
          var object:DisplayObject = record.object as DisplayObject;
          if(object.mask === record.mask) object.mask = record.nativeMask as DisplayObject;
-         object.visible = record.nativeVisible === true;
          var mask:Shape = record.mask as Shape;
          if(mask.parent != null) mask.parent.removeChild(mask);
       }

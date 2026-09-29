@@ -191,6 +191,16 @@ function Assert-CanvasRuntimeArchive {
       throw "Canvas runtime archive host is missing current required token '${token}': $Path"
     }
   }
+  $hostHash = Get-CanvasSha256Hex -Bytes $hostBytes
+  $expectedHostHash = [string]$contract.HostSha256
+  if ($expectedHostHash -cnotmatch '\A[A-F0-9]{64}\z' -or $hostHash -cne $expectedHostHash) {
+    throw "Canvas runtime archive host hash $hostHash does not match the packaged source build '$expectedHostHash': $Path"
+  }
+  $sourceHash = Get-CanvasHostSourceSha256 -ContractPath $ContractPath
+  $expectedSourceHash = [string]$contract.HostSourceSha256
+  if ($expectedSourceHash -cnotmatch '\A[A-F0-9]{64}\z' -or $sourceHash -cne $expectedSourceHash) {
+    throw "Canvas host source hash $sourceHash does not match the packaged source build '$expectedSourceHash': $ContractPath"
+  }
   foreach ($token in @($contract.HostForbiddenTokens)) {
     if ([string]::IsNullOrWhiteSpace([string]$token)) {
       throw "Canvas runtime package contract contains an empty forbidden token: $ContractPath"
@@ -215,7 +225,43 @@ function Assert-CanvasRuntimeArchive {
         throw "Canvas runtime archive Registry.pex is missing current API '${token}': $Path"
       }
     }
+    $registryHash = Get-CanvasSha256Hex -Bytes $registryBytes
+    $expectedRegistryHash = [string]$contract.RegistrySha256
+    if ($expectedRegistryHash -cnotmatch '\A[A-F0-9]{64}\z' -or $registryHash -cne $expectedRegistryHash) {
+      throw "Canvas runtime archive Registry.pex hash $registryHash does not match the packaged source build '$expectedRegistryHash': $Path"
+    }
   }
 
   Write-Host -ForegroundColor Green "Verified Canvas runtime contract in $([IO.Path]::GetFileName($Path))."
+}
+
+function Get-CanvasSha256Hex {
+  param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-','') }
+  finally { $sha.Dispose() }
+}
+
+function Get-CanvasHostSourceSha256 {
+  param([Parameter(Mandatory = $true)][string]$ContractPath)
+  $sourceRoot = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent (Split-Path -Parent $ContractPath)) 'actionscript'))
+  if (!(Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+    throw "Canvas host source root does not exist: $sourceRoot"
+  }
+  $files = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.as' | Sort-Object { $_.FullName.Replace('\','/') })
+  if ($files.Count -eq 0) { throw "Canvas host source root contains no ActionScript: $sourceRoot" }
+  $sha = [Security.Cryptography.SHA256]::Create()
+  $utf8 = [Text.UTF8Encoding]::new($false)
+  try {
+    foreach ($file in $files) {
+      $relative = $file.FullName.Substring($sourceRoot.Length).TrimStart('\','/').Replace('\','/') + "`n"
+      $prefix = $utf8.GetBytes($relative)
+      [void]$sha.TransformBlock($prefix, 0, $prefix.Length, $null, 0)
+      $content = [IO.File]::ReadAllBytes($file.FullName)
+      [void]$sha.TransformBlock($content, 0, $content.Length, $null, 0)
+    }
+    [void]$sha.TransformFinalBlock(@(), 0, 0)
+    return ([BitConverter]::ToString($sha.Hash)).Replace('-','')
+  }
+  finally { $sha.Dispose() }
 }
