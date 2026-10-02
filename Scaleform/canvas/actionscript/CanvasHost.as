@@ -1633,7 +1633,6 @@ package
             }
             this.consumerContracts[consumerId] = contract;
             this.loaderStates[consumerId] = "initialized";
-            this.dismissBootScreen();
          }
          catch(validationError:*)
          {
@@ -1788,6 +1787,7 @@ package
          {
             return;
          }
+         this.dismissBootScreen();
          this.appendDiagnostic("READY " + consumerId + " | V" + this.versions[consumerId]);
          this.reapplyVanillaPlacements();
       }

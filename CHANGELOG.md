@@ -2,7 +2,7 @@
 
 ## Version 1.0.4 (UNRELEASED)
 
-- Show a Player HUD boot mark at the center of the visible HUD until the first registered child UI movie loads. The mark is the Venworks emblem, a rotating cyan arc, and the line VENWORKS CANVAS OS BOOTING.
+- Show a Player HUD boot mark at the center of the visible HUD until the first registered child UI movie is ready and attached. The mark is the Venworks emblem, a rotating cyan arc, and the line VENWORKS CANVAS OS BOOTING. A consumer that fails registration, HTML setup, or its ready callback leaves the mark in place.
 - Added support for the HTML privatives that Venworks Customizable HUD needs.
 - Added standard inline and external SVG support, including paths, shapes, transforms, and CSS fill and stroke styling.
 - Added semantic controls for hiding, disabling, and positioning individual player HUD, spaceship HUD, and Canvas watch elements.
