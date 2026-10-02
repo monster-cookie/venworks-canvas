@@ -134,6 +134,8 @@
     <token>PROVIDER PAYLOAD REJECTED</token>
     <token>this.diagnostics.visible = false</token>
     <token>isFailureDiagnostic</token>
+    <token>CanvasBootScreen</token>
+    <token>VENWORKS CANVAS OS BOOTING</token>
   </requiredTokens>
   <forbiddenTokens>
     <token>FileReference</token>

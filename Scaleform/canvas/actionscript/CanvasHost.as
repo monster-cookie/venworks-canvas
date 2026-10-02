@@ -101,6 +101,8 @@ package
 
       private var chronomarkSurface:CanvasChronomarkSurface;
 
+      private var bootScreen:CanvasBootScreen;
+
       private var disposed:Boolean = false;
 
       private var displayMode:String = "normal";
@@ -216,6 +218,7 @@ package
             this.appendDiagnostic("OWNER " + this.ownerLabel);
             if(this.hostKind == "player")
             {
+               this.showBootScreen(context.layout);
                this.subscribe(context.layout);
             }
             else if(this.hostKind == "menu")
@@ -268,6 +271,10 @@ package
             rightEdge = this.chronomarkLayout != null ? Number(this.chronomarkLayout.visibleX) + Number(this.chronomarkLayout.visibleWidth) - Number(this.chronomarkLayout.safeX) : (stage != null ? stage.stageWidth : 1920);
             this.diagnostics.x = Math.max(24,rightEdge - this.diagnostics.width - 24);
             this.diagnostics.y = 24;
+         }
+         if(this.bootScreen != null)
+         {
+            this.bootScreen.place(this.chronomarkLayout);
          }
       }
 
@@ -357,6 +364,7 @@ package
          }
          this.disposed = true;
          this.initializationState = HOST_STATE_DISPOSED;
+         this.dismissBootScreen();
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
          if(this.subscribed && this.dataManager != null && this.callback != null)
          {
@@ -1779,6 +1787,7 @@ package
          {
             return;
          }
+         this.dismissBootScreen();
          this.appendDiagnostic("READY " + consumerId + " | V" + this.versions[consumerId]);
          this.reapplyVanillaPlacements();
       }
@@ -1865,6 +1874,35 @@ package
          param1.contentLoaderInfo.removeEventListener(Event.COMPLETE,this.onConsumerComplete);
          param1.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR,this.onConsumerError);
          param1.contentLoaderInfo.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onConsumerError);
+      }
+
+      private function showBootScreen(param1:Object) : void
+      {
+         if(this.bootScreen != null)
+         {
+            this.bootScreen.place(param1);
+            return;
+         }
+         this.bootScreen = new CanvasBootScreen();
+         if(this.diagnostics != null && this.diagnostics.parent === this)
+         {
+            addChildAt(this.bootScreen,getChildIndex(this.diagnostics));
+         }
+         else
+         {
+            addChild(this.bootScreen);
+         }
+         this.bootScreen.place(param1);
+      }
+
+      private function dismissBootScreen() : void
+      {
+         if(this.bootScreen == null)
+         {
+            return;
+         }
+         this.bootScreen.dismiss();
+         this.bootScreen = null;
       }
 
       private function createDiagnostics() : void
