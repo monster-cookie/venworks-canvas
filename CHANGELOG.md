@@ -2,33 +2,18 @@
 
 ## Version 1.0.4 (UNRELEASED)
 
-- Show a Player HUD boot mark at the center of the visible HUD until the first registered child UI movie is ready and attached. The mark is the Venworks emblem, a rotating cyan arc, and the line VENWORKS CANVAS OS BOOTING. A consumer that fails registration, HTML setup, or its ready callback leaves the mark in place.
-- Added support for the HTML privatives that Venworks Customizable HUD needs.
-- Added standard inline and external SVG support, including paths, shapes, transforms, and CSS fill and stroke styling.
-- Added semantic controls for hiding, disabling, and positioning individual player HUD, spaceship HUD, and Canvas watch elements.
-- Expanded meters and layout tools with configurable ranges, directions, segments, partial fills, safe-area anchors, and live visual bindings.
-- Improved live data updates so unchanged interface elements are retained and rejected updates preserve the last valid display.
-- Added runtime package checks that reject stale Canvas host or Registry files before release packaging.
-- Documented that every Canvas document must start with `<!doctype html>`, that element names are lowercase, and that paint keywords such as `currentcolor` are lowercase.
-- Accept a static parent of an absolutely positioned element. The element is placed against the nearest relative or absolute ancestor, or against the viewport when every ancestor is static.
-- Accept arrays created by a consumer movie when copying HTML data. Their index keys are no longer reported as invalid properties, and probing those arrays does not raise ReferenceError 1069.
-- Name the value being read when a ready callback raises ReferenceError 1069. The chronomark shows that path, such as `data.compass.ticks[0]` or `symbol.marker.location`, instead of only the error number.
-- Keep a HUD data update when one SVG image or native symbol fails. A missing compass marker draws a small dot, and the callback error names the channel and the value being read.
-- Paint each compass marker from the game's live POI widget. The widget stays off the document, because placing it raises an uncatchable ReferenceError 1069 and aborts compass and environment updates. Its art is redrawn as the location icon loads, and the compass moves, scales, and fades that art on every step and facing change.
-- Keep the last HTML frame when a later data update raises ReferenceError 1069. Compass and environment updates no longer discard the HUD or flood the callback log.
-- Keep the Component Gallery loaded when its ready callback resizes the menu or activates a state. Those rebuilds now keep the last frame instead of unloading the gallery, and a Scaleform text measurement or an unset scrollRect no longer aborts the rebuild with ReferenceError 1069.
-- Keep embedded text and meter fills when a retained frame is updated. The text format is reapplied from the style instead of being read back from the field, and a meter keeps the shape that was just drawn.
-- Copy compass marker fields into plain data before a consumer receives HudCompassData. Sealed game objects were hiding the icon type from the consumer movie, so the compass strip could only draw dots.
-- Stop rejecting theme documents for size. SVG paths, text, styles, and repeats are no longer capped at the old small budgets. Scaleform still cannot draw a graphics coordinate past 16384.
-- Keep every HTML and SVG graphics command inside the stage. Icons are drawn at their pixel size, so a viewBox coordinate such as `-16` is no longer treated as off-screen. A command more than a pixel outside the stage is clamped, and the diagnostic reads `ERROR: DRAW OUTSIDE STAGE`. Drawing past the screen crashes the consoles.
-- Hold every suppressed HUD target invisible, including 3D clips a mask cannot hide. A consumer asks for each target. Canvas does not hide the fake watch or the lower-right health and ammo cluster unless it is asked. A copied weapon icon still draws when an ancestor clip is hidden.
-- Require the SHA-256 of the packaged host movie, the Registry script, and the host ActionScript when checking a Canvas archive.
-- Apply a compass marker's effect frame before its icon is captured.
-- Apply SVG group transforms in user space before the viewBox scale, so a translated viewBox stays aligned and the graphics commands stay in pixel space.
-- Keep an object with only a length field as an object. Repeat data still accepts a real array, including one created in another movie.
-- Leave the engine's visible flag unchanged when a HUD suppression request is released. The target stays invisible while the request is active.
-- Paint a box as stage-sized pieces so a tall fill is complete and each graphics command stays inside the stage.
-- Document the repeat binding limit as 65536 items.
+- The Player HUD now shows a boot animation until the first HUD panel is ready.
+- Added the specialized HTML support that Venworks Customizable HUD needs.
+- Added SVG images, including shapes, paths, movement, and fill and outline colors.
+- You can hide, turn off, or move individual parts of the player HUD, the spaceship HUD, and the Canvas watch.
+- Starfield Chronomark watch is not part of the Canvas HUD, and restoring the original watch files breaks the data layer and the whole HUD.
+- Meters and layout tools can use custom ranges, fill direction, segments, partial fills, screen-edge placement, and live values.
+- The Canvas watch compass uses the game's location icons, including their effects. The icons move, resize, and fade as you turn and as markers update.
+- The Component Gallery stays open when the menu resizes or changes page.
+- Text and meter fills stay in place when the HUD refreshes an existing frame.
+- An absolutely positioned element lines up with the nearest positioned parent, or with the screen when no parent is positioned.
+- A repeating list can include up to 65,536 items. A value that only happens to have a length is still treated as one item, not a list.
+- Every Canvas HTML document must start with `<!doctype html>`. Tag names and color keywords such as `currentcolor` must be lowercase.
 
 ## Version 1.0.3 (September 25, 2026)
 
