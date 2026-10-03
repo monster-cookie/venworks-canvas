@@ -258,7 +258,21 @@ function Get-CanvasHostSourceSha256 {
       $prefix = $utf8.GetBytes($relative)
       [void]$sha.TransformBlock($prefix, 0, $prefix.Length, $null, 0)
       $content = [IO.File]::ReadAllBytes($file.FullName)
-      [void]$sha.TransformBlock($content, 0, $content.Length, $null, 0)
+      # text=auto stores LF. Windows checkout restores CR, so hash the LF form.
+      $normalized = New-Object byte[] $content.Length
+      $length = 0
+      for ($index = 0; $index -lt $content.Length; $index++) {
+        $byte = $content[$index]
+        if ($byte -eq 13) {
+          if (($index + 1) -lt $content.Length -and $content[$index + 1] -eq 10) {
+            continue
+          }
+          $byte = 10
+        }
+        $normalized[$length] = $byte
+        $length++
+      }
+      [void]$sha.TransformBlock($normalized, 0, $length, $null, 0)
     }
     [void]$sha.TransformFinalBlock(@(), 0, 0)
     return ([BitConverter]::ToString($sha.Hash)).Replace('-','')
