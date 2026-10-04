@@ -1,5 +1,6 @@
 package
 {
+   import flash.display.BitmapData;
    import flash.display.Graphics;
    import flash.geom.Matrix;
 
@@ -29,6 +30,7 @@ package
          }
          var fillOpacity:Number = param1.getAttribute("fill-opacity") == null ? 1 : Number(param1.getAttribute("fill-opacity"));
          var strokeOpacity:Number = param1.getAttribute("stroke-opacity") == null ? 1 : Number(param1.getAttribute("stroke-opacity"));
+         var openedFill:Boolean = false;
          if(!isFinite(fillOpacity+strokeOpacity) || fillOpacity < 0 || fillOpacity > 1 || strokeOpacity < 0 || strokeOpacity > 1) return false;
          fill = {color:fill.color,alpha:Number(fill.alpha)*fillOpacity};
          stroke = {color:stroke.color,alpha:Number(stroke.alpha)*strokeOpacity};
@@ -58,13 +60,33 @@ package
             }
             param2.lineStyle();
          }
-         if(fill.alpha > 0)
+         var smokePaint:Object = param1.getAttribute("data-vw-smoke") == null ? null : resolvePaint(param1.getAttribute("data-vw-smoke"),param6,false);
+         if(param1.getAttribute("data-vw-smoke") != null && smokePaint == null) return false;
+         if(smokePaint != null)
+         {
+            var smokeAlpha:Number = Number(smokePaint.alpha) * fillOpacity;
+            if(smokeAlpha > 0)
+            {
+               if(param7(1) !== true) return false;
+               var smokeBitmap:BitmapData = CanvasHtmlSmoke.tintedBitmap(uint(smokePaint.color),smokeAlpha);
+               if(smokeBitmap == null) param2.beginFill(uint(smokePaint.color),smokeAlpha);
+               else
+               {
+                  var smokeMatrix:Matrix = new Matrix();
+                  smokeMatrix.scale(2,2);
+                  param2.beginBitmapFill(smokeBitmap,smokeMatrix,true,true);
+               }
+               openedFill = true;
+            }
+         }
+         else if(fill.alpha > 0)
          {
             if(param7(1) !== true)
             {
                return false;
             }
             param2.beginFill(uint(fill.color),Number(fill.alpha));
+            openedFill = true;
          }
          var minX:Number = Number(param3[0]);
          var minY:Number = Number(param3[1]);
@@ -265,7 +287,7 @@ package
             }
             previous = upper;
          }
-         if(fill.alpha > 0)
+         if(openedFill)
          {
             if(param7(1) !== true)
             {
