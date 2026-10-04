@@ -435,10 +435,6 @@ package
          {
             return this.isPaint(value);
          }
-         if(name == "data-vw-smoke")
-         {
-            return this.isPaint(value) && value != "none" && value != "transparent";
-         }
          if(name == "d")
          {
             return value.length > 0;

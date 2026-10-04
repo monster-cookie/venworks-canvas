@@ -1,6 +1,5 @@
 package
 {
-   import flash.display.BitmapData;
    import flash.display.Graphics;
    import flash.geom.Matrix;
 
@@ -60,26 +59,7 @@ package
             }
             param2.lineStyle();
          }
-         var smokePaint:Object = param1.getAttribute("data-vw-smoke") == null ? null : resolvePaint(param1.getAttribute("data-vw-smoke"),param6,false);
-         if(param1.getAttribute("data-vw-smoke") != null && smokePaint == null) return false;
-         if(smokePaint != null)
-         {
-            var smokeAlpha:Number = Number(smokePaint.alpha) * fillOpacity;
-            if(smokeAlpha > 0)
-            {
-               if(param7(1) !== true) return false;
-               var smokeBitmap:BitmapData = CanvasHtmlSmoke.tintedBitmap(uint(smokePaint.color),smokeAlpha);
-               if(smokeBitmap == null) param2.beginFill(uint(smokePaint.color),smokeAlpha);
-               else
-               {
-                  var smokeMatrix:Matrix = new Matrix();
-                  smokeMatrix.scale(2,2);
-                  param2.beginBitmapFill(smokeBitmap,smokeMatrix,true,true);
-               }
-               openedFill = true;
-            }
-         }
-         else if(fill.alpha > 0)
+         if(fill.alpha > 0)
          {
             if(param7(1) !== true)
             {

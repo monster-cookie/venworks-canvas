@@ -1,7 +1,9 @@
 package
 {
+   import flash.display.Bitmap;
    import flash.display.Shape;
    import flash.display.Sprite;
+   import flash.geom.ColorTransform;
    import flash.geom.Rectangle;
    import flash.text.TextField;
    import flash.text.TextFormat;
@@ -99,10 +101,22 @@ package
             }
             if(node.name == "img")
             {
-               var assetRoot:CanvasHtmlNode = this.resolveSvg(node);
-               if(assetRoot == null) { this.reject("invalid-svg",this.resolveSvgResourcePath(node),"asset"); this.disposeDisplay(root == null ? null : root.sprite as Sprite); return null; }
-               for each(var dimension:String in ["width","height"])
-                  if(style[dimension] == "auto" && assetRoot.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(assetRoot.getAttribute(dimension));
+               var imageResource:CanvasHtmlResource = this.resolveImageResource(node);
+               if(imageResource != null && imageResource.kind == "dds")
+               {
+                  if(imageResource.image != null)
+                  {
+                     if(style["width"] == "auto") style["width"] = String(imageResource.image.width) + "px";
+                     if(style["height"] == "auto") style["height"] = String(imageResource.image.height) + "px";
+                  }
+               }
+               else
+               {
+                  var assetRoot:CanvasHtmlNode = this.resolveSvg(node);
+                  if(assetRoot == null) { this.reject("invalid-svg",this.resolveSvgResourcePath(node),"asset"); this.disposeDisplay(root == null ? null : root.sprite as Sprite); return null; }
+                  for each(var dimension:String in ["width","height"])
+                     if(style[dimension] == "auto" && assetRoot.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(assetRoot.getAttribute(dimension));
+               }
             }
             if(node.type == CanvasHtmlNode.TEXT)
             {
@@ -537,18 +551,66 @@ package
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean
       {
-         if(param2.name == "img" && this.resolveImageResource(param2) == null)
+         if(param2.name == "img")
          {
-            return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
+            var resource:CanvasHtmlResource = this.resolveImageResource(param2);
+            if(resource == null) return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
+            if(resource.kind == "dds") return this.measureDds(param1,resource);
          }
          return this.measureSvg(param1,param2);
+      }
+
+      private function measureDds(param1:Object, resource:CanvasHtmlResource) : Boolean
+      {
+         var width:Number = Math.max(1,Number(param1.innerWidth));
+         var sourceWidth:Number = resource.image == null ? 0 : resource.image.width;
+         var sourceHeight:Number = resource.image == null ? 0 : resource.image.height;
+         var height:Number = sourceWidth > 0 && sourceHeight > 0 ? width * sourceHeight / sourceWidth : width;
+         if(param1.style["height"] != "auto")
+         {
+            height = Math.max(1,this.length(param1.style["height"],this.viewportHeight,height) - Number(param1.paddingTop) - Number(param1.paddingBottom) - Number(param1.border) * 2);
+         }
+         if(!this.isBoundedCoordinate(width) || !this.isBoundedCoordinate(height)) return this.reject("invalid-image",resource.path,"asset");
+         var drawWidth:Number = width;
+         var drawHeight:Number = height;
+         if(param1.style["object-fit"] == "contain" && sourceWidth > 0 && sourceHeight > 0)
+         {
+            var scale:Number = Math.min(width / sourceWidth,height / sourceHeight);
+            drawWidth = sourceWidth * scale;
+            drawHeight = sourceHeight * scale;
+         }
+         var bitmap:Bitmap = new Bitmap(resource.image);
+         bitmap.smoothing = true;
+         bitmap.x = Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2;
+         bitmap.y = Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2;
+         if(resource.image != null)
+         {
+            bitmap.width = drawWidth;
+            bitmap.height = drawHeight;
+         }
+         var own:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
+         var parentBox:Object = param1.parent;
+         var inherited:Object = parentBox == null ? null : CanvasCssValue.parseColor(String(parentBox.style["color"]));
+         // A white DDS stays authored color unless this element sets its own CSS color. Opacity stays on the element.
+         if(own != null && (inherited == null || uint(own.color) != uint(inherited.color)))
+         {
+            var tint:ColorTransform = new ColorTransform();
+            tint.redMultiplier = ((uint(own.color) >> 16) & 255) / 255;
+            tint.greenMultiplier = ((uint(own.color) >> 8) & 255) / 255;
+            tint.blueMultiplier = (uint(own.color) & 255) / 255;
+            bitmap.transform.colorTransform = tint;
+         }
+         if(resource.image == null) resource.showImage(bitmap,drawWidth,drawHeight);
+         Sprite(param1.sprite).addChild(bitmap);
+         param1.contentHeight = height;
+         return true;
       }
 
       private function resolveImageResource(param1:CanvasHtmlNode) : CanvasHtmlResource
       {
          var resolved:String = CanvasHtmlPath.resolve(param1.resource,param1.getAttribute("src"));
          var resource:CanvasHtmlResource = resolved == null ? null : this.resources[resolved] as CanvasHtmlResource;
-         return resource != null && resource.kind == "svg" ? resource : null;
+         return resource != null && (resource.kind == "svg" || resource.kind == "dds") ? resource : null;
       }
 
       private function measureSvg(param1:Object, param2:CanvasHtmlNode) : Boolean

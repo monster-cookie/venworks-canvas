@@ -17,7 +17,7 @@ package
       {
          if(!isElement(name)) return false;
          if(["id","class","fill","stroke","stroke-width","fill-opacity","stroke-opacity","opacity","transform"].indexOf(attribute) >= 0) return true;
-         if(name == "svg") return ["viewbox","viewBox","width","height","xmlns","data-vw-visible","data-vw-smoke"].indexOf(attribute) >= 0;
+         if(name == "svg") return ["viewbox","viewBox","width","height","xmlns","data-vw-visible"].indexOf(attribute) >= 0;
          if(name == "path") return attribute == "d";
          if(name == "rect") return ["x","y","width","height","rx","ry"].indexOf(attribute) >= 0;
          if(name == "circle") return ["cx","cy","r"].indexOf(attribute) >= 0;
@@ -86,31 +86,11 @@ package
             geometry.attributes.push(new CanvasHtmlAttribute("d",path,0,0));
             for each(var property:String in ["fill","stroke","stroke-width","fill-opacity","stroke-opacity"])
                geometry.attributes.push(new CanvasHtmlAttribute(property,String(style[property]),0,0));
-            var smoke:String = smokeValue(node,ancestors);
-            if(smoke != null) geometry.attributes.push(new CanvasHtmlAttribute("data-vw-smoke",smoke,0,0));
             var shape:Shape = new Shape();
             if(!CanvasSvgPathRenderer.render(geometry,shape.graphics,viewbox,scaleX,scaleY,CanvasCssValue.parseColor(String(style["color"])),consume,combined)) return null;
             result.addChild(shape);
          }
          return bounded(result) ? result : null;
-      }
-
-      private static function smokeValue(node:CanvasHtmlNode, ancestors:Array) : String
-      {
-         var value:String = node.getAttribute("data-vw-smoke");
-         if(value != null) return value;
-         var index:int = ancestors.length - 1;
-         while(index >= 0)
-         {
-            var ancestor:CanvasHtmlNode = ancestors[index] as CanvasHtmlNode;
-            if(ancestor != null)
-            {
-               value = ancestor.getAttribute("data-vw-smoke");
-               if(value != null) return value;
-            }
-            --index;
-         }
-         return null;
       }
 
       private static function bounded(sprite:Sprite) : Boolean

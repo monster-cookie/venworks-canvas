@@ -1,5 +1,6 @@
 package
 {
+   import flash.display.BitmapData;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.ProgressEvent;
@@ -185,6 +186,22 @@ package
                return;
             }
             this.aggregateBytes += bytes.length;
+            if(extension == ".dds")
+            {
+               var dds:Object = CanvasDdsDecoder.read(bytes);
+               if(dds == null)
+               {
+                  this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
+                  return;
+               }
+               var ddsResource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",bytes.length,null);
+               ddsResource.image = dds.image as BitmapData;
+               if(ddsResource.image == null) ddsResource.location = this.resourceRoot + String(item.path);
+               this.resources.push(ddsResource);
+               this.loadedPaths[String(item.path)] = true;
+               this.startNext();
+               return;
+            }
             var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
             if(!decoded.success)
             {
@@ -261,7 +278,7 @@ package
          {
             resolved = CanvasHtmlPath.resolve(String(param1.path),reference.path);
             expectedExtension = reference.kind == CanvasHtmlReference.INCLUDE ? ".html" : reference.kind == CanvasHtmlReference.STYLESHEET ? ".css" : CanvasHtmlPath.getExtension(reference.path);
-            if(reference.kind == CanvasHtmlReference.IMAGE && expectedExtension != ".svg")
+            if(reference.kind == CanvasHtmlReference.IMAGE && expectedExtension != ".svg" && expectedExtension != ".dds")
             {
                expectedExtension = null;
             }
