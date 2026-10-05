@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- Coming Soon :)
+- Adding DDS support
 
 ## Version 1.0.5 (October 3, 2026)
 
