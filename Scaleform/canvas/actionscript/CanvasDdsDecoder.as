@@ -5,7 +5,7 @@ package
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 decode here. Other fourCCs stay valid so the caller can ask the player to load the same archive path.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. Starfield throws on BitmapData.setPixels, so upload runs later with setPixel32 and then fillRect.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -34,7 +34,7 @@ package
          if(fourCC == "DXT1" || fourCC == "DXT5") return compressed(bytes,width,height,fourCC);
          if((formatFlags & 0x40) != 0 && bitCount == 32 && redMask == 0x00FF0000 && greenMask == 0x0000FF00 && blueMask == 0x000000FF && (alphaMask == 0xFF000000 || alphaMask == 0))
             return uncompressed(bytes,width,height,pitch,flags,alphaMask == 0);
-         return {"image":null,"fallback":true};
+         return null;
       }
 
       private static function uncompressed(bytes:ByteArray, width:int, height:int, pitch:int, flags:uint, opaque:Boolean) : Object
@@ -62,7 +62,7 @@ package
             }
             y++;
          }
-         return {"image":bitmap(width,height,pixels),"fallback":false};
+         return {"pixels":pixels,"width":width,"height":height};
       }
 
       private static function compressed(bytes:ByteArray, width:int, height:int, fourCC:String) : Object
@@ -86,7 +86,7 @@ package
             }
             blockY++;
          }
-         return {"image":bitmap(width,height,pixels),"fallback":false};
+         return {"pixels":pixels,"width":width,"height":height};
       }
 
       private static function writeBlock(bytes:ByteArray, pixels:ByteArray, width:int, height:int, originX:int, originY:int, dxt1:Boolean) : void
@@ -167,12 +167,69 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      private static function bitmap(width:int, height:int, pixels:ByteArray) : BitmapData
+      // Called after the plate is on stage. setPixels throws in this player, including when the bitmap was created during a file-load callback.
+      public static function upload(width:int, height:int, pixels:ByteArray) : BitmapData
       {
-         pixels.position = 0;
+         if(pixels == null || width < 1 || height < 1 || pixels.length < width * height * 4) return null;
          var result:BitmapData = new BitmapData(width,height,true,0);
-         result.setPixels(new Rectangle(0,0,width,height),pixels);
-         return result;
+         if(writePixel32(result,width,height,pixels) || writeFill(result,width,height,pixels)) return result;
+         result.dispose();
+         return null;
+      }
+
+      private static function writePixel32(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
+      {
+         try
+         {
+            pixels.endian = Endian.BIG_ENDIAN;
+            pixels.position = 0;
+            var y:int = 0;
+            while(y < height)
+            {
+               var x:int = 0;
+               while(x < width)
+               {
+                  result.setPixel32(x,y,pixels.readUnsignedInt());
+                  x++;
+               }
+               y++;
+            }
+            return true;
+         }
+         catch(pixelError:*)
+         {
+            return false;
+         }
+         return false;
+      }
+
+      private static function writeFill(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
+      {
+         try
+         {
+            pixels.endian = Endian.BIG_ENDIAN;
+            pixels.position = 0;
+            var dot:Rectangle = new Rectangle(0,0,1,1);
+            var y:int = 0;
+            while(y < height)
+            {
+               var x:int = 0;
+               while(x < width)
+               {
+                  dot.x = x;
+                  dot.y = y;
+                  result.fillRect(dot,pixels.readUnsignedInt());
+                  x++;
+               }
+               y++;
+            }
+            return true;
+         }
+         catch(fillError:*)
+         {
+            return false;
+         }
+         return false;
       }
 
       private static function readCode(bytes:ByteArray) : String

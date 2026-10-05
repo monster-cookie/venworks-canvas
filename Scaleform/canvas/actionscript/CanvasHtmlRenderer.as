@@ -104,11 +104,10 @@ package
                var imageResource:CanvasHtmlResource = this.resolveImageResource(node);
                if(imageResource != null && imageResource.kind == "dds")
                {
-                  if(imageResource.image != null)
-                  {
-                     if(style["width"] == "auto") style["width"] = String(imageResource.image.width) + "px";
-                     if(style["height"] == "auto") style["height"] = String(imageResource.image.height) + "px";
-                  }
+                  var plateWidth:int = imageResource.pixelWidth > 0 ? imageResource.pixelWidth : (imageResource.image == null ? 0 : imageResource.image.width);
+                  var plateHeight:int = imageResource.pixelHeight > 0 ? imageResource.pixelHeight : (imageResource.image == null ? 0 : imageResource.image.height);
+                  if(plateWidth > 0 && style["width"] == "auto") style["width"] = String(plateWidth) + "px";
+                  if(plateHeight > 0 && style["height"] == "auto") style["height"] = String(plateHeight) + "px";
                }
                else
                {
@@ -563,8 +562,8 @@ package
       private function measureDds(param1:Object, resource:CanvasHtmlResource) : Boolean
       {
          var width:Number = Math.max(1,Number(param1.innerWidth));
-         var sourceWidth:Number = resource.image == null ? 0 : resource.image.width;
-         var sourceHeight:Number = resource.image == null ? 0 : resource.image.height;
+         var sourceWidth:Number = resource.pixelWidth > 0 ? resource.pixelWidth : (resource.image == null ? 0 : resource.image.width);
+         var sourceHeight:Number = resource.pixelHeight > 0 ? resource.pixelHeight : (resource.image == null ? 0 : resource.image.height);
          var height:Number = sourceWidth > 0 && sourceHeight > 0 ? width * sourceHeight / sourceWidth : width;
          if(param1.style["height"] != "auto")
          {
@@ -579,28 +578,22 @@ package
             drawWidth = sourceWidth * scale;
             drawHeight = sourceHeight * scale;
          }
-         var bitmap:Bitmap = new Bitmap(resource.image);
-         bitmap.smoothing = true;
+         var bitmap:Bitmap = new Bitmap();
          bitmap.x = Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2;
          bitmap.y = Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2;
-         if(resource.image != null)
-         {
-            bitmap.width = drawWidth;
-            bitmap.height = drawHeight;
-         }
          var own:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
          var parentBox:Object = param1.parent;
          var inherited:Object = parentBox == null ? null : CanvasCssValue.parseColor(String(parentBox.style["color"]));
          // A white DDS stays authored color unless this element sets its own CSS color. Opacity stays on the element.
+         var tint:ColorTransform = null;
          if(own != null && (inherited == null || uint(own.color) != uint(inherited.color)))
          {
-            var tint:ColorTransform = new ColorTransform();
+            tint = new ColorTransform();
             tint.redMultiplier = ((uint(own.color) >> 16) & 255) / 255;
             tint.greenMultiplier = ((uint(own.color) >> 8) & 255) / 255;
             tint.blueMultiplier = (uint(own.color) & 255) / 255;
-            bitmap.transform.colorTransform = tint;
          }
-         if(resource.image == null) resource.showImage(bitmap,drawWidth,drawHeight);
+         resource.showPlate(bitmap,Sprite(param1.sprite),drawWidth,drawHeight,tint);
          Sprite(param1.sprite).addChild(bitmap);
          param1.contentHeight = height;
          return true;

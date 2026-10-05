@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- Adding DDS support
+- HUD themes can use DDS plate images, and a plate image no longer leaves the boot screen up.
 
 ## Version 1.0.5 (October 3, 2026)
 

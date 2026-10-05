@@ -1,6 +1,5 @@
 package
 {
-   import flash.display.BitmapData;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.ProgressEvent;
@@ -154,6 +153,24 @@ package
          }
       }
 
+      // Pixels stay on the resource. BitmapData is created once the plate is on stage, because this player rejects that upload during the file callback.
+      private function rememberPlate(bytes:ByteArray, item:Object) : Boolean
+      {
+         var dds:Object = CanvasDdsDecoder.read(bytes);
+         if(dds == null || dds.pixels == null || int(dds.width) < 1 || int(dds.height) < 1)
+         {
+            this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
+            return false;
+         }
+         var ddsResource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",bytes.length,null);
+         ddsResource.pixels = dds.pixels as ByteArray;
+         ddsResource.pixelWidth = int(dds.width);
+         ddsResource.pixelHeight = int(dds.height);
+         this.resources.push(ddsResource);
+         this.loadedPaths[String(item.path)] = true;
+         return true;
+      }
+
       private function onLoadComplete(param1:Event) : void
       {
          if(!this.isCurrentEvent(param1))
@@ -166,6 +183,7 @@ package
          this.detachLoader(loader);
          this.activeLoader = null;
          this.activeItem = null;
+         var advance:Boolean = false;
          try
          {
             var bytes:ByteArray = loader.data as ByteArray;
@@ -188,73 +206,65 @@ package
             this.aggregateBytes += bytes.length;
             if(extension == ".dds")
             {
-               var dds:Object = CanvasDdsDecoder.read(bytes);
-               if(dds == null)
+               if(!this.rememberPlate(bytes,item)) return;
+               advance = true;
+            }
+            else
+            {
+               var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
+               if(!decoded.success)
                {
-                  this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
+                  this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
                   return;
                }
-               var ddsResource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",bytes.length,null);
-               ddsResource.image = dds.image as BitmapData;
-               if(ddsResource.image == null) ddsResource.location = this.resourceRoot + String(item.path);
-               this.resources.push(ddsResource);
-               this.loadedPaths[String(item.path)] = true;
-               this.startNext();
-               return;
-            }
-            var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
-            if(!decoded.success)
-            {
-               this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
-               return;
-            }
-            var document:CanvasHtmlDocument = null;
-            if(extension == ".html")
-            {
-               var parsed:CanvasHtmlParseResult = new CanvasHtmlParser().parse(decoded.text,String(item.path));
-               if(!parsed.success)
+               var document:CanvasHtmlDocument = null;
+               if(extension == ".html")
                {
-                  this.finishFailure(parsed.diagnostic);
-                  return;
-               }
-               document = parsed.document;
-               this.documentsByPath[String(item.path)] = document;
-               this.stylesheetCount += document.inlineStyleCount;
-               if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
-               {
-                  this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",String(item.path),-1,"stylesheet-count"));
-                  return;
-               }
-            }
-            var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),extension.substr(1),decoded.text,bytes.length,document);
-            this.resources.push(resource);
-            this.loadedPaths[String(item.path)] = true;
-            if(String(item.path) == this.entryPath)
-            {
-               this.entryDocument = document;
-            }
-            if(document != null && !this.scheduleReferences(item,document.references))
-            {
-               return;
-            }
-            var imports:CanvasCssImportResult = null;
-            if(extension == ".css")
-            {
-               imports = new CanvasCssImportScanner().scan(decoded.text,String(item.path));
-               if(!imports.success || !this.scheduleCssImports(item,imports.imports))
-               {
-                  if(!imports.success)
+                  var parsed:CanvasHtmlParseResult = new CanvasHtmlParser().parse(decoded.text,String(item.path));
+                  if(!parsed.success)
                   {
-                     this.finishFailure(imports.diagnostic);
+                     this.finishFailure(parsed.diagnostic);
+                     return;
                   }
+                  document = parsed.document;
+                  this.documentsByPath[String(item.path)] = document;
+                  this.stylesheetCount += document.inlineStyleCount;
+                  if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
+                  {
+                     this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",String(item.path),-1,"stylesheet-count"));
+                     return;
+                  }
+               }
+               var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),extension.substr(1),decoded.text,bytes.length,document);
+               this.resources.push(resource);
+               this.loadedPaths[String(item.path)] = true;
+               if(String(item.path) == this.entryPath)
+               {
+                  this.entryDocument = document;
+               }
+               if(document != null && !this.scheduleReferences(item,document.references))
+               {
                   return;
                }
+               var imports:CanvasCssImportResult = null;
+               if(extension == ".css")
+               {
+                  imports = new CanvasCssImportScanner().scan(decoded.text,String(item.path));
+                  if(!imports.success || !this.scheduleCssImports(item,imports.imports))
+                  {
+                     if(!imports.success)
+                     {
+                        this.finishFailure(imports.diagnostic);
+                     }
+                     return;
+                  }
+               }
+               else if(document != null && !this.scheduleInlineCssImports(item,document))
+               {
+                  return;
+               }
+               advance = true;
             }
-            else if(document != null && !this.scheduleInlineCssImports(item,document))
-            {
-               return;
-            }
-            this.startNext();
          }
          catch(processError:*)
          {
@@ -262,7 +272,22 @@ package
             {
                throw processError;
             }
-            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",String(item.path)));
+            var errorText:String = String(processError);
+            if(errorText.length > 120) errorText = errorText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",String(item.path),-1,errorText));
+            return;
+         }
+         if(!advance) return;
+         try
+         {
+            this.startNext();
+         }
+         catch(nextError:*)
+         {
+            if(!this.active || this.disposed || this.attemptGeneration != generation) throw nextError;
+            var nextText:String = String(nextError);
+            if(nextText.length > 120) nextText = nextText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",this.entryPath,-1,nextText));
          }
       }
 
