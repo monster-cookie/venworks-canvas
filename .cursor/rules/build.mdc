@@ -1,0 +1,6 @@
+---
+description: Canvas build and verification entry points
+alwaysApply: true
+---
+
+@.grok/rules/build.md

@@ -1,5 +1,9 @@
 # Venworks Canvas and UI Data Layer
 
+## Version 1.0.6 (UNRELEASED)
+
+- Coming Soon :)
+
 ## Version 1.0.5 (October 3, 2026)
 
 - The Player HUD now shows a boot animation until the first HUD panel is ready.
