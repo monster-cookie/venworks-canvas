@@ -19,6 +19,8 @@ package
 
       private var activeTexture:Loader;
 
+      private var activeTextureUrl:String;
+
       private var activeItem:Object;
 
       private var pending:Array = [];
@@ -164,6 +166,13 @@ package
          }
       }
 
+      // The Flex build omits direct trace() calls. Calling through a variable keeps the plate log in the Scaleform output.
+      private function reportTexture(param1:String) : void
+      {
+         var writer:Function = trace;
+         writer(param1);
+      }
+
       // Menu DDS files live under Textures/Interface. The Interface file opener cannot read a texture archive, so the plate uses the menu texture URL.
       private function startTexture() : void
       {
@@ -174,6 +183,8 @@ package
          info.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError,false,0,true);
          this.activeTexture = loader;
          var textureUrl:String = "img://Textures/Interface/" + this.resourceRoot + String(this.activeItem.path);
+         this.activeTextureUrl = textureUrl;
+         this.reportTexture("VWCANVAS TEX | " + textureUrl);
          try
          {
             loader.load(new URLRequest(textureUrl));
@@ -181,8 +192,11 @@ package
          catch(loadError:*)
          {
             var failedPath:String = String(this.activeItem.path);
+            var loadText:String = textureUrl + " | " + String(loadError);
+            this.reportTexture("VWCANVAS TEX FAIL | " + failedPath + " | " + loadText);
             this.abortActiveLoader();
-            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
+            if(loadText.length > 120) loadText = loadText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath,-1,loadText));
          }
       }
 
@@ -197,6 +211,7 @@ package
          var generation:int = this.attemptGeneration;
          this.detachTexture(loader);
          this.activeTexture = null;
+         this.activeTextureUrl = null;
          this.activeItem = null;
          var advance:Boolean = false;
          try
@@ -254,6 +269,7 @@ package
             advance = true;
          }
          if(!advance) return;
+         this.reportTexture("VWCANVAS TEX OK | " + String(item.path));
          try
          {
             this.startNext();
@@ -662,8 +678,30 @@ package
             return;
          }
          var resource:String = String(this.activeItem.path);
+         var textureEvent:Boolean = this.activeTexture != null && param1.currentTarget === this.activeTexture.contentLoaderInfo;
+         if(!textureEvent)
+         {
+            this.abortActiveLoader();
+            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource));
+            return;
+         }
+         var detail:String = this.activeTextureUrl;
+         var errorText:String = "";
+         var ioError:IOErrorEvent = param1 as IOErrorEvent;
+         if(ioError != null) errorText = String(ioError.text);
+         else
+         {
+            var securityError:SecurityErrorEvent = param1 as SecurityErrorEvent;
+            if(securityError != null) errorText = String(securityError.text);
+         }
+         if(errorText != null && errorText.length > 0)
+         {
+            detail = (detail == null || detail.length == 0) ? errorText : detail + " | " + errorText;
+         }
+         this.reportTexture("VWCANVAS TEX FAIL | " + resource + " | " + detail);
+         if(detail != null && detail.length > 120) detail = detail.substr(0,120);
          this.abortActiveLoader();
-         this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource));
+         this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource,-1,detail));
       }
 
       private function isCurrentEvent(param1:Event) : Boolean
@@ -718,6 +756,7 @@ package
             var texture:Loader = this.activeTexture;
             this.detachTexture(texture);
             this.activeTexture = null;
+            this.activeTextureUrl = null;
             this.activeItem = null;
             try { texture.close(); } catch(closeTexture:*) {}
             try { texture.unload(); } catch(unloadTexture:*) {}
