@@ -1,5 +1,9 @@
 package
 {
+   import flash.display.Bitmap;
+   import flash.display.BitmapData;
+   import flash.display.Loader;
+   import flash.display.LoaderInfo;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.ProgressEvent;
@@ -12,6 +16,8 @@ package
    public final class CanvasHtmlDocumentLoader
    {
       private var activeLoader:URLLoader;
+
+      private var activeTexture:Loader;
 
       private var activeItem:Object;
 
@@ -134,6 +140,11 @@ package
          }
          this.activeItem = this.pending.shift();
          delete this.pendingByPath[String(this.activeItem.path)];
+         if(CanvasHtmlPath.getExtension(String(this.activeItem.path)) == ".dds")
+         {
+            this.startTexture();
+            return;
+         }
          var loader:URLLoader = new URLLoader();
          loader.dataFormat = URLLoaderDataFormat.BINARY;
          loader.addEventListener(Event.COMPLETE,this.onLoadComplete,false,0,true);
@@ -151,6 +162,118 @@ package
             this.abortActiveLoader();
             this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
          }
+      }
+
+      // Menu DDS files live under Textures/Interface. The Interface file opener cannot read a texture archive, so the plate uses the menu texture URL.
+      private function startTexture() : void
+      {
+         var loader:Loader = new Loader();
+         var info:LoaderInfo = loader.contentLoaderInfo;
+         info.addEventListener(Event.COMPLETE,this.onTextureComplete,false,0,true);
+         info.addEventListener(IOErrorEvent.IO_ERROR,this.onLoadError,false,0,true);
+         info.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError,false,0,true);
+         this.activeTexture = loader;
+         var textureUrl:String = "img://Textures/Interface/" + this.resourceRoot + String(this.activeItem.path);
+         try
+         {
+            loader.load(new URLRequest(textureUrl));
+         }
+         catch(loadError:*)
+         {
+            var failedPath:String = String(this.activeItem.path);
+            this.abortActiveLoader();
+            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
+         }
+      }
+
+      private function onTextureComplete(param1:Event) : void
+      {
+         if(!this.isCurrentEvent(param1))
+         {
+            return;
+         }
+         var loader:Loader = this.activeTexture;
+         var item:Object = this.activeItem;
+         var generation:int = this.attemptGeneration;
+         this.detachTexture(loader);
+         this.activeTexture = null;
+         this.activeItem = null;
+         var advance:Boolean = false;
+         try
+         {
+            var loaded:Bitmap = loader.content as Bitmap;
+            if(loaded == null)
+            {
+               try { loader.unload(); } catch(unloadMissing:*) {}
+               this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
+               return;
+            }
+            var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",0,null);
+            var data:BitmapData = loaded.bitmapData;
+            if(data != null && data.width > 0 && data.height > 0)
+            {
+               var owned:BitmapData = null;
+               try
+               {
+                  owned = new BitmapData(data.width,data.height,true,0);
+                  owned.draw(data);
+               }
+               catch(copyError:*)
+               {
+                  owned = null;
+               }
+               if(owned != null)
+               {
+                  resource.takePlate(owned,owned.width,owned.height,true);
+                  try { loader.unload(); } catch(unloadCopy:*) {}
+               }
+               else
+               {
+                  resource.takePlate(data,data.width,data.height,false);
+                  resource.holdLoader(loader);
+               }
+            }
+            else
+            {
+               resource.holdLoader(loader);
+            }
+            this.resources.push(resource);
+            this.loadedPaths[String(item.path)] = true;
+            advance = true;
+         }
+         catch(processError:*)
+         {
+            if(!this.active || this.disposed || this.attemptGeneration != generation)
+            {
+               throw processError;
+            }
+            var held:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",0,null);
+            held.holdLoader(loader);
+            this.resources.push(held);
+            this.loadedPaths[String(item.path)] = true;
+            advance = true;
+         }
+         if(!advance) return;
+         try
+         {
+            this.startNext();
+         }
+         catch(nextError:*)
+         {
+            if(!this.active || this.disposed || this.attemptGeneration != generation) throw nextError;
+            var nextText:String = String(nextError);
+            if(nextText.length > 120) nextText = nextText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",this.entryPath,-1,nextText));
+         }
+      }
+
+      private function detachTexture(param1:Loader) : void
+      {
+         if(param1 == null) return;
+         var info:LoaderInfo = param1.contentLoaderInfo;
+         info.removeEventListener(Event.COMPLETE,this.onTextureComplete);
+         info.removeEventListener(IOErrorEvent.IO_ERROR,this.onLoadError);
+         info.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError);
       }
 
       // Pixels stay on the resource. BitmapData is created once the plate is on stage, because this player rejects that upload during the file callback.
@@ -545,7 +668,9 @@ package
 
       private function isCurrentEvent(param1:Event) : Boolean
       {
-         return this.active && !this.disposed && this.activeLoader != null && param1.currentTarget === this.activeLoader;
+         if(!this.active || this.disposed) return false;
+         if(this.activeLoader != null && param1.currentTarget === this.activeLoader) return true;
+         return this.activeTexture != null && param1.currentTarget === this.activeTexture.contentLoaderInfo;
       }
 
       private function finishSuccess() : void
@@ -588,6 +713,15 @@ package
 
       private function abortActiveLoader() : void
       {
+         if(this.activeTexture != null)
+         {
+            var texture:Loader = this.activeTexture;
+            this.detachTexture(texture);
+            this.activeTexture = null;
+            this.activeItem = null;
+            try { texture.close(); } catch(closeTexture:*) {}
+            try { texture.unload(); } catch(unloadTexture:*) {}
+         }
          if(this.activeLoader == null)
          {
             this.activeItem = null;

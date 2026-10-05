@@ -50,7 +50,22 @@ package
          this.document = param5;
       }
 
-      // The plate bitmap is sized after bitmapData is assigned because that assignment resets width and height. Upload waits for a frame so it is not inside the file callback.
+      public function takePlate(image:BitmapData, width:int, height:int, owned:Boolean) : void
+      {
+         if(this.ownsImage && this.image != null && this.image != image) this.image.dispose();
+         this.image = image;
+         this.pixelWidth = width;
+         this.pixelHeight = height;
+         this.ownsImage = owned;
+         this.pixels = null;
+      }
+
+      public function holdLoader(source:Loader) : void
+      {
+         this.loader = source;
+      }
+
+      // The plate bitmap is sized after bitmapData is assigned because that assignment resets width and height. A texture that is not readable in the load callback is read on a later frame.
       public function showPlate(bitmap:Bitmap, host:DisplayObject, width:Number, height:Number, tint:ColorTransform) : void
       {
          if(bitmap == null) return;
@@ -59,7 +74,8 @@ package
             this.applyPlate(bitmap,width,height,tint);
             return;
          }
-         if(host == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return;
+         if(host == null) return;
+         if((this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) && this.loader == null) return;
          if(this.watchers == null) this.watchers = [];
          this.watchers.push({"bitmap":bitmap,"host":host,"width":width,"height":height,"tint":tint});
          host.addEventListener(Event.ENTER_FRAME,this.onPlateFrame,false,0,true);
@@ -160,6 +176,22 @@ package
             this.pixels = null;
             this.image = uploaded;
             this.ownsImage = uploaded != null;
+         }
+         if(this.image == null && this.loader != null)
+         {
+            try
+            {
+               var loadedPlate:Bitmap = this.loader.content as Bitmap;
+               var plateData:BitmapData = loadedPlate == null ? null : loadedPlate.bitmapData;
+               if(plateData != null && plateData.width > 0 && plateData.height > 0)
+               {
+                  this.image = plateData;
+                  this.pixelWidth = plateData.width;
+                  this.pixelHeight = plateData.height;
+                  this.ownsImage = false;
+               }
+            }
+            catch(plateRead:*) {}
          }
          if(this.watchers == null) return;
          var pending:Array = this.watchers;

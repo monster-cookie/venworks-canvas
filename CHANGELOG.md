@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- HUD themes can use DDS plate images, and a plate image no longer leaves the boot screen up.
+- HUD themes can use DDS plate images. A plate loads from Textures/Interface through the menu texture path, and a plate image no longer leaves the boot screen up.
 
 ## Version 1.0.5 (October 3, 2026)
 
