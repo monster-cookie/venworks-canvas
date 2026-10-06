@@ -4,6 +4,7 @@ package
    import flash.display.BitmapData;
    import flash.display.DisplayObject;
    import flash.display.Loader;
+   import flash.display.Shape;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.SecurityErrorEvent;
@@ -40,6 +41,10 @@ package
       private var loader:Loader;
 
       private var ownsImage:Boolean;
+
+      private var shapePlate:Boolean;
+
+      private var reportedShow:Boolean;
 
       public function CanvasHtmlResource(param1:String, param2:String, param3:String, param4:int, param5:CanvasHtmlDocument = null)
       {
@@ -78,7 +83,7 @@ package
          if((this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) && this.loader == null) return;
          if(this.watchers == null) this.watchers = [];
          this.watchers.push({"bitmap":bitmap,"host":host,"width":width,"height":height,"tint":tint});
-         host.addEventListener(Event.ENTER_FRAME,this.onPlateFrame,false,0,true);
+         host.addEventListener(Event.ENTER_FRAME,this.onPlateFrame,false,0,false);
          this.loading = true;
       }
 
@@ -168,14 +173,21 @@ package
       {
          var source:DisplayObject = event.currentTarget as DisplayObject;
          if(source != null) source.removeEventListener(Event.ENTER_FRAME,this.onPlateFrame);
-         if(this.image == null && this.pixels != null)
+         if(this.image == null && this.pixels != null && !this.shapePlate)
          {
             var uploaded:BitmapData = null;
             try { uploaded = CanvasDdsDecoder.upload(this.pixelWidth,this.pixelHeight,this.pixels); }
             catch(uploadError:*) { uploaded = null; }
-            this.pixels = null;
-            this.image = uploaded;
-            this.ownsImage = uploaded != null;
+            if(uploaded != null)
+            {
+               this.pixels = null;
+               this.image = uploaded;
+               this.ownsImage = true;
+            }
+            else
+            {
+               this.shapePlate = true;
+            }
          }
          if(this.image == null && this.loader != null)
          {
@@ -198,11 +210,24 @@ package
          this.watchers = null;
          this.loading = false;
          var watcher:Object = null;
+         var showed:Boolean = this.image != null;
          for each(watcher in pending)
          {
             var host:DisplayObject = watcher.host as DisplayObject;
             if(host != null && host != source) host.removeEventListener(Event.ENTER_FRAME,this.onPlateFrame);
-            this.applyPlate(watcher.bitmap as Bitmap,Number(watcher.width),Number(watcher.height),watcher.tint as ColorTransform);
+            var bitmap:Bitmap = watcher.bitmap as Bitmap;
+            var width:Number = Number(watcher.width);
+            var height:Number = Number(watcher.height);
+            var tint:ColorTransform = watcher.tint as ColorTransform;
+            if(this.image != null) this.applyPlate(bitmap,width,height,tint);
+            else if(this.shapePlate && this.attachShape(bitmap,width,height,tint)) showed = true;
+         }
+         if(!this.reportedShow)
+         {
+            this.reportedShow = true;
+            if(this.image != null) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
+            else if(showed) this.reportPlate("VWCANVAS TEX SHOW SHAPE | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
+            else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
          }
       }
 
@@ -212,9 +237,34 @@ package
          bitmap.bitmapData = this.image;
          bitmap.width = width;
          bitmap.height = height;
+         try { bitmap.smoothing = true; } catch(smoothError:*) {}
          if(tint == null) return;
          try { bitmap.transform.colorTransform = tint; }
          catch(tintError:*) {}
+      }
+
+      private function attachShape(bitmap:Bitmap, width:Number, height:Number, tint:ColorTransform) : Boolean
+      {
+         if(bitmap == null || bitmap.parent == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return false;
+         var plate:Shape = CanvasDdsDecoder.render(this.pixelWidth,this.pixelHeight,this.pixels);
+         if(plate == null) return false;
+         plate.x = bitmap.x;
+         plate.y = bitmap.y;
+         plate.scaleX = width / this.pixelWidth;
+         plate.scaleY = height / this.pixelHeight;
+         if(tint != null)
+         {
+            try { plate.transform.colorTransform = tint; } catch(tintError:*) {}
+         }
+         bitmap.parent.addChild(plate);
+         bitmap.visible = false;
+         return true;
+      }
+
+      private function reportPlate(message:String) : void
+      {
+         var writer:Function = trace;
+         writer(message);
       }
 
       private function detachPlateFrames() : void

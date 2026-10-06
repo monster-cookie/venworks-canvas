@@ -1,11 +1,11 @@
 package
 {
    import flash.display.BitmapData;
-   import flash.geom.Rectangle;
+   import flash.display.Shape;
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. Starfield throws on BitmapData.setPixels, so upload runs later with setPixel32 and then fillRect.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player logs null for every BitmapData.setPixel32 and does not keep those pixels, so the plate is drawn with graphics commands.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -167,69 +167,85 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      // Called after the plate is on stage. setPixels throws in this player, including when the bitmap was created during a file-load callback.
+      // One shared bitmap when the player can copy a drawn shape. Otherwise the caller displays render() directly.
       public static function upload(width:int, height:int, pixels:ByteArray) : BitmapData
       {
-         if(pixels == null || width < 1 || height < 1 || pixels.length < width * height * 4) return null;
-         var result:BitmapData = new BitmapData(width,height,true,0);
-         if(writePixel32(result,width,height,pixels) || writeFill(result,width,height,pixels)) return result;
-         result.dispose();
+         var plate:Shape = render(width,height,pixels);
+         if(plate == null) return null;
+         var result:BitmapData = null;
+         try
+         {
+            result = new BitmapData(width,height,true,0);
+            result.draw(plate);
+            if(!sampleMatches(result,width,height,pixels))
+            {
+               result.dispose();
+               return null;
+            }
+            return result;
+         }
+         catch(drawError:*)
+         {
+            if(result != null) result.dispose();
+            return null;
+         }
          return null;
       }
 
-      private static function writePixel32(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
+      public static function render(width:int, height:int, pixels:ByteArray) : Shape
       {
-         try
+         if(pixels == null || width < 1 || height < 1 || pixels.length < width * height * 4) return null;
+         var shape:Shape = new Shape();
+         pixels.endian = Endian.BIG_ENDIAN;
+         var y:int = 0;
+         while(y < height)
          {
-            pixels.endian = Endian.BIG_ENDIAN;
-            pixels.position = 0;
-            var y:int = 0;
-            while(y < height)
+            var x:int = 0;
+            var row:int = y * width;
+            while(x < width)
             {
-               var x:int = 0;
-               while(x < width)
+               pixels.position = (row + x) << 2;
+               var argb:uint = pixels.readUnsignedInt();
+               var run:int = 1;
+               while(x + run < width)
                {
-                  result.setPixel32(x,y,pixels.readUnsignedInt());
-                  x++;
+                  pixels.position = (row + x + run) << 2;
+                  if(pixels.readUnsignedInt() != argb) break;
+                  run++;
                }
-               y++;
+               var alpha:int = (argb >>> 24) & 255;
+               if(alpha > 0)
+               {
+                  shape.graphics.beginFill(argb & 0xFFFFFF,alpha / 255);
+                  shape.graphics.drawRect(x,y,run,1);
+                  shape.graphics.endFill();
+               }
+               x += run;
             }
-            return true;
+            y++;
          }
-         catch(pixelError:*)
-         {
-            return false;
-         }
-         return false;
+         return shape;
       }
 
-      private static function writeFill(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
+      private static function sampleMatches(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
       {
-         try
+         pixels.endian = Endian.BIG_ENDIAN;
+         var index:int = 0;
+         var count:int = width * height;
+         while(index < count)
          {
-            pixels.endian = Endian.BIG_ENDIAN;
-            pixels.position = 0;
-            var dot:Rectangle = new Rectangle(0,0,1,1);
-            var y:int = 0;
-            while(y < height)
+            pixels.position = index << 2;
+            var argb:uint = pixels.readUnsignedInt();
+            if(((argb >>> 24) & 255) > 16)
             {
-               var x:int = 0;
-               while(x < width)
-               {
-                  dot.x = x;
-                  dot.y = y;
-                  result.fillRect(dot,pixels.readUnsignedInt());
-                  x++;
-               }
-               y++;
+               var actual:uint = result.getPixel32(index % width,int(index / width));
+               var expectedAlpha:int = (argb >>> 24) & 255;
+               var actualAlpha:int = (actual >>> 24) & 255;
+               return actualAlpha > 0 && Math.abs(actualAlpha - expectedAlpha) < 24;
             }
-            return true;
+            index++;
          }
-         catch(fillError:*)
-         {
-            return false;
-         }
-         return false;
+         return true;
       }
 
       private static function readCode(bytes:ByteArray) : String
