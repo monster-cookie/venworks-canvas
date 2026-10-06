@@ -1,9 +1,5 @@
 package
 {
-   import flash.display.Bitmap;
-   import flash.display.BitmapData;
-   import flash.display.Loader;
-   import flash.display.LoaderInfo;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.ProgressEvent;
@@ -16,10 +12,6 @@ package
    public final class CanvasHtmlDocumentLoader
    {
       private var activeLoader:URLLoader;
-
-      private var activeTexture:Loader;
-
-      private var activeTextureUrl:String;
 
       private var activeItem:Object;
 
@@ -142,10 +134,10 @@ package
          }
          this.activeItem = this.pending.shift();
          delete this.pendingByPath[String(this.activeItem.path)];
-         if(CanvasHtmlPath.getExtension(String(this.activeItem.path)) == ".dds")
+         var requestPath:String = String(this.activeItem.path);
+         if(CanvasHtmlPath.getExtension(requestPath) == ".dds")
          {
-            this.startTexture();
-            return;
+            this.reportTexture("VWCANVAS TEX | " + requestPath);
          }
          var loader:URLLoader = new URLLoader();
          loader.dataFormat = URLLoaderDataFormat.BINARY;
@@ -156,13 +148,24 @@ package
          this.activeLoader = loader;
          try
          {
-            loader.load(new URLRequest(this.resourceRoot + String(this.activeItem.path)));
+            loader.load(new URLRequest(this.resourceRoot + requestPath));
          }
          catch(loadError:*)
          {
             var failedPath:String = String(this.activeItem.path);
-            this.abortActiveLoader();
-            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
+            if(CanvasHtmlPath.getExtension(failedPath) == ".dds")
+            {
+               var loadText:String = failedPath + " | " + String(loadError);
+               this.reportTexture("VWCANVAS TEX FAIL | " + loadText);
+               if(loadText.length > 120) loadText = loadText.substr(0,120);
+               this.abortActiveLoader();
+               this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath,-1,loadText));
+            }
+            else
+            {
+               this.abortActiveLoader();
+               this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
+            }
          }
       }
 
@@ -173,131 +176,13 @@ package
          writer(param1);
       }
 
-      // Menu DDS files live under Textures/Interface. The Interface file opener cannot read a texture archive, so the plate uses the menu texture URL.
-      private function startTexture() : void
-      {
-         var loader:Loader = new Loader();
-         var info:LoaderInfo = loader.contentLoaderInfo;
-         info.addEventListener(Event.COMPLETE,this.onTextureComplete,false,0,true);
-         info.addEventListener(IOErrorEvent.IO_ERROR,this.onLoadError,false,0,true);
-         info.addEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError,false,0,true);
-         this.activeTexture = loader;
-         var textureUrl:String = "img://Textures/Interface/" + this.resourceRoot + String(this.activeItem.path);
-         this.activeTextureUrl = textureUrl;
-         this.reportTexture("VWCANVAS TEX | " + textureUrl);
-         try
-         {
-            loader.load(new URLRequest(textureUrl));
-         }
-         catch(loadError:*)
-         {
-            var failedPath:String = String(this.activeItem.path);
-            var loadText:String = textureUrl + " | " + String(loadError);
-            this.reportTexture("VWCANVAS TEX FAIL | " + failedPath + " | " + loadText);
-            this.abortActiveLoader();
-            if(loadText.length > 120) loadText = loadText.substr(0,120);
-            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath,-1,loadText));
-         }
-      }
-
-      private function onTextureComplete(param1:Event) : void
-      {
-         if(!this.isCurrentEvent(param1))
-         {
-            return;
-         }
-         var loader:Loader = this.activeTexture;
-         var item:Object = this.activeItem;
-         var generation:int = this.attemptGeneration;
-         this.detachTexture(loader);
-         this.activeTexture = null;
-         this.activeTextureUrl = null;
-         this.activeItem = null;
-         var advance:Boolean = false;
-         try
-         {
-            var loaded:Bitmap = loader.content as Bitmap;
-            if(loaded == null)
-            {
-               try { loader.unload(); } catch(unloadMissing:*) {}
-               this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
-               return;
-            }
-            var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",0,null);
-            var data:BitmapData = loaded.bitmapData;
-            if(data != null && data.width > 0 && data.height > 0)
-            {
-               var owned:BitmapData = null;
-               try
-               {
-                  owned = new BitmapData(data.width,data.height,true,0);
-                  owned.draw(data);
-               }
-               catch(copyError:*)
-               {
-                  owned = null;
-               }
-               if(owned != null)
-               {
-                  resource.takePlate(owned,owned.width,owned.height,true);
-                  try { loader.unload(); } catch(unloadCopy:*) {}
-               }
-               else
-               {
-                  resource.takePlate(data,data.width,data.height,false);
-                  resource.holdLoader(loader);
-               }
-            }
-            else
-            {
-               resource.holdLoader(loader);
-            }
-            this.resources.push(resource);
-            this.loadedPaths[String(item.path)] = true;
-            advance = true;
-         }
-         catch(processError:*)
-         {
-            if(!this.active || this.disposed || this.attemptGeneration != generation)
-            {
-               throw processError;
-            }
-            var held:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",0,null);
-            held.holdLoader(loader);
-            this.resources.push(held);
-            this.loadedPaths[String(item.path)] = true;
-            advance = true;
-         }
-         if(!advance) return;
-         this.reportTexture("VWCANVAS TEX OK | " + String(item.path));
-         try
-         {
-            this.startNext();
-         }
-         catch(nextError:*)
-         {
-            if(!this.active || this.disposed || this.attemptGeneration != generation) throw nextError;
-            var nextText:String = String(nextError);
-            if(nextText.length > 120) nextText = nextText.substr(0,120);
-            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",this.entryPath,-1,nextText));
-         }
-      }
-
-      private function detachTexture(param1:Loader) : void
-      {
-         if(param1 == null) return;
-         var info:LoaderInfo = param1.contentLoaderInfo;
-         info.removeEventListener(Event.COMPLETE,this.onTextureComplete);
-         info.removeEventListener(IOErrorEvent.IO_ERROR,this.onLoadError);
-         info.removeEventListener(SecurityErrorEvent.SECURITY_ERROR,this.onLoadSecurityError);
-      }
-
       // Pixels stay on the resource. BitmapData is created once the plate is on stage, because this player rejects that upload during the file callback.
       private function rememberPlate(bytes:ByteArray, item:Object) : Boolean
       {
          var dds:Object = CanvasDdsDecoder.read(bytes);
          if(dds == null || dds.pixels == null || int(dds.width) < 1 || int(dds.height) < 1)
          {
+            this.reportTexture("VWCANVAS TEX FAIL | " + String(item.path) + " | invalid-image | " + bytes.length);
             this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
             return false;
          }
@@ -307,6 +192,7 @@ package
          ddsResource.pixelHeight = int(dds.height);
          this.resources.push(ddsResource);
          this.loadedPaths[String(item.path)] = true;
+         this.reportTexture("VWCANVAS TEX OK | " + String(item.path) + " | " + bytes.length);
          return true;
       }
 
@@ -678,14 +564,13 @@ package
             return;
          }
          var resource:String = String(this.activeItem.path);
-         var textureEvent:Boolean = this.activeTexture != null && param1.currentTarget === this.activeTexture.contentLoaderInfo;
-         if(!textureEvent)
+         if(CanvasHtmlPath.getExtension(resource) != ".dds")
          {
             this.abortActiveLoader();
             this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource));
             return;
          }
-         var detail:String = this.activeTextureUrl;
+         var detail:String = resource;
          var errorText:String = "";
          var ioError:IOErrorEvent = param1 as IOErrorEvent;
          if(ioError != null) errorText = String(ioError.text);
@@ -694,12 +579,9 @@ package
             var securityError:SecurityErrorEvent = param1 as SecurityErrorEvent;
             if(securityError != null) errorText = String(securityError.text);
          }
-         if(errorText != null && errorText.length > 0)
-         {
-            detail = (detail == null || detail.length == 0) ? errorText : detail + " | " + errorText;
-         }
-         this.reportTexture("VWCANVAS TEX FAIL | " + resource + " | " + detail);
-         if(detail != null && detail.length > 120) detail = detail.substr(0,120);
+         if(errorText != null && errorText.length > 0) detail = detail + " | " + errorText;
+         this.reportTexture("VWCANVAS TEX FAIL | " + detail);
+         if(detail.length > 120) detail = detail.substr(0,120);
          this.abortActiveLoader();
          this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource,-1,detail));
       }
@@ -707,8 +589,7 @@ package
       private function isCurrentEvent(param1:Event) : Boolean
       {
          if(!this.active || this.disposed) return false;
-         if(this.activeLoader != null && param1.currentTarget === this.activeLoader) return true;
-         return this.activeTexture != null && param1.currentTarget === this.activeTexture.contentLoaderInfo;
+         return this.activeLoader != null && param1.currentTarget === this.activeLoader;
       }
 
       private function finishSuccess() : void
@@ -751,16 +632,6 @@ package
 
       private function abortActiveLoader() : void
       {
-         if(this.activeTexture != null)
-         {
-            var texture:Loader = this.activeTexture;
-            this.detachTexture(texture);
-            this.activeTexture = null;
-            this.activeTextureUrl = null;
-            this.activeItem = null;
-            try { texture.close(); } catch(closeTexture:*) {}
-            try { texture.unload(); } catch(unloadTexture:*) {}
-         }
          if(this.activeLoader == null)
          {
             this.activeItem = null;
