@@ -6,7 +6,7 @@ package
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player logs null for BitmapData.setPixel32 and BitmapData.draw and does not keep those pixels. A shape made of one-pixel strips also stays invisible, so the plate is painted in 4-pixel blocks at its final size.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player does not keep setPixel32 or BitmapData.draw. A crowd of child shapes added during layout did not show. The plate is painted in the panel draw pass: one full fill, then the smoke blocks on a second shape.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -168,7 +168,7 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      // Blocks stay large enough to survive the same graphics path as the other HUD panels. The tint is baked in because a later color transform never got a chance to show.
+      // The full fill matches the other HUD fills: one shape, one rectangle. The blocks carry the smoke on a second shape. The tint is baked in.
       public static function paintPlate(parent:Sprite, pixels:ByteArray, pixelWidth:int, pixelHeight:int, originX:Number, originY:Number, destWidth:Number, destHeight:Number, tint:ColorTransform) : Boolean
       {
          if(parent == null || pixels == null || pixelWidth < 1 || pixelHeight < 1 || pixels.length < pixelWidth * pixelHeight * 4) return false;
@@ -178,6 +178,14 @@ package
          var greenMul:Number = tint == null ? 1 : tint.greenMultiplier;
          var blueMul:Number = tint == null ? 1 : tint.blueMultiplier;
          var cell:int = 4;
+         var plate:Shape = new Shape();
+         plate.name = "CanvasStagePaint";
+         plate.x = originX;
+         plate.y = originY;
+         var base:Shape = new Shape();
+         base.name = "CanvasStagePaint";
+         base.x = originX;
+         base.y = originY;
          var painted:Boolean = false;
          var y:int = 0;
          var x:int = 0;
@@ -190,12 +198,20 @@ package
          var redSum:Number = 0;
          var greenSum:Number = 0;
          var blueSum:Number = 0;
+         var alphaTotal:Number = 0;
+         var redTotal:Number = 0;
+         var greenTotal:Number = 0;
+         var blueTotal:Number = 0;
+         var totalCount:int = 0;
          var argb:uint = 0;
          var alpha:Number = 0;
          var red:int = 0;
          var green:int = 0;
          var blue:int = 0;
-         var piece:Shape = null;
+         var meanAlpha:Number = 0;
+         var meanRed:int = 0;
+         var meanGreen:int = 0;
+         var meanBlue:int = 0;
          while(y < pixelHeight)
          {
             cellH = pixelHeight - y;
@@ -227,6 +243,11 @@ package
                   }
                   py++;
                }
+               alphaTotal += alphaSum;
+               redTotal += redSum;
+               greenTotal += greenSum;
+               blueTotal += blueSum;
+               totalCount += count;
                alpha = count < 1 ? 0 : alphaSum / count / 255;
                if(alpha > 0)
                {
@@ -239,20 +260,32 @@ package
                   else if(green > 255) green = 255;
                   if(blue < 0) blue = 0;
                   else if(blue > 255) blue = 255;
-                  piece = new Shape();
-                  piece.x = originX + x * destWidth / pixelWidth;
-                  piece.y = originY + y * destHeight / pixelHeight;
-                  piece.graphics.beginFill((red << 16) | (green << 8) | blue,alpha);
-                  piece.graphics.drawRect(0,0,cellW * destWidth / pixelWidth,cellH * destHeight / pixelHeight);
-                  piece.graphics.endFill();
-                  parent.addChild(piece);
+                  plate.graphics.beginFill((red << 16) | (green << 8) | blue,alpha);
+                  plate.graphics.drawRect(x * destWidth / pixelWidth,y * destHeight / pixelHeight,cellW * destWidth / pixelWidth,cellH * destHeight / pixelHeight);
+                  plate.graphics.endFill();
                   painted = true;
                }
                x += cellW;
             }
             y += cellH;
          }
-         return painted;
+         if(!painted || totalCount < 1) return false;
+         meanAlpha = alphaTotal / totalCount / 255;
+         meanRed = int(redTotal / totalCount * redMul);
+         meanGreen = int(greenTotal / totalCount * greenMul);
+         meanBlue = int(blueTotal / totalCount * blueMul);
+         if(meanRed < 0) meanRed = 0;
+         else if(meanRed > 255) meanRed = 255;
+         if(meanGreen < 0) meanGreen = 0;
+         else if(meanGreen > 255) meanGreen = 255;
+         if(meanBlue < 0) meanBlue = 0;
+         else if(meanBlue > 255) meanBlue = 255;
+         base.graphics.beginFill((meanRed << 16) | (meanGreen << 8) | meanBlue,meanAlpha);
+         base.graphics.drawRect(0,0,destWidth,destHeight);
+         base.graphics.endFill();
+         parent.addChild(base);
+         parent.addChild(plate);
+         return true;
       }
 
       private static function readCode(bytes:ByteArray) : String

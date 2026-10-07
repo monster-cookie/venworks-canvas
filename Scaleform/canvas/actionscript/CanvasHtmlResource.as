@@ -68,7 +68,7 @@ package
          this.loader = source;
       }
 
-      // Paint during layout so the plate is a child of the element before the retained tree commits. A later frame was added, then removed, or drawn as one-pixel strips this player does not show.
+      // Called from the panel draw pass, after that pass clears the previous plate. The log size is the on-screen box, not only the texture.
       public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform) : void
       {
          if(sprite == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return;
@@ -76,7 +76,7 @@ package
          var showed:Boolean = CanvasDdsDecoder.paintPlate(sprite,this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint);
          if(this.reportedShow) return;
          this.reportedShow = true;
-         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
+         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(width) + "x" + int(height));
          else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
       }
 

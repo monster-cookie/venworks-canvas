@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and painted in blocks with the same graphics as the other HUD panels. Per-pixel bitmap writes and one-pixel vector strips logged null and left the panel empty. A plate that fails to load records the file name and the read error.
+- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and painted in the same pass as the meters: one full-panel fill, then the smoke blocks on a second graphic. Separate shapes for every block did not show up, and per-pixel bitmap writes did not stick. A plate that fails to load records the file name and the read error.
 
 ## Version 1.0.5 (October 3, 2026)
 

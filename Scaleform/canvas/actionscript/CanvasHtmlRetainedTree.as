@@ -117,7 +117,12 @@ package
                   {
                      display = retained.getChildAt(j);
                      if(oldChildren[display]) continue;
-                     if(box.measureReused || box.drawReused && CanvasHtmlNode(box.node).type != CanvasHtmlNode.TEXT && ["svg","img","vw-symbol"].indexOf(CanvasHtmlNode(box.node).name) < 0) own.push(display);
+                     // Plate and background fills are draw-pass children. A reused draw has to keep them. A new draw already put the replacement on the candidate.
+                     if(display.name == "CanvasStagePaint")
+                     {
+                        if(box.drawReused) own.push(display);
+                     }
+                     else if(box.measureReused || box.drawReused && CanvasHtmlNode(box.node).type != CanvasHtmlNode.TEXT && ["svg","img","vw-symbol"].indexOf(CanvasHtmlNode(box.node).name) < 0) own.push(display);
                   }
                }
                if(!box.measureReused && box.textField != null && old.textField != null)

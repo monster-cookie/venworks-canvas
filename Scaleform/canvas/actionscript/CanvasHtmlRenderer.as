@@ -323,6 +323,12 @@ package
                box.measureReused = true;
                box.contentHeight = box.previous.contentHeight;
                box.textNaturalWidth = box.previous.textNaturalWidth;
+               box.ddsResource = box.previous.ddsResource;
+               box.ddsX = box.previous.ddsX;
+               box.ddsY = box.previous.ddsY;
+               box.ddsWidth = box.previous.ddsWidth;
+               box.ddsHeight = box.previous.ddsHeight;
+               box.ddsTint = box.previous.ddsTint;
                continue;
             }
             if(node.type == CanvasHtmlNode.TEXT)
@@ -590,7 +596,12 @@ package
             tint.greenMultiplier = ((uint(own.color) >> 8) & 255) / 255;
             tint.blueMultiplier = (uint(own.color) & 255) / 255;
          }
-         resource.showPlate(Sprite(param1.sprite),Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2,Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2,drawWidth,drawHeight,tint);
+         param1.ddsResource = resource;
+         param1.ddsX = Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2;
+         param1.ddsY = Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2;
+         param1.ddsWidth = drawWidth;
+         param1.ddsHeight = drawHeight;
+         param1.ddsTint = tint;
          param1.contentHeight = height;
          return true;
       }
@@ -839,6 +850,8 @@ package
                this.reject("invalid-meter",node.resource);
             sprite.addChild(meter);
          }
+         var plateResource:CanvasHtmlResource = param1.ddsResource as CanvasHtmlResource;
+         if(plateResource != null) plateResource.showPlate(sprite,Number(param1.ddsX),Number(param1.ddsY),Number(param1.ddsWidth),Number(param1.ddsHeight),param1.ddsTint as ColorTransform);
          if(node.name == "li" && param1.parent != null)
          {
             var parentName:String = CanvasHtmlNode(param1.parent.node).name;
