@@ -4,7 +4,7 @@ package
    import flash.display.BitmapData;
    import flash.display.DisplayObject;
    import flash.display.Loader;
-   import flash.display.Shape;
+   import flash.display.Sprite;
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.SecurityErrorEvent;
@@ -42,8 +42,6 @@ package
 
       private var ownsImage:Boolean;
 
-      private var shapePlate:Boolean;
-
       private var reportedShow:Boolean;
 
       public function CanvasHtmlResource(param1:String, param2:String, param3:String, param4:int, param5:CanvasHtmlDocument = null)
@@ -70,21 +68,16 @@ package
          this.loader = source;
       }
 
-      // The plate bitmap is sized after bitmapData is assigned because that assignment resets width and height. A texture that is not readable in the load callback is read on a later frame.
-      public function showPlate(bitmap:Bitmap, host:DisplayObject, width:Number, height:Number, tint:ColorTransform) : void
+      // Paint during layout so the plate is a child of the element before the retained tree commits. A later frame was added, then removed, or drawn as one-pixel strips this player does not show.
+      public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform) : void
       {
-         if(bitmap == null) return;
-         if(this.image != null)
-         {
-            this.applyPlate(bitmap,width,height,tint);
-            return;
-         }
-         if(host == null) return;
-         if((this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) && this.loader == null) return;
-         if(this.watchers == null) this.watchers = [];
-         this.watchers.push({"bitmap":bitmap,"host":host,"width":width,"height":height,"tint":tint});
-         host.addEventListener(Event.ENTER_FRAME,this.onPlateFrame,false,0,false);
-         this.loading = true;
+         if(sprite == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return;
+         if(!(width > 0) || !(height > 0)) return;
+         var showed:Boolean = CanvasDdsDecoder.paintPlate(sprite,this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint);
+         if(this.reportedShow) return;
+         this.reportedShow = true;
+         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
+         else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
       }
 
       // Formats this movie cannot decode still use the archive URL the document loader already resolved. The bitmap is sized by the caller because assigning bitmapData resets width and height.
@@ -169,98 +162,6 @@ package
          this.releaseLoader(true);
       }
 
-      private function onPlateFrame(event:Event) : void
-      {
-         var source:DisplayObject = event.currentTarget as DisplayObject;
-         if(source != null) source.removeEventListener(Event.ENTER_FRAME,this.onPlateFrame);
-         if(this.image == null && this.pixels != null && !this.shapePlate)
-         {
-            var uploaded:BitmapData = null;
-            try { uploaded = CanvasDdsDecoder.upload(this.pixelWidth,this.pixelHeight,this.pixels); }
-            catch(uploadError:*) { uploaded = null; }
-            if(uploaded != null)
-            {
-               this.pixels = null;
-               this.image = uploaded;
-               this.ownsImage = true;
-            }
-            else
-            {
-               this.shapePlate = true;
-            }
-         }
-         if(this.image == null && this.loader != null)
-         {
-            try
-            {
-               var loadedPlate:Bitmap = this.loader.content as Bitmap;
-               var plateData:BitmapData = loadedPlate == null ? null : loadedPlate.bitmapData;
-               if(plateData != null && plateData.width > 0 && plateData.height > 0)
-               {
-                  this.image = plateData;
-                  this.pixelWidth = plateData.width;
-                  this.pixelHeight = plateData.height;
-                  this.ownsImage = false;
-               }
-            }
-            catch(plateRead:*) {}
-         }
-         if(this.watchers == null) return;
-         var pending:Array = this.watchers;
-         this.watchers = null;
-         this.loading = false;
-         var watcher:Object = null;
-         var showed:Boolean = this.image != null;
-         for each(watcher in pending)
-         {
-            var host:DisplayObject = watcher.host as DisplayObject;
-            if(host != null && host != source) host.removeEventListener(Event.ENTER_FRAME,this.onPlateFrame);
-            var bitmap:Bitmap = watcher.bitmap as Bitmap;
-            var width:Number = Number(watcher.width);
-            var height:Number = Number(watcher.height);
-            var tint:ColorTransform = watcher.tint as ColorTransform;
-            if(this.image != null) this.applyPlate(bitmap,width,height,tint);
-            else if(this.shapePlate && this.attachShape(bitmap,width,height,tint)) showed = true;
-         }
-         if(!this.reportedShow)
-         {
-            this.reportedShow = true;
-            if(this.image != null) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
-            else if(showed) this.reportPlate("VWCANVAS TEX SHOW SHAPE | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight);
-            else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
-         }
-      }
-
-      private function applyPlate(bitmap:Bitmap, width:Number, height:Number, tint:ColorTransform) : void
-      {
-         if(bitmap == null || this.image == null) return;
-         bitmap.bitmapData = this.image;
-         bitmap.width = width;
-         bitmap.height = height;
-         try { bitmap.smoothing = true; } catch(smoothError:*) {}
-         if(tint == null) return;
-         try { bitmap.transform.colorTransform = tint; }
-         catch(tintError:*) {}
-      }
-
-      private function attachShape(bitmap:Bitmap, width:Number, height:Number, tint:ColorTransform) : Boolean
-      {
-         if(bitmap == null || bitmap.parent == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return false;
-         var plate:Shape = CanvasDdsDecoder.render(this.pixelWidth,this.pixelHeight,this.pixels);
-         if(plate == null) return false;
-         plate.x = bitmap.x;
-         plate.y = bitmap.y;
-         plate.scaleX = width / this.pixelWidth;
-         plate.scaleY = height / this.pixelHeight;
-         if(tint != null)
-         {
-            try { plate.transform.colorTransform = tint; } catch(tintError:*) {}
-         }
-         bitmap.parent.addChild(plate);
-         bitmap.visible = false;
-         return true;
-      }
-
       private function reportPlate(message:String) : void
       {
          var writer:Function = trace;
@@ -269,13 +170,6 @@ package
 
       private function detachPlateFrames() : void
       {
-         if(this.watchers == null) return;
-         var watcher:Object = null;
-         for each(watcher in this.watchers)
-         {
-            var host:DisplayObject = watcher.host as DisplayObject;
-            if(host != null) host.removeEventListener(Event.ENTER_FRAME,this.onPlateFrame);
-         }
          this.watchers = null;
          this.loading = false;
       }

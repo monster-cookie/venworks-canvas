@@ -176,7 +176,7 @@ package
          writer(param1);
       }
 
-      // Pixels stay on the resource. BitmapData is created once the plate is on stage, because this player rejects that upload during the file callback.
+      // Pixels stay on the resource. The plate is painted during layout with the other HUD graphics, not while this file callback is still running.
       private function rememberPlate(bytes:ByteArray, item:Object) : Boolean
       {
          var dds:Object = CanvasDdsDecoder.read(bytes);

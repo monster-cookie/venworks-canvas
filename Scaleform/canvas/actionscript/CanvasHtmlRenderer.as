@@ -578,9 +578,6 @@ package
             drawWidth = sourceWidth * scale;
             drawHeight = sourceHeight * scale;
          }
-         var bitmap:Bitmap = new Bitmap();
-         bitmap.x = Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2;
-         bitmap.y = Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2;
          var own:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
          var parentBox:Object = param1.parent;
          var inherited:Object = parentBox == null ? null : CanvasCssValue.parseColor(String(parentBox.style["color"]));
@@ -593,8 +590,7 @@ package
             tint.greenMultiplier = ((uint(own.color) >> 8) & 255) / 255;
             tint.blueMultiplier = (uint(own.color) & 255) / 255;
          }
-         resource.showPlate(bitmap,Sprite(param1.sprite),drawWidth,drawHeight,tint);
-         Sprite(param1.sprite).addChild(bitmap);
+         resource.showPlate(Sprite(param1.sprite),Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2,Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2,drawWidth,drawHeight,tint);
          param1.contentHeight = height;
          return true;
       }

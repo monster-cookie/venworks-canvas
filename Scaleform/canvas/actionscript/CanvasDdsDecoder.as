@@ -1,11 +1,12 @@
 package
 {
-   import flash.display.BitmapData;
    import flash.display.Shape;
+   import flash.display.Sprite;
+   import flash.geom.ColorTransform;
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player logs null for every BitmapData.setPixel32 and does not keep those pixels, so the plate is drawn with graphics commands.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player logs null for BitmapData.setPixel32 and BitmapData.draw and does not keep those pixels. A shape made of one-pixel strips also stays invisible, so the plate is painted in 4-pixel blocks at its final size.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -167,85 +168,91 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      // One shared bitmap when the player can copy a drawn shape. Otherwise the caller displays render() directly.
-      public static function upload(width:int, height:int, pixels:ByteArray) : BitmapData
+      // Blocks stay large enough to survive the same graphics path as the other HUD panels. The tint is baked in because a later color transform never got a chance to show.
+      public static function paintPlate(parent:Sprite, pixels:ByteArray, pixelWidth:int, pixelHeight:int, originX:Number, originY:Number, destWidth:Number, destHeight:Number, tint:ColorTransform) : Boolean
       {
-         var plate:Shape = render(width,height,pixels);
-         if(plate == null) return null;
-         var result:BitmapData = null;
-         try
-         {
-            result = new BitmapData(width,height,true,0);
-            result.draw(plate);
-            if(!sampleMatches(result,width,height,pixels))
-            {
-               result.dispose();
-               return null;
-            }
-            return result;
-         }
-         catch(drawError:*)
-         {
-            if(result != null) result.dispose();
-            return null;
-         }
-         return null;
-      }
-
-      public static function render(width:int, height:int, pixels:ByteArray) : Shape
-      {
-         if(pixels == null || width < 1 || height < 1 || pixels.length < width * height * 4) return null;
-         var shape:Shape = new Shape();
+         if(parent == null || pixels == null || pixelWidth < 1 || pixelHeight < 1 || pixels.length < pixelWidth * pixelHeight * 4) return false;
+         if(!(destWidth > 0) || !(destHeight > 0)) return false;
          pixels.endian = Endian.BIG_ENDIAN;
+         var redMul:Number = tint == null ? 1 : tint.redMultiplier;
+         var greenMul:Number = tint == null ? 1 : tint.greenMultiplier;
+         var blueMul:Number = tint == null ? 1 : tint.blueMultiplier;
+         var cell:int = 4;
+         var painted:Boolean = false;
          var y:int = 0;
-         while(y < height)
+         var x:int = 0;
+         var cellW:int = 0;
+         var cellH:int = 0;
+         var py:int = 0;
+         var px:int = 0;
+         var count:int = 0;
+         var alphaSum:Number = 0;
+         var redSum:Number = 0;
+         var greenSum:Number = 0;
+         var blueSum:Number = 0;
+         var argb:uint = 0;
+         var alpha:Number = 0;
+         var red:int = 0;
+         var green:int = 0;
+         var blue:int = 0;
+         var piece:Shape = null;
+         while(y < pixelHeight)
          {
-            var x:int = 0;
-            var row:int = y * width;
-            while(x < width)
+            cellH = pixelHeight - y;
+            if(cellH > cell) cellH = cell;
+            x = 0;
+            while(x < pixelWidth)
             {
-               pixels.position = (row + x) << 2;
-               var argb:uint = pixels.readUnsignedInt();
-               var run:int = 1;
-               while(x + run < width)
+               cellW = pixelWidth - x;
+               if(cellW > cell) cellW = cell;
+               alphaSum = 0;
+               redSum = 0;
+               greenSum = 0;
+               blueSum = 0;
+               count = 0;
+               py = 0;
+               while(py < cellH)
                {
-                  pixels.position = (row + x + run) << 2;
-                  if(pixels.readUnsignedInt() != argb) break;
-                  run++;
+                  px = 0;
+                  while(px < cellW)
+                  {
+                     pixels.position = ((y + py) * pixelWidth + (x + px)) << 2;
+                     argb = pixels.readUnsignedInt();
+                     alphaSum += (argb >>> 24) & 255;
+                     redSum += (argb >>> 16) & 255;
+                     greenSum += (argb >>> 8) & 255;
+                     blueSum += argb & 255;
+                     count++;
+                     px++;
+                  }
+                  py++;
                }
-               var alpha:int = (argb >>> 24) & 255;
+               alpha = count < 1 ? 0 : alphaSum / count / 255;
                if(alpha > 0)
                {
-                  shape.graphics.beginFill(argb & 0xFFFFFF,alpha / 255);
-                  shape.graphics.drawRect(x,y,run,1);
-                  shape.graphics.endFill();
+                  red = int(redSum / count * redMul);
+                  green = int(greenSum / count * greenMul);
+                  blue = int(blueSum / count * blueMul);
+                  if(red < 0) red = 0;
+                  else if(red > 255) red = 255;
+                  if(green < 0) green = 0;
+                  else if(green > 255) green = 255;
+                  if(blue < 0) blue = 0;
+                  else if(blue > 255) blue = 255;
+                  piece = new Shape();
+                  piece.x = originX + x * destWidth / pixelWidth;
+                  piece.y = originY + y * destHeight / pixelHeight;
+                  piece.graphics.beginFill((red << 16) | (green << 8) | blue,alpha);
+                  piece.graphics.drawRect(0,0,cellW * destWidth / pixelWidth,cellH * destHeight / pixelHeight);
+                  piece.graphics.endFill();
+                  parent.addChild(piece);
+                  painted = true;
                }
-               x += run;
+               x += cellW;
             }
-            y++;
+            y += cellH;
          }
-         return shape;
-      }
-
-      private static function sampleMatches(result:BitmapData, width:int, height:int, pixels:ByteArray) : Boolean
-      {
-         pixels.endian = Endian.BIG_ENDIAN;
-         var index:int = 0;
-         var count:int = width * height;
-         while(index < count)
-         {
-            pixels.position = index << 2;
-            var argb:uint = pixels.readUnsignedInt();
-            if(((argb >>> 24) & 255) > 16)
-            {
-               var actual:uint = result.getPixel32(index % width,int(index / width));
-               var expectedAlpha:int = (argb >>> 24) & 255;
-               var actualAlpha:int = (actual >>> 24) & 255;
-               return actualAlpha > 0 && Math.abs(actualAlpha - expectedAlpha) < 24;
-            }
-            index++;
-         }
-         return true;
+         return painted;
       }
 
       private static function readCode(bytes:ByteArray) : String
