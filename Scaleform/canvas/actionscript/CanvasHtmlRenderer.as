@@ -806,9 +806,11 @@ package
          sprite.visible = param1.style["visibility"] != "hidden";
          sprite.alpha = Number(param1.style["opacity"]);
          if(param1.style["overflow"] == "hidden") sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
+         // A reused panel keeps its text and meters. The plate is still drawn below, on this pass's sprite, because the last host left it on the translucent image and it never showed.
          if(CanvasHtmlRetainedTree.canDraw(param1))
          {
             param1.drawReused = true;
+            this.paintPlates(param1,sprite);
             return;
          }
          sprite.graphics.clear();
@@ -850,8 +852,6 @@ package
                this.reject("invalid-meter",node.resource);
             sprite.addChild(meter);
          }
-         var plateResource:CanvasHtmlResource = param1.ddsResource as CanvasHtmlResource;
-         if(plateResource != null) plateResource.showPlate(sprite,Number(param1.ddsX),Number(param1.ddsY),Number(param1.ddsWidth),Number(param1.ddsHeight),param1.ddsTint as ColorTransform);
          if(node.name == "li" && param1.parent != null)
          {
             var parentName:String = CanvasHtmlNode(param1.parent.node).name;
@@ -868,6 +868,26 @@ package
             marker.x = Number(param1.border) + Number(param1.paddingLeft);
             marker.y = Number(param1.border) + Number(param1.paddingTop);
             sprite.addChild(marker);
+         }
+         this.paintPlates(param1,sprite);
+      }
+
+      // The image sprite stays at the theme opacity. This player did not show shape children there. The fill is a sibling behind the panel text, and the opacity is already in the fill.
+      private function paintPlates(param1:Object, sprite:Sprite) : void
+      {
+         var plateChildren:Array = param1.children as Array;
+         var plateIndex:int = plateChildren.length - 1;
+         while(plateIndex >= 0)
+         {
+            var plateBox:Object = plateChildren[plateIndex];
+            plateIndex--;
+            var plateResource:CanvasHtmlResource = plateBox.ddsResource as CanvasHtmlResource;
+            if(plateResource == null || plateBox.style["visibility"] == "hidden") continue;
+            var plateOpacity:Number = Number(plateBox.style["opacity"]);
+            if(!(plateOpacity > 0)) continue;
+            var plateSprite:Sprite = plateBox.sprite as Sprite;
+            if(plateSprite == null) continue;
+            plateResource.showPlate(sprite,plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
          }
       }
 

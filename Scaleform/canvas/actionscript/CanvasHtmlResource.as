@@ -68,15 +68,15 @@ package
          this.loader = source;
       }
 
-      // Called from the panel draw pass, after that pass clears the previous plate. The log size is the on-screen box, not only the texture.
-      public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform) : void
+      // Called from the panel that contains the image, after that pass clears the previous plate. Opacity is baked into the fill.
+      public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform, opacity:Number) : void
       {
          if(sprite == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return;
-         if(!(width > 0) || !(height > 0)) return;
-         var showed:Boolean = CanvasDdsDecoder.paintPlate(sprite,this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint);
+         if(!(width > 0) || !(height > 0) || !(opacity > 0)) return;
+         var showed:Boolean = CanvasDdsDecoder.paintPlate(sprite,this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint,opacity);
          if(this.reportedShow) return;
          this.reportedShow = true;
-         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(width) + "x" + int(height));
+         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(width) + "x" + int(height) + " opacity " + opacity);
          else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
       }
 
