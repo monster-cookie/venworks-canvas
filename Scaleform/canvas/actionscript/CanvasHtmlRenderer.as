@@ -806,15 +806,15 @@ package
          sprite.visible = param1.style["visibility"] != "hidden";
          sprite.alpha = Number(param1.style["opacity"]);
          if(param1.style["overflow"] == "hidden") sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
-         // A reused panel keeps its text and meters. The plate is still drawn below, on this pass's sprite, because the last host left it on the translucent image and it never showed.
+         // A reused panel keeps the fills already on its displayed sprite. A new child drawn on this pass is thrown away.
          if(CanvasHtmlRetainedTree.canDraw(param1))
          {
             param1.drawReused = true;
-            this.paintPlates(param1,sprite);
             return;
          }
          sprite.graphics.clear();
          this.clearStagePaint(sprite);
+         this.paintPlates(param1,sprite);
          if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
             this.paintFill(sprite,0,0,Number(param1.width),Number(param1.height),uint(background.color),Number(background.alpha));
@@ -869,10 +869,9 @@ package
             marker.y = Number(param1.border) + Number(param1.paddingTop);
             sprite.addChild(marker);
          }
-         this.paintPlates(param1,sprite);
       }
 
-      // The image sprite stays at the theme opacity. This player did not show shape children there. The fill is a sibling behind the panel text, and the opacity is already in the fill.
+      // Same fill as the other HUD backgrounds, on the panel, and only on a real draw so the refresh keeps it.
       private function paintPlates(param1:Object, sprite:Sprite) : void
       {
          var plateChildren:Array = param1.children as Array;
@@ -887,7 +886,15 @@ package
             if(!(plateOpacity > 0)) continue;
             var plateSprite:Sprite = plateBox.sprite as Sprite;
             if(plateSprite == null) continue;
-            plateResource.showPlate(sprite,plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
+            var plateRects:Array = plateResource.showPlate(sprite,plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
+            if(plateRects == null) continue;
+            var rectIndex:int = 0;
+            while(rectIndex < plateRects.length)
+            {
+               var plateRect:Array = plateRects[rectIndex] as Array;
+               rectIndex++;
+               this.paintFill(sprite,Number(plateRect[0]),Number(plateRect[1]),Number(plateRect[2]),Number(plateRect[3]),uint(plateRect[4]),Number(plateRect[5]));
+            }
          }
       }
 

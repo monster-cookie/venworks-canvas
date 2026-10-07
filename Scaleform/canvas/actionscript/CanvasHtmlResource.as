@@ -68,16 +68,17 @@ package
          this.loader = source;
       }
 
-      // Called from the panel that contains the image, after that pass clears the previous plate. Opacity is baked into the fill.
-      public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform, opacity:Number) : void
+      // Returns the cells for the panel fill. The renderer paints them. Opacity is already in each cell.
+      public function showPlate(sprite:Sprite, x:Number, y:Number, width:Number, height:Number, tint:ColorTransform, opacity:Number) : Array
       {
-         if(sprite == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return;
-         if(!(width > 0) || !(height > 0) || !(opacity > 0)) return;
-         var showed:Boolean = CanvasDdsDecoder.paintPlate(sprite,this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint,opacity);
-         if(this.reportedShow) return;
+         if(sprite == null || this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return null;
+         if(!(width > 0) || !(height > 0) || !(opacity > 0)) return null;
+         var rects:Array = CanvasDdsDecoder.plateRects(this.pixels,this.pixelWidth,this.pixelHeight,x,y,width,height,tint,opacity);
+         if(this.reportedShow) return rects;
          this.reportedShow = true;
-         if(showed) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(width) + "x" + int(height) + " opacity " + opacity);
+         if(rects != null) this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(width) + "x" + int(height) + " opacity " + opacity + " fill");
          else this.reportPlate("VWCANVAS TEX SHOW FAIL | " + this.path);
+         return rects;
       }
 
       // Formats this movie cannot decode still use the archive URL the document loader already resolved. The bitmap is sized by the caller because assigning bitmapData resets width and height.

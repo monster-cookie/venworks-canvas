@@ -1,12 +1,10 @@
 package
 {
-   import flash.display.Shape;
-   import flash.display.Sprite;
    import flash.geom.ColorTransform;
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player does not keep setPixel32 or BitmapData.draw. Shapes on the plate sprite did not show. The plate is one meter-style fill on the panel, and the CSS opacity is baked into that fill.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player does not keep setPixel32 or BitmapData.draw. A shape named CanvasPlate was logged at the panel size and did not stay on screen. The plate rects are drawn with the same fill as the other HUD backgrounds.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -168,19 +166,17 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      // One shape, sixteen fills, drawn like a meter. Opacity is baked in because the plate sprite's own alpha hid the shapes. The shape is inserted behind the panel's text.
-      public static function paintPlate(parent:Sprite, pixels:ByteArray, pixelWidth:int, pixelHeight:int, originX:Number, originY:Number, destWidth:Number, destHeight:Number, tint:ColorTransform, opacity:Number) : Boolean
+      // Sixteen cells. The caller paints each one with the HUD background fill. Opacity is baked in because the image sprite is the translucent one.
+      public static function plateRects(pixels:ByteArray, pixelWidth:int, pixelHeight:int, originX:Number, originY:Number, destWidth:Number, destHeight:Number, tint:ColorTransform, opacity:Number) : Array
       {
-         if(parent == null || pixels == null || pixelWidth < 1 || pixelHeight < 1 || pixels.length < pixelWidth * pixelHeight * 4) return false;
-         if(!(destWidth > 0) || !(destHeight > 0) || !(opacity > 0)) return false;
+         if(pixels == null || pixelWidth < 1 || pixelHeight < 1 || pixels.length < pixelWidth * pixelHeight * 4) return null;
+         if(!(destWidth > 0) || !(destHeight > 0) || !(opacity > 0)) return null;
          pixels.endian = Endian.BIG_ENDIAN;
          var redMul:Number = tint == null ? 1 : tint.redMultiplier;
          var greenMul:Number = tint == null ? 1 : tint.greenMultiplier;
          var blueMul:Number = tint == null ? 1 : tint.blueMultiplier;
          var cell:int = 16;
-         var plate:Shape = new Shape();
-         plate.name = "CanvasPlate";
-         var painted:Boolean = false;
+         var rects:Array = [];
          var y:int = 0;
          var x:int = 0;
          var cellW:int = 0;
@@ -201,7 +197,7 @@ package
          var rectY:Number = 0;
          var rectW:Number = 0;
          var rectH:Number = 0;
-         var rect:Array = null;
+         var color:uint = 0;
          while(y < pixelHeight)
          {
             cellH = pixelHeight - y;
@@ -249,22 +245,17 @@ package
                   rectY = originY + y * destHeight / pixelHeight;
                   rectW = cellW * destWidth / pixelWidth;
                   rectH = cellH * destHeight / pixelHeight;
-                  rect = CanvasStageGuard.rectangle(rectX,rectY,rectW,rectH);
-                  if(Number(rect[2]) > 0 && Number(rect[3]) > 0)
+                  if(rectW > 0 && rectH > 0)
                   {
-                     plate.graphics.beginFill((red << 16) | (green << 8) | blue,alpha);
-                     plate.graphics.drawRect(Number(rect[0]),Number(rect[1]),Number(rect[2]),Number(rect[3]));
-                     plate.graphics.endFill();
-                     painted = true;
+                     color = (red << 16) | (green << 8) | blue;
+                     rects.push([rectX,rectY,rectW,rectH,color,alpha]);
                   }
                }
                x += cellW;
             }
             y += cellH;
          }
-         if(!painted) return false;
-         parent.addChildAt(plate,0);
-         return true;
+         return rects.length > 0 ? rects : null;
       }
 
       private static function readCode(bytes:ByteArray) : String
