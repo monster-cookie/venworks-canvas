@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and drawn with the same fill as the other HUD backgrounds. The smoke opacity is part of that fill. The 2026-10-07 05:05 playtest logged a panel shape at 408 by 747 with opacity 0.44, and the panels stayed flat because that shape was replaced on the next refresh. Per-pixel bitmap writes did not stick. A plate that fails to load records the file name and the read error.
+- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and shown as a bitmap after its sprite joins the screen. The 2026-10-08 03:48 playtest logged the panel fill at 408 by 747 with opacity 0.44, and the panels stayed flat. Per-pixel setPixel32 and BitmapData.draw did not stick. A plate that fails to load records the file name and the read error.
 
 ## Version 1.0.5 (October 3, 2026)
 

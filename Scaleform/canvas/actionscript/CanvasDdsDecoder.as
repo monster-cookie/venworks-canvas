@@ -4,7 +4,7 @@ package
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player does not keep setPixel32 or BitmapData.draw. A shape named CanvasPlate was logged at the panel size and did not stay on screen. The plate rects are drawn with the same fill as the other HUD backgrounds.
+   // Mip 0 only. Uncompressed A8R8G8B8 and DXT1/DXT5 are returned as pixels. This player does not keep setPixel32 or BitmapData.draw. Layout fills were logged and did not stay on screen. The plate bitmap is created after the sprite joins the stage.
    public final class CanvasDdsDecoder
    {
       private static const MAX_DIMENSION:int = 1024;
@@ -166,7 +166,7 @@ package
          return (alpha << 24) | (red << 16) | (green << 8) | blue;
       }
 
-      // Sixteen cells. The caller paints each one with the HUD background fill. Opacity is baked in because the image sprite is the translucent one.
+      // Kept for the cell math. The plate no longer draws these cells. The 2026-10-08 playtest logged that fill and the panels stayed flat.
       public static function plateRects(pixels:ByteArray, pixelWidth:int, pixelHeight:int, originX:Number, originY:Number, destWidth:Number, destHeight:Number, tint:ColorTransform, opacity:Number) : Array
       {
          if(pixels == null || pixelWidth < 1 || pixelHeight < 1 || pixels.length < pixelWidth * pixelHeight * 4) return null;

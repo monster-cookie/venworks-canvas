@@ -871,7 +871,7 @@ package
          }
       }
 
-      // Same fill as the other HUD backgrounds, on the panel, and only on a real draw so the refresh keeps it.
+      // A bitmap sprite, kept with the other panel fills. It paints itself once it is on the stage.
       private function paintPlates(param1:Object, sprite:Sprite) : void
       {
          var plateChildren:Array = param1.children as Array;
@@ -886,15 +886,8 @@ package
             if(!(plateOpacity > 0)) continue;
             var plateSprite:Sprite = plateBox.sprite as Sprite;
             if(plateSprite == null) continue;
-            var plateRects:Array = plateResource.showPlate(sprite,plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
-            if(plateRects == null) continue;
-            var rectIndex:int = 0;
-            while(rectIndex < plateRects.length)
-            {
-               var plateRect:Array = plateRects[rectIndex] as Array;
-               rectIndex++;
-               this.paintFill(sprite,Number(plateRect[0]),Number(plateRect[1]),Number(plateRect[2]),Number(plateRect[3]),uint(plateRect[4]),Number(plateRect[5]));
-            }
+            var plate:Sprite = plateResource.makePlate(plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
+            if(plate != null) sprite.addChild(plate);
          }
       }
 
