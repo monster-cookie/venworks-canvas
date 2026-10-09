@@ -1,9 +1,7 @@
 package
 {
-   import flash.display.Bitmap;
    import flash.display.Shape;
    import flash.display.Sprite;
-   import flash.geom.ColorTransform;
    import flash.geom.Rectangle;
    import flash.text.TextField;
    import flash.text.TextFormat;
@@ -101,21 +99,10 @@ package
             }
             if(node.name == "img")
             {
-               var imageResource:CanvasHtmlResource = this.resolveImageResource(node);
-               if(imageResource != null && imageResource.kind == "dds")
-               {
-                  var plateWidth:int = imageResource.pixelWidth > 0 ? imageResource.pixelWidth : (imageResource.image == null ? 0 : imageResource.image.width);
-                  var plateHeight:int = imageResource.pixelHeight > 0 ? imageResource.pixelHeight : (imageResource.image == null ? 0 : imageResource.image.height);
-                  if(plateWidth > 0 && style["width"] == "auto") style["width"] = String(plateWidth) + "px";
-                  if(plateHeight > 0 && style["height"] == "auto") style["height"] = String(plateHeight) + "px";
-               }
-               else
-               {
-                  var assetRoot:CanvasHtmlNode = this.resolveSvg(node);
-                  if(assetRoot == null) { this.reject("invalid-svg",this.resolveSvgResourcePath(node),"asset"); this.disposeDisplay(root == null ? null : root.sprite as Sprite); return null; }
-                  for each(var dimension:String in ["width","height"])
-                     if(style[dimension] == "auto" && assetRoot.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(assetRoot.getAttribute(dimension));
-               }
+               var assetRoot:CanvasHtmlNode = this.resolveSvg(node);
+               if(assetRoot == null) { this.reject("invalid-svg",this.resolveSvgResourcePath(node),"asset"); this.disposeDisplay(root == null ? null : root.sprite as Sprite); return null; }
+               for each(var dimension:String in ["width","height"])
+                  if(style[dimension] == "auto" && assetRoot.getAttribute(dimension) != null) style[dimension] = CanvasSvgGeometry.dimension(assetRoot.getAttribute(dimension));
             }
             if(node.type == CanvasHtmlNode.TEXT)
             {
@@ -323,12 +310,6 @@ package
                box.measureReused = true;
                box.contentHeight = box.previous.contentHeight;
                box.textNaturalWidth = box.previous.textNaturalWidth;
-               box.ddsResource = box.previous.ddsResource;
-               box.ddsX = box.previous.ddsX;
-               box.ddsY = box.previous.ddsY;
-               box.ddsWidth = box.previous.ddsWidth;
-               box.ddsHeight = box.previous.ddsHeight;
-               box.ddsTint = box.previous.ddsTint;
                continue;
             }
             if(node.type == CanvasHtmlNode.TEXT)
@@ -560,57 +541,15 @@ package
          {
             var resource:CanvasHtmlResource = this.resolveImageResource(param2);
             if(resource == null) return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
-            if(resource.kind == "dds") return this.measureDds(param1,resource);
          }
          return this.measureSvg(param1,param2);
-      }
-
-      private function measureDds(param1:Object, resource:CanvasHtmlResource) : Boolean
-      {
-         var width:Number = Math.max(1,Number(param1.innerWidth));
-         var sourceWidth:Number = resource.pixelWidth > 0 ? resource.pixelWidth : (resource.image == null ? 0 : resource.image.width);
-         var sourceHeight:Number = resource.pixelHeight > 0 ? resource.pixelHeight : (resource.image == null ? 0 : resource.image.height);
-         var height:Number = sourceWidth > 0 && sourceHeight > 0 ? width * sourceHeight / sourceWidth : width;
-         if(param1.style["height"] != "auto")
-         {
-            height = Math.max(1,this.length(param1.style["height"],this.viewportHeight,height) - Number(param1.paddingTop) - Number(param1.paddingBottom) - Number(param1.border) * 2);
-         }
-         if(!this.isBoundedCoordinate(width) || !this.isBoundedCoordinate(height)) return this.reject("invalid-image",resource.path,"asset");
-         var drawWidth:Number = width;
-         var drawHeight:Number = height;
-         if(param1.style["object-fit"] == "contain" && sourceWidth > 0 && sourceHeight > 0)
-         {
-            var scale:Number = Math.min(width / sourceWidth,height / sourceHeight);
-            drawWidth = sourceWidth * scale;
-            drawHeight = sourceHeight * scale;
-         }
-         var own:Object = CanvasCssValue.parseColor(String(param1.style["color"]));
-         var parentBox:Object = param1.parent;
-         var inherited:Object = parentBox == null ? null : CanvasCssValue.parseColor(String(parentBox.style["color"]));
-         // A white DDS stays authored color unless this element sets its own CSS color. Opacity stays on the element.
-         var tint:ColorTransform = null;
-         if(own != null && (inherited == null || uint(own.color) != uint(inherited.color)))
-         {
-            tint = new ColorTransform();
-            tint.redMultiplier = ((uint(own.color) >> 16) & 255) / 255;
-            tint.greenMultiplier = ((uint(own.color) >> 8) & 255) / 255;
-            tint.blueMultiplier = (uint(own.color) & 255) / 255;
-         }
-         param1.ddsResource = resource;
-         param1.ddsX = Number(param1.border) + Number(param1.paddingLeft) + (width - drawWidth) / 2;
-         param1.ddsY = Number(param1.border) + Number(param1.paddingTop) + (height - drawHeight) / 2;
-         param1.ddsWidth = drawWidth;
-         param1.ddsHeight = drawHeight;
-         param1.ddsTint = tint;
-         param1.contentHeight = height;
-         return true;
       }
 
       private function resolveImageResource(param1:CanvasHtmlNode) : CanvasHtmlResource
       {
          var resolved:String = CanvasHtmlPath.resolve(param1.resource,param1.getAttribute("src"));
          var resource:CanvasHtmlResource = resolved == null ? null : this.resources[resolved] as CanvasHtmlResource;
-         return resource != null && (resource.kind == "svg" || resource.kind == "dds") ? resource : null;
+         return resource != null && resource.kind == "svg" ? resource : null;
       }
 
       private function measureSvg(param1:Object, param2:CanvasHtmlNode) : Boolean
@@ -814,7 +753,6 @@ package
          }
          sprite.graphics.clear();
          this.clearStagePaint(sprite);
-         this.paintPlates(param1,sprite);
          if(node.name != "vw-meter" && background != null && Number(background.alpha) > 0)
          {
             this.paintFill(sprite,0,0,Number(param1.width),Number(param1.height),uint(background.color),Number(background.alpha));
@@ -868,26 +806,6 @@ package
             marker.x = Number(param1.border) + Number(param1.paddingLeft);
             marker.y = Number(param1.border) + Number(param1.paddingTop);
             sprite.addChild(marker);
-         }
-      }
-
-      // A bitmap sprite, kept with the other panel fills. It paints itself once it is on the stage.
-      private function paintPlates(param1:Object, sprite:Sprite) : void
-      {
-         var plateChildren:Array = param1.children as Array;
-         var plateIndex:int = plateChildren.length - 1;
-         while(plateIndex >= 0)
-         {
-            var plateBox:Object = plateChildren[plateIndex];
-            plateIndex--;
-            var plateResource:CanvasHtmlResource = plateBox.ddsResource as CanvasHtmlResource;
-            if(plateResource == null || plateBox.style["visibility"] == "hidden") continue;
-            var plateOpacity:Number = Number(plateBox.style["opacity"]);
-            if(!(plateOpacity > 0)) continue;
-            var plateSprite:Sprite = plateBox.sprite as Sprite;
-            if(plateSprite == null) continue;
-            var plate:Sprite = plateResource.makePlate(plateSprite.x + Number(plateBox.ddsX),plateSprite.y + Number(plateBox.ddsY),Number(plateBox.ddsWidth),Number(plateBox.ddsHeight),plateBox.ddsTint as ColorTransform,plateOpacity);
-            if(plate != null) sprite.addChild(plate);
          }
       }
 

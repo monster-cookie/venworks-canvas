@@ -135,10 +135,6 @@ package
          this.activeItem = this.pending.shift();
          delete this.pendingByPath[String(this.activeItem.path)];
          var requestPath:String = String(this.activeItem.path);
-         if(CanvasHtmlPath.getExtension(requestPath) == ".dds")
-         {
-            this.reportTexture("VWCANVAS TEX | " + requestPath);
-         }
          var loader:URLLoader = new URLLoader();
          loader.dataFormat = URLLoaderDataFormat.BINARY;
          loader.addEventListener(Event.COMPLETE,this.onLoadComplete,false,0,true);
@@ -153,47 +149,9 @@ package
          catch(loadError:*)
          {
             var failedPath:String = String(this.activeItem.path);
-            if(CanvasHtmlPath.getExtension(failedPath) == ".dds")
-            {
-               var loadText:String = failedPath + " | " + String(loadError);
-               this.reportTexture("VWCANVAS TEX FAIL | " + loadText);
-               if(loadText.length > 120) loadText = loadText.substr(0,120);
-               this.abortActiveLoader();
-               this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath,-1,loadText));
-            }
-            else
-            {
-               this.abortActiveLoader();
-               this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
-            }
+            this.abortActiveLoader();
+            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",failedPath));
          }
-      }
-
-      // The Flex build omits direct trace() calls. Calling through a variable keeps the plate log in the Scaleform output.
-      private function reportTexture(param1:String) : void
-      {
-         var writer:Function = trace;
-         writer(param1);
-      }
-
-      // Pixels stay on the resource. The plate is painted during layout with the other HUD graphics, not while this file callback is still running.
-      private function rememberPlate(bytes:ByteArray, item:Object) : Boolean
-      {
-         var dds:Object = CanvasDdsDecoder.read(bytes);
-         if(dds == null || dds.pixels == null || int(dds.width) < 1 || int(dds.height) < 1)
-         {
-            this.reportTexture("VWCANVAS TEX FAIL | " + String(item.path) + " | invalid-image | " + bytes.length);
-            this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-image",String(item.path)));
-            return false;
-         }
-         var ddsResource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),"dds","",bytes.length,null);
-         ddsResource.pixels = dds.pixels as ByteArray;
-         ddsResource.pixelWidth = int(dds.width);
-         ddsResource.pixelHeight = int(dds.height);
-         this.resources.push(ddsResource);
-         this.loadedPaths[String(item.path)] = true;
-         this.reportTexture("VWCANVAS TEX OK | " + String(item.path) + " | " + bytes.length);
-         return true;
       }
 
       private function onLoadComplete(param1:Event) : void
@@ -229,14 +187,7 @@ package
                return;
             }
             this.aggregateBytes += bytes.length;
-            if(extension == ".dds")
-            {
-               if(!this.rememberPlate(bytes,item)) return;
-               advance = true;
-            }
-            else
-            {
-               var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
+            var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
                if(!decoded.success)
                {
                   this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
@@ -289,7 +240,6 @@ package
                   return;
                }
                advance = true;
-            }
          }
          catch(processError:*)
          {
@@ -328,7 +278,7 @@ package
          {
             resolved = CanvasHtmlPath.resolve(String(param1.path),reference.path);
             expectedExtension = reference.kind == CanvasHtmlReference.INCLUDE ? ".html" : reference.kind == CanvasHtmlReference.STYLESHEET ? ".css" : CanvasHtmlPath.getExtension(reference.path);
-            if(reference.kind == CanvasHtmlReference.IMAGE && expectedExtension != ".svg" && expectedExtension != ".dds")
+            if(reference.kind == CanvasHtmlReference.IMAGE && expectedExtension != ".svg")
             {
                expectedExtension = null;
             }
@@ -564,26 +514,8 @@ package
             return;
          }
          var resource:String = String(this.activeItem.path);
-         if(CanvasHtmlPath.getExtension(resource) != ".dds")
-         {
-            this.abortActiveLoader();
-            this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource));
-            return;
-         }
-         var detail:String = resource;
-         var errorText:String = "";
-         var ioError:IOErrorEvent = param1 as IOErrorEvent;
-         if(ioError != null) errorText = String(ioError.text);
-         else
-         {
-            var securityError:SecurityErrorEvent = param1 as SecurityErrorEvent;
-            if(securityError != null) errorText = String(securityError.text);
-         }
-         if(errorText != null && errorText.length > 0) detail = detail + " | " + errorText;
-         this.reportTexture("VWCANVAS TEX FAIL | " + detail);
-         if(detail.length > 120) detail = detail.substr(0,120);
          this.abortActiveLoader();
-         this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource,-1,detail));
+         this.finishFailure(new CanvasHtmlDiagnostic("load","resource-unavailable",resource));
       }
 
       private function isCurrentEvent(param1:Event) : Boolean

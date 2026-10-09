@@ -8,10 +8,7 @@ package
    import flash.events.Event;
    import flash.events.IOErrorEvent;
    import flash.events.SecurityErrorEvent;
-   import flash.geom.ColorTransform;
    import flash.net.URLRequest;
-   import flash.utils.ByteArray;
-   import flash.utils.Endian;
 
    public final class CanvasHtmlResource
    {
@@ -27,12 +24,6 @@ package
 
       public var image:BitmapData;
 
-      public var pixels:ByteArray;
-
-      public var pixelWidth:int;
-
-      public var pixelHeight:int;
-
       public var location:String;
 
       public var loading:Boolean;
@@ -43,8 +34,6 @@ package
 
       private var ownsImage:Boolean;
 
-      private var reportedShow:Boolean;
-
       public function CanvasHtmlResource(param1:String, param2:String, param3:String, param4:int, param5:CanvasHtmlDocument = null)
       {
          this.path = param1;
@@ -54,49 +43,9 @@ package
          this.document = param5;
       }
 
-      public function takePlate(image:BitmapData, width:int, height:int, owned:Boolean) : void
-      {
-         if(this.ownsImage && this.image != null && this.image != image) this.image.dispose();
-         this.image = image;
-         this.pixelWidth = width;
-         this.pixelHeight = height;
-         this.ownsImage = owned;
-         this.pixels = null;
-      }
-
       public function holdLoader(source:Loader) : void
       {
          this.loader = source;
-      }
-
-      // The sprite writes its bitmap after it joins the stage. Opacity is baked into those pixels.
-      public function makePlate(x:Number, y:Number, width:Number, height:Number, tint:ColorTransform, opacity:Number) : Sprite
-      {
-         if(this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1) return null;
-         if(!(width > 0) || !(height > 0) || !(opacity > 0)) return null;
-         var plate:CanvasHtmlPlate = new CanvasHtmlPlate(this.pixels,this.pixelWidth,this.pixelHeight,width,height,tint,opacity);
-         plate.x = x;
-         plate.y = y;
-         if(this.reportedShow) return plate;
-         this.reportedShow = true;
-         this.reportPlate("VWCANVAS TEX SHOW | " + this.path + " | " + this.pixelWidth + "x" + this.pixelHeight + " at " + int(x) + "," + int(y) + " " + int(width) + "x" + int(height) + " opacity " + opacity + " bitmap alpha " + this.plateAlpha());
-         return plate;
-      }
-
-      private function plateAlpha() : int
-      {
-         var count:int = this.pixelWidth * this.pixelHeight;
-         if(this.pixels == null || count < 1 || this.pixels.length < count * 4) return 0;
-         this.pixels.endian = Endian.BIG_ENDIAN;
-         var total:Number = 0;
-         var index:int = 0;
-         while(index < count)
-         {
-            this.pixels.position = index << 2;
-            total += (this.pixels.readUnsignedInt() >>> 24) & 255;
-            index++;
-         }
-         return int(total / count);
       }
 
       // Formats this movie cannot decode still use the archive URL the document loader already resolved. The bitmap is sized by the caller because assigning bitmapData resets width and height.
@@ -135,7 +84,6 @@ package
          this.document = null;
          this.detachPlateFrames();
          this.location = null;
-         this.pixels = null;
          if(this.ownsImage && this.image != null) this.image.dispose();
          this.image = null;
          this.ownsImage = false;
@@ -179,12 +127,6 @@ package
          this.location = null;
          this.watchers = null;
          this.releaseLoader(true);
-      }
-
-      private function reportPlate(message:String) : void
-      {
-         var writer:Function = trace;
-         writer(message);
       }
 
       private function detachPlateFrames() : void
