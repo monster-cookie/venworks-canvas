@@ -2,7 +2,7 @@
 
 ## Version 1.0.6 (UNRELEASED)
 
-- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and shown as a bitmap after its sprite joins the screen. The 2026-10-08 03:48 playtest logged the panel fill at 408 by 747 with opacity 0.44, and the panels stayed flat. Per-pixel setPixel32 and BitmapData.draw did not stick. A plate that fails to load records the file name and the read error.
+- HUD themes can use DDS plate images. The plate is read with the theme's other interface files and shown as a bitmap after its sprite joins the screen. The 2026-10-09 00:53 playtest logged the plate at 312,0, 408 by 747, opacity 0.44, source alpha 140, then ArgumentError 2015 from a per-pixel fill. The upload is now one write of the whole image, with one full-bitmap fill if that write is rejected. A plate that fails to load records the file name and the read error.
 
 ## Version 1.0.5 (October 3, 2026)
 
