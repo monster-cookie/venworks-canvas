@@ -19,19 +19,21 @@ package
          return ["top-left","top-center","top-right","center-left","center","center-right","bottom-left","bottom-center","bottom-right"].indexOf(value) >= 0;
       }
 
-      public static function apply(box:Object, safe:Rectangle) : Boolean
+      public static function apply(box:Object, safe:Rectangle, designScale:Number = 1) : Boolean
       {
          var sprite:Sprite = box.sprite as Sprite;
          var matrix:Matrix = parse(String(box.style["transform"]));
          if(matrix == null) return false;
+         if(!isFinite(designScale) || designScale <= 0) designScale = 1;
          var node:CanvasHtmlNode = box.node as CanvasHtmlNode;
          var presentation:Object = node.presentation;
          if(presentation != null)
          {
             matrix.scale(Number(presentation.scale),Number(presentation.scale));
             matrix.rotate(Number(presentation.rotation)*Math.PI/180);
-            matrix.tx += Number(presentation.x);
-            matrix.ty += Number(presentation.y);
+            // data-vw-x and data-vw-y stay in 1920x1080 design pixels. CSS boxes are already in viewport pixels.
+            matrix.tx += Number(presentation.x) * designScale;
+            matrix.ty += Number(presentation.y) * designScale;
             sprite.alpha *= Number(presentation.opacity);
          }
          matrix.tx += sprite.x; matrix.ty += sprite.y;

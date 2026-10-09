@@ -1,5 +1,9 @@
 # Venworks Canvas and UI Data Layer
 
+## Version 1.0.6 (UNRELEASED)
+
+- HUD panel washes are SVG fills in the theme. This build no longer decodes DDS plate images, because this player does not draw a bitmap the HUD builds at runtime.
+
 ## Version 1.0.5 (October 3, 2026)
 
 - The Player HUD now shows a boot animation until the first HUD panel is ready.

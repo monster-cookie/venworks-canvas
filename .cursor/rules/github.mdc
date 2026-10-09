@@ -1,0 +1,6 @@
+---
+description: Venworks Canvas GitHub App connection and commit identity
+alwaysApply: true
+---
+
+@.grok/rules/github.md

@@ -1712,7 +1712,7 @@ package
          if(param2 == null || !param2.success)
          {
             var detail:String = param2 == null || param2.diagnostic == null ? "missing terminal result" : param2.diagnostic.toString();
-            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,100));
+            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,180));
             this.unloadConsumer(param1);
             return;
          }
