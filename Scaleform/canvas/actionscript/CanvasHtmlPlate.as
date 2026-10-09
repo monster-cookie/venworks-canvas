@@ -8,7 +8,7 @@ package
    import flash.utils.ByteArray;
    import flash.utils.Endian;
 
-   // Built when the sprite joins the stage. A 1-pixel fillRect threw ArgumentError 2015. The working fills cover the whole bitmap.
+   // Built when the sprite joins the stage. Assigning bitmap width threw TypeError 2077, the filter-parameter error. The sprite scale covers the plate.
    public final class CanvasHtmlPlate extends Sprite
    {
       private static var reported:Boolean = false;
@@ -41,6 +41,8 @@ package
 
       private var meanAlpha:int;
 
+      private var scaleNote:String = "scaled";
+
       public function CanvasHtmlPlate(pixels:ByteArray, pixelWidth:int, pixelHeight:int, plateWidth:Number, plateHeight:Number, tint:ColorTransform, opacity:Number)
       {
          this.pixels = pixels;
@@ -62,27 +64,62 @@ package
       private function onStage(event:Event) : void
       {
          if(event.target !== this || this.bitmap != null) return;
+         if(this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1 || this.pixels.length < this.pixelWidth * this.pixelHeight * 4)
+         {
+            this.report("VWCANVAS TEX BITMAP FAIL | short");
+            return;
+         }
          try
          {
-            if(this.pixels == null || this.pixelWidth < 1 || this.pixelHeight < 1 || this.pixels.length < this.pixelWidth * this.pixelHeight * 4)
-            {
-               this.report("VWCANVAS TEX BITMAP FAIL | short");
-               return;
-            }
             this.baked = this.bake();
-            var data:BitmapData = new BitmapData(this.pixelWidth,this.pixelHeight,true,0);
-            var view:Bitmap = new Bitmap(data,"auto",true);
-            view.width = this.plateWidth;
-            view.height = this.plateHeight;
-            this.image = data;
-            this.bitmap = view;
-            addChild(view);
-            addEventListener(Event.ENTER_FRAME,this.onFrame);
          }
-         catch(error:*)
+         catch(bakeError:*)
          {
-            this.report("VWCANVAS TEX BITMAP FAIL | create " + String(error));
+            this.report("VWCANVAS TEX BITMAP FAIL | bake " + String(bakeError));
+            return;
          }
+         var data:BitmapData = null;
+         try
+         {
+            data = new BitmapData(this.pixelWidth,this.pixelHeight,true,0);
+         }
+         catch(dataError:*)
+         {
+            this.report("VWCANVAS TEX BITMAP FAIL | data " + String(dataError));
+            return;
+         }
+         var view:Bitmap = null;
+         try
+         {
+            view = new Bitmap(data,"auto",false);
+         }
+         catch(viewError:*)
+         {
+            data.dispose();
+            this.report("VWCANVAS TEX BITMAP FAIL | view " + String(viewError));
+            return;
+         }
+         this.image = data;
+         this.bitmap = view;
+         try
+         {
+            this.scaleX = this.plateWidth / this.pixelWidth;
+            this.scaleY = this.plateHeight / this.pixelHeight;
+         }
+         catch(scaleError:*)
+         {
+            this.scaleNote = "unscaled";
+         }
+         try
+         {
+            addChild(view);
+         }
+         catch(childError:*)
+         {
+            this.report("VWCANVAS TEX BITMAP FAIL | child " + String(childError));
+            return;
+         }
+         addEventListener(Event.ENTER_FRAME,this.onFrame);
       }
 
       private function onFrame(event:Event) : void
@@ -110,7 +147,7 @@ package
             }
          }
          this.baked = null;
-         this.report("VWCANVAS TEX BITMAP | " + this.pixelWidth + "x" + this.pixelHeight + " alpha " + this.meanAlpha + " pos " + int(this.x) + "," + int(this.y) + " " + mode);
+         this.report("VWCANVAS TEX BITMAP | " + this.pixelWidth + "x" + this.pixelHeight + " alpha " + this.meanAlpha + " pos " + int(this.x) + "," + int(this.y) + " " + this.scaleNote + " " + mode);
       }
 
       private function bake() : ByteArray
