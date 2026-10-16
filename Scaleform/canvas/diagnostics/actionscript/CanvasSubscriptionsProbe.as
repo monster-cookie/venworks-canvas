@@ -165,7 +165,7 @@ package
          this.assertRejectedBeforeProvider([
             "LocalEnvironmentData","LocalEnvData_Frequent","PlayerData","PlayerFrequentData","PlayerInventoryData","WeaponData",
             "HudJetpackData","HUDStarbornPowersData","FavoritesData","ControlMapData","EnvironmentEffectsData","PersonalEffectsData",
-            "StarmapSystemBodyInfoProvider","HudCompassData","HudCrosshairData","HUDStealthData","HUDVehicleData","HUDOpacityData","PlayerData"
+            "StarmapSystemBodyInfoProvider","HudCompassData","HudCrosshairData","HUDStealthData","HUDVehicleData","HUDOpacityData","QuestUpdateData","PlayerData"
          ],[],"over-limit channel request");
       }
 

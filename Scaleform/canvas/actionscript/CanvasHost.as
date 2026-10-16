@@ -57,7 +57,7 @@ package
 
       private static const MAX_HOST_CONTRACT_VERSION:int = 3;
 
-      private static const MAX_UI_CHANNELS:int = 18;
+      private static const MAX_UI_CHANNELS:int = 19;
 
       private static const MAX_EVENT_TOPICS:int = 16;
 
