@@ -29,6 +29,7 @@ package
          }
          var fillOpacity:Number = param1.getAttribute("fill-opacity") == null ? 1 : Number(param1.getAttribute("fill-opacity"));
          var strokeOpacity:Number = param1.getAttribute("stroke-opacity") == null ? 1 : Number(param1.getAttribute("stroke-opacity"));
+         var openedFill:Boolean = false;
          if(!isFinite(fillOpacity+strokeOpacity) || fillOpacity < 0 || fillOpacity > 1 || strokeOpacity < 0 || strokeOpacity > 1) return false;
          fill = {color:fill.color,alpha:Number(fill.alpha)*fillOpacity};
          stroke = {color:stroke.color,alpha:Number(stroke.alpha)*strokeOpacity};
@@ -65,6 +66,7 @@ package
                return false;
             }
             param2.beginFill(uint(fill.color),Number(fill.alpha));
+            openedFill = true;
          }
          var minX:Number = Number(param3[0]);
          var minY:Number = Number(param3[1]);
@@ -265,7 +267,7 @@ package
             }
             previous = upper;
          }
-         if(fill.alpha > 0)
+         if(openedFill)
          {
             if(param7(1) !== true)
             {

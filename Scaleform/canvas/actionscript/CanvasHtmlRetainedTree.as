@@ -117,7 +117,12 @@ package
                   {
                      display = retained.getChildAt(j);
                      if(oldChildren[display]) continue;
-                     if(box.measureReused || box.drawReused && CanvasHtmlNode(box.node).type != CanvasHtmlNode.TEXT && ["svg","img","vw-symbol"].indexOf(CanvasHtmlNode(box.node).name) < 0) own.push(display);
+                     // Background fills stay for a reused draw. A plate is redrawn on the candidate every pass, so the previous copy has to go or the wash stacks.
+                     if(display.name == "CanvasStagePaint")
+                     {
+                        if(box.drawReused) own.push(display);
+                     }
+                     else if(display.name != "CanvasPlate" && (box.measureReused || box.drawReused && CanvasHtmlNode(box.node).type != CanvasHtmlNode.TEXT && ["svg","img","vw-symbol"].indexOf(CanvasHtmlNode(box.node).name) < 0)) own.push(display);
                   }
                }
                if(!box.measureReused && box.textField != null && old.textField != null)

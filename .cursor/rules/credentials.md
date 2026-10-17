@@ -1,0 +1,7 @@
+# Credential setup
+
+Use each service's connection / credential source entry in the GitHub and Linear rules to identify its managed connection or selected credential manager. These are non-secret configuration descriptions, not executable login commands or credential values. Keep private credential selectors and authentication state in protected local configuration and follow the shared [identity boundaries](../../AGENTS.md#external-tools-and-identities). Credential-manager setup is needed only when an authorized operation cannot use an existing verified connection.
+
+For a service using Proton Pass CLI (`pass-cli`), the bootstrap credential is the protected `PROTON_PASS_PERSONAL_ACCESS_TOKEN` environment variable supplied by local setup. It is separate from the downstream service credential and must never be stored as a Proton Pass item or represented by a `pass://` reference. The service's expected identity in those rules names the downstream account or app, not the credential-manager session. Optional token-name metadata is not a prerequisite for a healthy session.
+
+For authorized setup or recovery, consult the installed CLI's help and current provider documentation, such as the [Proton Pass CLI documentation](https://protonpass.github.io/pass-cli/). Use task-owned session state without logging out or changing the user's default session. Detailed login, credential-transfer, and cleanup commands depend on the selected tool and local setup; they are not part of the mod-development workflow.
