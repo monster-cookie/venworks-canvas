@@ -4,7 +4,7 @@ package
    {
       private static const MAX_CONSUMERS:int = 32;
 
-      private static const MAX_UI_CHANNELS:int = 19;
+      private static const MAX_UI_CHANNELS:int = 20;
 
       private static const MAX_EVENT_TOPICS:int = 16;
 
@@ -480,6 +480,15 @@ package
             }
             catch(questCopyError:*) {}
          }
+         else if(param1 == "QuestData")
+         {
+            try
+            {
+               var missionPlain:Object = this.copyCompassData(snapshot,0,QUEST_DATA_FIELDS);
+               if(missionPlain != null) snapshot = missionPlain;
+            }
+            catch(missionCopyError:*) {}
+         }
          this.channelSnapshots[param1] = snapshot;
          this.channelHasSnapshot[param1] = true;
          var recipients:Array = registered.concat();
@@ -733,6 +742,7 @@ package
 
       private static const COMPASS_FIELDS:Array = ["fDirection","aMarkers","aMissionMarkers","aEnemyMarkers","uiHandle","fHeading","fDistance","fDistanceToPlayer","fDistanceAlpha","fDistanceScale","uiMarkerIconType","uMapMarkerType","uMapMarkerCategory","uLocationMarkerState","uiRelativeMarkerHeightType","uiMapMarkerSubCategoryType","sEffectIcon","bIsNear","strText","bShouldShowText"];
       private static const QUEST_UPDATE_FIELDS:Array = ["QuestUpdatesA","strQuestName","uQuestID","uType","bActiveQuest","bAlwaysUp","ObjectiveDataA","strObjectiveText","uID","bCompleted","bFailed","bDormant"];
+      private static const QUEST_DATA_FIELDS:Array = ["aQuests","sName","bActive","bComplete","aObjectives","uID"];
 
       // The consumer movie cannot read sealed compass fields, so the icon type arrives as 0 and the strip draws dots. Copy them here, in the HUD movie, before delivery.
       private function copyCompassData(value:*, depth:int, fields:Array) : *
@@ -808,7 +818,7 @@ package
 
       private function isAllowedUiChannel(param1:String) : Boolean
       {
-         return param1 == "LocalEnvironmentData" || param1 == "LocalEnvData_Frequent" || param1 == "PlayerData" || param1 == "PlayerFrequentData" || param1 == "PlayerInventoryData" || param1 == "WeaponData" || param1 == "HudJetpackData" || param1 == "HUDStarbornPowersData" || param1 == "FavoritesData" || param1 == "ControlMapData" || param1 == "EnvironmentEffectsData" || param1 == "PersonalEffectsData" || param1 == "StarmapSystemBodyInfoProvider" || param1 == "HudCompassData" || param1 == "HudCrosshairData" || param1 == "HUDStealthData" || param1 == "HUDVehicleData" || param1 == "HUDOpacityData" || param1 == "QuestUpdateData";
+         return param1 == "LocalEnvironmentData" || param1 == "LocalEnvData_Frequent" || param1 == "PlayerData" || param1 == "PlayerFrequentData" || param1 == "PlayerInventoryData" || param1 == "WeaponData" || param1 == "HudJetpackData" || param1 == "HUDStarbornPowersData" || param1 == "FavoritesData" || param1 == "ControlMapData" || param1 == "EnvironmentEffectsData" || param1 == "PersonalEffectsData" || param1 == "StarmapSystemBodyInfoProvider" || param1 == "HudCompassData" || param1 == "HudCrosshairData" || param1 == "HUDStealthData" || param1 == "HUDVehicleData" || param1 == "HUDOpacityData" || param1 == "QuestUpdateData" || param1 == "QuestData";
       }
 
       private function isEventTopicValid(param1:String) : Boolean
