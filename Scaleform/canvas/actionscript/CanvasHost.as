@@ -1959,6 +1959,7 @@ package
          if(this.isFailureDiagnostic(message))
          {
             this.diagnostics.visible = true;
+            trace("VWCANVAS " + message);
          }
       }
 
