@@ -208,6 +208,25 @@ These keys are the Gallery's view model, not automatic global variables availabl
 
 The Gallery calculates percentage keys from the matching current and maximum values and clamps each result to 0-100. The implementation is in [CanvasComponentGallery.as](../Scaleform/component-gallery/actionscript/CanvasComponentGallery.as).
 
+## Live quest placeholders
+
+The Gallery subscribes to `QuestData` and shows the quest the game is displaying. That is the last entry in `aQuests` whose `bActive` flag is true. `quest.title` is that quest's `sName`. `quest.waypoint` is the current waypoint title: the `sName` of an objective that is active, not complete, and not failed. When the following objective is optional with that one, and it is also current, the Gallery joins the two titles with ` | `. `quest.waypoints` lists every objective title on that quest. A title that is empty or longer than 256 characters is omitted. With no active quest, these rows are empty. This page does not include a capture of these rows; they show the tracked quest in the open save.
+
+| Gallery key | Syntax | Shown from the current save |
+| --- | --- | --- |
+| `quest.title` | `<p data-vw-text="quest.title"></p>` | The active quest title. |
+| `quest.waypoint` | `<p data-vw-text="quest.waypoint"></p>` | The current waypoint title. |
+| `quest.waypoints` | `<div data-vw-for-each="quest.waypoints" data-vw-text="item"></div>` | Each waypoint title on that quest. A text item exposes `item`. |
+| Quest template | `<p data-vw-template="{quest.title} \| {quest.waypoint}"></p>` | The quest title and the current waypoint title. |
+
+`bActive`, `bComplete`, `bFailed`, and `bORWithPrevious` choose which titles to show. They are not separate Gallery rows. The host keeps the first 64 quests and the first 64 objectives on each quest.
+
+| UI channel | Fields used by the Gallery |
+| --- | --- |
+| `QuestData` | `aQuests`, `sName`, `bActive`, `bComplete`, `bFailed`, `bORWithPrevious`, `aObjectives` |
+
+These keys belong to the Gallery view model. Request `QuestData` from `getCanvasRegistration()`, copy the titles into your own model, and publish the complete model with `setData`. The implementation is in [CanvasComponentGallery.as](../Scaleform/component-gallery/actionscript/CanvasComponentGallery.as).
+
 ## Supported scope
 
 Use the Gallery as the visible compatibility reference for Canvas's supported subset. Do not assume browser behavior, JavaScript, inline event handlers, forms, frames, navigation, remote resources, arbitrary ActionScript access, or unsupported CSS will work. Prefer small local documents, explicit dimensions, simple flex layouts, packaged SVG assets, and data supplied by the consumer bridge.

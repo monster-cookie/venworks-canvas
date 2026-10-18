@@ -742,14 +742,16 @@ package
 
       private static const COMPASS_FIELDS:Array = ["fDirection","aMarkers","aMissionMarkers","aEnemyMarkers","uiHandle","fHeading","fDistance","fDistanceToPlayer","fDistanceAlpha","fDistanceScale","uiMarkerIconType","uMapMarkerType","uMapMarkerCategory","uLocationMarkerState","uiRelativeMarkerHeightType","uiMapMarkerSubCategoryType","sEffectIcon","bIsNear","strText","bShouldShowText"];
       private static const QUEST_UPDATE_FIELDS:Array = ["QuestUpdatesA","strQuestName","uQuestID","uType","bActiveQuest","bAlwaysUp","ObjectiveDataA","strObjectiveText","uID","bCompleted","bFailed","bDormant"];
-      private static const QUEST_DATA_FIELDS:Array = ["aQuests","sName","bActive","bComplete","aObjectives","uID"];
+      private static const QUEST_DATA_FIELDS:Array = ["aQuests","sName","bActive","bComplete","bFailed","bORWithPrevious","aObjectives","uID"];
 
       // The consumer movie cannot read sealed compass fields, so the icon type arrives as 0 and the strip draws dots. Copy them here, in the HUD movie, before delivery.
       private function copyCompassData(value:*, depth:int, fields:Array) : *
       {
-         if(value == null || depth > 4) return null;
+         if(value == null) return null;
          var kind:String = typeof value;
+         // A waypoint title is a scalar on an objective that is already at the depth cap. Keep that scalar, and still refuse another nested object or array.
          if(kind == "number" || kind == "string" || kind == "boolean") return value;
+         if(depth > 4) return null;
          if(kind != "object") return null;
          if(this.isIndexCollection(value))
          {
