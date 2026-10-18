@@ -240,7 +240,11 @@ function Assert-BuildScaleformArchiveOwnership {
       if ([string]::IsNullOrWhiteSpace($source)) {
         throw "$($Variant.VariantKey) consumer archive has an empty Scaleform Source."
       }
-      $expectedTarget = "Interface/VenworksCanvas/Consumers/$consumerNamespace/$displayMode.swf"
+      $extension = [IO.Path]::GetExtension($target).ToLowerInvariant()
+      if ($extension -cnotin @('.swf', '.gfx')) {
+        throw "$($Variant.VariantKey) consumer Scaleform target '$target' must be a .swf or .gfx movie."
+      }
+      $expectedTarget = "Interface/VenworksCanvas/Consumers/$consumerNamespace/$displayMode$extension"
       if ($target -cne $expectedTarget) {
         throw "$($Variant.VariantKey) consumer Scaleform target '$target' must be '$expectedTarget'."
       }
@@ -254,14 +258,18 @@ function Assert-BuildScaleformArchiveOwnership {
       if ([string]$pair.Source -cne $source) {
         throw "$($Variant.VariantKey) consumer '$consumerNamespace' normal and large assets must use the same Scaleform Source."
       }
-      if (!$pair.Modes.Add($displayMode)) {
-        throw "$($Variant.VariantKey) consumer '$consumerNamespace' declares DisplayMode '$displayMode' more than once."
+      # Starfield's file opener requests the .gfx path even when the loader URL ends in .swf.
+      $modeKey = "$displayMode$extension"
+      if (!$pair.Modes.Add($modeKey)) {
+        throw "$($Variant.VariantKey) consumer '$consumerNamespace' declares $modeKey more than once."
       }
     }
     foreach ($consumerNamespace in $pairs.Keys) {
       $modes = $pairs[$consumerNamespace].Modes
-      if ($modes.Count -ne 2 -or !$modes.Contains('normal') -or !$modes.Contains('large')) {
-        throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare one normal and one large Scaleform asset from the same source."
+      foreach ($requiredMode in @('normal.swf', 'large.swf', 'normal.gfx', 'large.gfx')) {
+        if (!$modes.Contains($requiredMode)) {
+          throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare $requiredMode from the same source. Starfield opens the .gfx movie."
+        }
       }
     }
     if ($ownership -ceq 'ConsumerExtension') {

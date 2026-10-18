@@ -118,7 +118,7 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 3 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 12 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 7) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 if (@($configuredExample.ScaleformBuilds | Where-Object { [string]$_.Name -ceq 'subscriptions-probe' }).Count -ne 0 -or
@@ -186,11 +186,13 @@ foreach ($mapping in $configuredConsumerMappings) {
   $assets = @($mapping.Variant.Archives[0].Assets | Where-Object {
     $_ -is [Collections.IDictionary] -and $_.Contains('ConsumerNamespace') -and [string]$_['ConsumerNamespace'] -ceq $mapping.Namespace
   })
-  Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
-  Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
+  Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source, $mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
+  Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace, $mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
   Assert-TestNames -Actual @($assets.Target) -Expected @(
     "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/normal.swf"
     "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/large.swf"
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/normal.gfx"
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/large.gfx"
   ) -Description "$($mapping.Variant.VariantKey) normal/large consumer targets"
 }
 $unknownOwnershipArchive = @{} + $configuredExample.Archives[0]
@@ -296,6 +298,8 @@ try {
   $consumerAssets = @(
     @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'normal' }
     @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'large' }
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'normal' }
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'large' }
     @{ Root = 'Repository'; Source = 'assets/readme.txt'; Target = 'Docs/readme.txt' }
   )
   $consumerArchive = @{
@@ -307,12 +311,16 @@ try {
   Assert-TestNames -Actual @($consumerPlans[0].Payloads.Target) -Expected @(
     'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
     'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'
     'Docs/readme.txt'
   ) -Description 'Consumer archive movie ownership with legitimate nonmovie asset'
   $configuredConsumerTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants @($consumerVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot)
   Assert-TestNames -Actual @($configuredConsumerTargets.Target) -Expected @(
     'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
     'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'
     'Docs/readme.txt'
   ) -Description 'Configured package payload target inventory without compiled Scaleform inputs'
 
