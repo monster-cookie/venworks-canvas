@@ -354,6 +354,16 @@ package
          return this.htmlEngine.getScrollState(this.normalizeUuid(param1));
       }
 
+      public function getFailureStatus() : String
+      {
+         if(this.disposed || this.diagnostics == null || !this.diagnostics.visible)
+         {
+            return null;
+         }
+         var text:String = this.diagnostics.text;
+         return text == null || text.length == 0 ? null : text;
+      }
+
       public function dispose() : void
       {
          var consumerId:String = null;

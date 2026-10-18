@@ -293,7 +293,10 @@ package
             var targetError:String = this.hudTargets == null ? "HUD targets unavailable in this host" : this.hudTargets.validate(rendered.targets);
             if(targetError != null) return new CanvasHtmlDiagnostic("render","hud-target-unavailable",this.loadResult.entryDocument.resource,-1,targetError);
          }
-         CanvasHtmlRetainedTree.commit(rendered.boxes);
+         if(!CanvasHtmlRetainedTree.commit(rendered.boxes))
+         {
+            return new CanvasHtmlDiagnostic("render","attach-failed",this.loadResult.entryDocument.resource,-1,"display-list");
+         }
          rendered.display = rendered.boxes[0].sprite as Sprite;
          this.retainedBoxes = rendered.boxes;
          if(this.viewport == null)
@@ -303,19 +306,39 @@ package
             this.viewport.mouseEnabled = false;
             this.viewport.mouseChildren = false;
          }
-         if(this.documentDisplay != null && this.documentDisplay !== rendered.display && this.documentDisplay.parent === this.viewport)
-         {
-            this.viewport.removeChild(this.documentDisplay);
-         }
+         var previousDisplay:Sprite = this.documentDisplay;
          this.documentDisplay = rendered.display;
          this.documentDisplay.name = "CanvasHtmlDocument";
-         try { if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay); }
+         var attached:Boolean = false;
+         try
+         {
+            if(this.documentDisplay.parent !== this.viewport) this.viewport.addChild(this.documentDisplay);
+            attached = true;
+         }
          catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
+         if(!attached)
+         {
+            this.documentDisplay = previousDisplay;
+            return new CanvasHtmlDiagnostic("render","attach-failed",this.loadResult.entryDocument.resource,-1,"document");
+         }
+         if(previousDisplay != null && previousDisplay !== this.documentDisplay && previousDisplay.parent === this.viewport)
+         {
+            this.viewport.removeChild(previousDisplay);
+         }
          this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
          this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
          this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
-         try { if(this.viewport.parent !== this.mount) this.mount.addChild(this.viewport); }
+         var mounted:Boolean = false;
+         try
+         {
+            if(this.viewport.parent !== this.mount) this.mount.addChild(this.viewport);
+            mounted = true;
+         }
          catch(mountError:*) { CanvasHtmlData.access = "render.attach"; }
+         if(!mounted)
+         {
+            return new CanvasHtmlDiagnostic("render","attach-failed",this.loadResult.entryDocument.resource,-1,"viewport");
+         }
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;

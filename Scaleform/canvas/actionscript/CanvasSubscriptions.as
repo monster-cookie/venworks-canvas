@@ -486,8 +486,13 @@ package
             {
                var missionPlain:Object = this.copyCompassData(snapshot,0,QUEST_DATA_FIELDS);
                if(missionPlain != null) snapshot = missionPlain;
+               else snapshot = {};
             }
-            catch(missionCopyError:*) {}
+            catch(missionCopyError:*)
+            {
+               snapshot = {};
+               this.report("UI DATA COPY FAILED | QuestData");
+            }
          }
          this.channelSnapshots[param1] = snapshot;
          this.channelHasSnapshot[param1] = true;

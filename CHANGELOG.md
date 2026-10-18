@@ -4,6 +4,7 @@
 
 - HUD panel washes are SVG fills in the theme. This build no longer decodes DDS plate images, because this player does not draw a bitmap the HUD builds at runtime.
 - The Component Gallery shows the active quest title, the current waypoint title, and the waypoint titles for that quest.
+- A Component Gallery failure is shown on the pause-menu error line. Unreadable quest data leaves the gallery on screen with those rows empty.
 
 ## Version 1.0.5 (October 3, 2026)
 

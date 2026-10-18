@@ -10,6 +10,7 @@
       <token><![CDATA[scrollConsumerBy]]></token>
       <token><![CDATA[scrollConsumerTo]]></token>
       <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA[getFailureStatus]]></token>
       <token><![CDATA[getVenworksCanvasMenuDataManager]]></token>
       <token><![CDATA["hostKind":"menu"]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
@@ -27,6 +28,7 @@
       <token><![CDATA[scrollConsumerBy]]></token>
       <token><![CDATA[scrollConsumerTo]]></token>
       <token><![CDATA[getConsumerScrollState]]></token>
+      <token><![CDATA[getFailureStatus]]></token>
       <token><![CDATA[getVenworksCanvasMenuDataManager]]></token>
       <token><![CDATA["displayMode":"__VWCANVAS_DISPLAY_MODE__"]]></token>
     </requiredInspectionTokens>
@@ -403,6 +405,7 @@
 
       private function onVenworksCanvasGalleryEnterFrame(param1:Event) : void
       {
+         this.showVenworksCanvasGalleryHostFailure();
          if(this.VenworksCanvasGalleryUpHeld != this.VenworksCanvasGalleryDownHeld)
          {
             this.scrollVenworksCanvasGalleryBy(this.VenworksCanvasGalleryUpHeld ? -this.VENWORKS_CANVAS_GALLERY_SCROLL_DELTA : this.VENWORKS_CANVAS_GALLERY_SCROLL_DELTA);
@@ -542,6 +545,37 @@
          this.VenworksCanvasGalleryScrollThumb.y = this.VenworksCanvasGalleryScrollTrack.y + travel * Math.max(0,Math.min(1,ratio));
       }
 
+      private function showVenworksCanvasGalleryHostFailure() : void
+      {
+         if(this.VenworksCanvasGalleryHostBridge == null || !("getFailureStatus" in this.VenworksCanvasGalleryHostBridge))
+         {
+            return;
+         }
+         var status:* = null;
+         try
+         {
+            status = this.VenworksCanvasGalleryHostBridge["getFailureStatus"]();
+         }
+         catch(venworksCanvasGalleryStatusError:*)
+         {
+            return;
+         }
+         if(status == null)
+         {
+            return;
+         }
+         var text:String = String(status);
+         if(text.length == 0 || text == "null")
+         {
+            return;
+         }
+         if(text.length > 180)
+         {
+            text = text.substr(0,180);
+         }
+         this.showVenworksCanvasGalleryError(text);
+      }
+
       private function showVenworksCanvasGalleryError(param1:String) : void
       {
          if(this.VenworksCanvasGalleryLayer == null)
@@ -556,7 +590,7 @@
             this.VenworksCanvasGalleryErrorText.x = 48;
             this.VenworksCanvasGalleryErrorText.y = 48;
             this.VenworksCanvasGalleryErrorText.width = 1000;
-            this.VenworksCanvasGalleryErrorText.height = 100;
+            this.VenworksCanvasGalleryErrorText.height = 220;
             this.VenworksCanvasGalleryErrorText.background = true;
             this.VenworksCanvasGalleryErrorText.backgroundColor = 2097152;
             this.VenworksCanvasGalleryErrorText.border = true;
@@ -564,10 +598,12 @@
             this.VenworksCanvasGalleryErrorText.embedFonts = true;
             this.VenworksCanvasGalleryErrorText.defaultTextFormat = format;
             this.VenworksCanvasGalleryErrorText.multiline = true;
+            this.VenworksCanvasGalleryErrorText.wordWrap = true;
             this.VenworksCanvasGalleryErrorText.mouseEnabled = false;
             this.VenworksCanvasGalleryLayer.addChild(this.VenworksCanvasGalleryErrorText);
          }
          this.VenworksCanvasGalleryErrorText.text = "CANVAS COMPONENT GALLERY ERROR\n" + param1;
+         this.VenworksCanvasGalleryLayer.setChildIndex(this.VenworksCanvasGalleryErrorText,this.VenworksCanvasGalleryLayer.numChildren - 1);
          this.VenworksCanvasGalleryErrorText.setTextFormat(new TextFormat("$MAIN_Font_Bold",24,16777215,false));
       }
 

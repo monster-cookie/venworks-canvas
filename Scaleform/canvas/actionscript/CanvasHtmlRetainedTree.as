@@ -94,8 +94,9 @@ package
          return old != null && box.width == old.width && box.height == old.height && box.sourceIndex == old.sourceIndex && sameStyle(box.style,old.style) && sameNode(box.node,old.node);
       }
 
-      public static function commit(boxes:Array) : void
+      public static function commit(boxes:Array) : Boolean
       {
+         var failed:Boolean = false;
          var chosen:Dictionary = new Dictionary();
          for(var i:int = boxes.length - 1; i >= 0; i--)
          {
@@ -166,7 +167,7 @@ package
                if(display.parent !== retained)
                {
                   try { retained.addChildAt(display,Math.min(j,retained.numChildren)); }
-                  catch(attachError:*) { CanvasHtmlData.access = "render.attach"; }
+                  catch(attachError:*) { CanvasHtmlData.access = "render.attach"; failed = true; }
                }
                else if(retained.getChildIndex(display) != j) retained.setChildIndex(display,j);
             }
@@ -175,6 +176,7 @@ package
             if(box.measureReused) box.textField = old.textField;
             box.previous = null;
          }
+         return !failed;
       }
    }
 }
