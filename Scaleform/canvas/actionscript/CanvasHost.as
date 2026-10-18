@@ -99,6 +99,8 @@ package
 
       private var htmlEngine:CanvasHtmlEngine;
 
+      private var menuStagePaint:Object;
+
       private var chronomarkSurface:CanvasChronomarkSurface;
 
       private var bootScreen:CanvasBootScreen;
@@ -374,6 +376,8 @@ package
          }
          this.disposed = true;
          this.initializationState = HOST_STATE_DISPOSED;
+         removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+         this.menuStagePaint = null;
          this.dismissBootScreen();
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
          if(this.subscribed && this.dataManager != null && this.callback != null)
@@ -1739,6 +1743,48 @@ package
          this.completeConsumerReady(param1,loader,generation,contract);
       }
 
+      private function queueMenuStagePaint(param1:String) : void
+      {
+         if(this.menuStagePaint == null)
+         {
+            this.menuStagePaint = {};
+         }
+         this.menuStagePaint[param1] = 0;
+         addEventListener(Event.ENTER_FRAME,this.onMenuStagePaint,false,0,true);
+      }
+
+      private function onMenuStagePaint(param1:Event) : void
+      {
+         var consumerId:String = null;
+         var pending:Boolean = false;
+         if(this.menuStagePaint == null)
+         {
+            removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+            return;
+         }
+         for(consumerId in this.menuStagePaint)
+         {
+            var attempts:int = int(this.menuStagePaint[consumerId]) + 1;
+            var status:String = this.htmlEngine == null ? "missing" : this.htmlEngine.paintConsumerOnStage(consumerId);
+            if(status == "waiting" && attempts < 30)
+            {
+               this.menuStagePaint[consumerId] = attempts;
+               pending = true;
+               continue;
+            }
+            delete this.menuStagePaint[consumerId];
+            trace("VWCANVAS HTML | menu paint | " + consumerId + " | " + status);
+            if(status == null || status.indexOf("ok") != 0)
+            {
+               this.appendDiagnostic("INVALID " + consumerId + " | HTML STAGE PAINT | " + status);
+            }
+         }
+         if(!pending)
+         {
+            removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+         }
+      }
+
       private function completeConsumerReady(param1:String, param2:Loader, param3:int, param4:Object) : void
       {
          var consumerId:String = param1;
@@ -1788,6 +1834,10 @@ package
          if(loader.parent !== this)
          {
             addChild(loader);
+         }
+         if(this.hostKind == "menu" && contract.htmlResult != null)
+         {
+            this.queueMenuStagePaint(consumerId);
          }
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {

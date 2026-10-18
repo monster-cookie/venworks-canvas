@@ -2,7 +2,6 @@ package
 {
    import flash.display.DisplayObjectContainer;
    import flash.display.Sprite;
-   import flash.events.Event;
    import flash.geom.Rectangle;
 
    public final class CanvasHtmlSession
@@ -42,7 +41,7 @@ package
 
       private var activeState:String;
 
-      private var stagePaintPending:Boolean;
+      private var stagePainted:Boolean;
 
       public function CanvasHtmlSession(param1:DisplayObjectContainer, param2:CanvasHtmlLoadResult, param3:CanvasHudTargets = null, param4:String = null, param5:Object = null)
       {
@@ -239,11 +238,7 @@ package
             return;
          }
          this.disposed = true;
-         this.stagePaintPending = false;
-         if(this.viewport != null)
-         {
-            this.viewport.removeEventListener(Event.ADDED_TO_STAGE,this.onViewportAddedToStage);
-         }
+         this.stagePainted = false;
          if(this.hudTargets != null) this.hudTargets.release(this.consumerId);
          this.hudTargets = null;
          if(this.viewport != null)
@@ -351,56 +346,43 @@ package
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
          if(this.hudTargets != null) this.hudTargets.apply(this.consumerId,rendered.targets);
-         this.watchStagePaint();
          return null;
       }
 
-      // The menu gallery is built before its loader is on the pause menu. Scaleform drops fills drawn that way and still reports the document height.
-      private function watchStagePaint() : void
+      // The menu builds this page before its loader is on the pause menu. Repaint once that loader is showing.
+      public function paintOnStage() : String
       {
-         if(this.viewport == null)
-         {
-            return;
-         }
-         if(this.viewport.stage != null)
-         {
-            this.stagePaintPending = false;
-            this.viewport.removeEventListener(Event.ADDED_TO_STAGE,this.onViewportAddedToStage);
-            return;
-         }
-         if(this.stagePaintPending)
-         {
-            return;
-         }
-         this.stagePaintPending = true;
-         this.viewport.addEventListener(Event.ADDED_TO_STAGE,this.onViewportAddedToStage,false,0,true);
-      }
-
-      private function onViewportAddedToStage(param1:Event) : void
-      {
-         this.stagePaintPending = false;
-         if(this.viewport != null)
-         {
-            this.viewport.removeEventListener(Event.ADDED_TO_STAGE,this.onViewportAddedToStage);
-         }
          if(this.disposed || this.viewport == null)
          {
-            return;
+            return "missing";
          }
+         if(this.viewport.stage == null)
+         {
+            return "waiting";
+         }
+         if(this.stagePainted)
+         {
+            return "ok | height " + this.documentHeight;
+         }
+         this.retainedBoxes = null;
+         var status:String = "ok | height " + this.documentHeight;
          try
          {
             var failure:CanvasHtmlDiagnostic = this.rebuild(this.data,this.viewportWidth,this.viewportHeight,this.activeState);
             if(failure != null)
             {
-               trace("VWCANVAS HTML | stage paint failed | " + failure.toString());
-               return;
+               status = failure.toString();
             }
-            trace("VWCANVAS HTML | painted on stage | " + this.consumerId);
+            else
+            {
+               this.stagePainted = true;
+            }
          }
          catch(stagePaintError:*)
          {
-            trace("VWCANVAS HTML | stage paint failed | " + String(stagePaintError).substr(0,180));
+            status = String(stagePaintError).substr(0,180);
          }
+         return status;
       }
 
       private function indexEventStates() : CanvasHtmlDiagnostic

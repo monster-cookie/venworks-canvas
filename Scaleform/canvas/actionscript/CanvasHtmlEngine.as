@@ -86,6 +86,17 @@ package
          this.hostLayout = layout;
       }
 
+      public function paintConsumerOnStage(param1:String) : String
+      {
+         var entry:Object = this.consumers[param1];
+         var session:CanvasHtmlSession = entry == null ? null : entry.session as CanvasHtmlSession;
+         if(session == null)
+         {
+            return "missing";
+         }
+         return session.paintOnStage();
+      }
+
       public function remove(param1:String) : void
       {
          var entry:Object = this.consumers[param1];

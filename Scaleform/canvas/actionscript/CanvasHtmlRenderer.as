@@ -736,6 +736,16 @@ package
          }
       }
 
+      // Scaleform can drop every child of a scrollRect taller than the screen. The viewport already clips the page.
+      private function clipOverflow(sprite:Sprite, box:Object) : void
+      {
+         if(box.style["overflow"] != "hidden") return;
+         var width:Number = Number(box.width);
+         var height:Number = Number(box.height);
+         if(!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0 || width > CanvasStageGuard.screenWidth || height > CanvasStageGuard.screenHeight) return;
+         sprite.scrollRect = new Rectangle(0,0,width,height);
+      }
+
       private function drawBox(param1:Object) : void
       {
          var node:CanvasHtmlNode = param1.node as CanvasHtmlNode;
@@ -744,7 +754,7 @@ package
          var borderColor:Object = CanvasCssValue.parseColor(String(param1.style["border-color"]));
          sprite.visible = param1.style["visibility"] != "hidden";
          sprite.alpha = Number(param1.style["opacity"]);
-         if(param1.style["overflow"] == "hidden") sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
+         this.clipOverflow(sprite,param1);
          // A reused panel keeps the fills already on its displayed sprite. A new child drawn on this pass is thrown away.
          if(CanvasHtmlRetainedTree.canDraw(param1))
          {
@@ -762,10 +772,7 @@ package
             this.paintBorder(sprite,0,0,Number(param1.width),Number(param1.height),Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
          }
          sprite.alpha = Number(param1.style["opacity"]);
-         if(param1.style["overflow"] == "hidden")
-         {
-            sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
-         }
+         this.clipOverflow(sprite,param1);
          if(node.name == "hr")
          {
             var rule:Shape = new Shape();
