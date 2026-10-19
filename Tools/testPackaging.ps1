@@ -118,16 +118,19 @@ if ([string]$configuredCanvas.Archives[0].ScaleformOwnership -cne 'Host' -or
     [string]$configuredGallery.Archives[0].ScaleformOwnership -cne 'ConsumerExtension') {
   throw 'Configured Canvas host and consumer archive ownership classifications changed.'
 }
-if (@($configuredCanvas.Archives[0].Assets).Count -ne 11 -or @($configuredExample.Archives[0].Assets).Count -ne 3 -or @($configuredGallery.Archives[0].Assets).Count -ne 5) {
+if (@($configuredCanvas.Archives[0].Assets).Count -ne 14 -or @($configuredExample.Archives[0].Assets).Count -ne 5 -or @($configuredGallery.Archives[0].Assets).Count -ne 9) {
   throw 'Canvas Scaleform archive mapping counts changed.'
 }
 foreach ($canvasArchive in @($configuredCanvas.Archives)) {
   $gfxTargets = @($canvasArchive.Assets | Where-Object { [string]$_.Target -like '*.gfx' } | ForEach-Object { [string]$_.Target })
   Assert-TestNames -Actual $gfxTargets -Expected @(
+    'Interface/venworkscui.gfx'
     'Interface/playerhudcomponents.gfx'
     'Interface/playerhudcomponents_lrg.gfx'
     'Interface/hudmenu.gfx'
     'Interface/hudmenu_lrg.gfx'
+    'Interface/spaceshiphudmenu.gfx'
+    'Interface/spaceshiphudmenu_lrg.gfx'
   ) -Description "$($canvasArchive.FileName) required gfx movies"
 }
 if (@($configuredExample.ScaleformBuilds | Where-Object { [string]$_.Name -ceq 'subscriptions-probe' }).Count -ne 0 -or
@@ -151,9 +154,9 @@ Assert-TestNames -Actual $exampleResourceTargets -Expected @(
   'Interface/VenworksCanvas/Consumers/venworks.canvas.example/index.html'
 ) -Description 'Example complete packaged HTML resource target inventory'
 $galleryPauseMenuAssets = @($configuredGallery.Archives[0].Assets | Where-Object { $_ -is [Collections.IDictionary] -and $_.Contains('HostMenu') -and [string]$_['HostMenu'] -ceq 'pausemenu' })
-Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
-Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch targets'
-Assert-TestNames -Actual @($galleryPauseMenuAssets.DisplayMode) -Expected @('normal', 'large') -Description 'Component Gallery Pause Menu display modes'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Source) -Expected @('pause-menu/pausemenu.swf', 'pause-menu/pausemenu.swf', 'pause-menu/pausemenu_lrg.swf', 'pause-menu/pausemenu_lrg.swf') -Description 'Component Gallery Pause Menu patch sources'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.Target) -Expected @('Interface/pausemenu.swf', 'Interface/pausemenu.gfx', 'Interface/pausemenu_lrg.swf', 'Interface/pausemenu_lrg.gfx') -Description 'Component Gallery Pause Menu patch targets'
+Assert-TestNames -Actual @($galleryPauseMenuAssets.DisplayMode) -Expected @('normal', 'normal', 'large', 'large') -Description 'Component Gallery Pause Menu display modes'
 $galleryRepositoryAssets = @($configuredGallery.Archives[0].Assets | Where-Object { [string]$_.Root -ceq 'Repository' })
 $galleryTextAssets = @($galleryRepositoryAssets | Where-Object { [string]$_.Source -ceq 'Scaleform/component-gallery/resources' })
 if ($galleryRepositoryAssets.Count -ne 1 -or
@@ -195,11 +198,13 @@ foreach ($mapping in $configuredConsumerMappings) {
   $assets = @($mapping.Variant.Archives[0].Assets | Where-Object {
     $_ -is [Collections.IDictionary] -and $_.Contains('ConsumerNamespace') -and [string]$_['ConsumerNamespace'] -ceq $mapping.Namespace
   })
-  Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
-  Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
+  Assert-TestNames -Actual @($assets.Source) -Expected @($mapping.Source, $mapping.Source, $mapping.Source, $mapping.Source) -Description "$($mapping.Variant.VariantKey) consumer source identity"
+  Assert-TestNames -Actual @($assets.ConsumerNamespace) -Expected @($mapping.Namespace, $mapping.Namespace, $mapping.Namespace, $mapping.Namespace) -Description "$($mapping.Variant.VariantKey) consumer namespace identity"
   Assert-TestNames -Actual @($assets.Target) -Expected @(
     "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/normal.swf"
     "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/large.swf"
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/normal.gfx"
+    "Interface/VenworksCanvas/Consumers/$($mapping.Namespace)/large.gfx"
   ) -Description "$($mapping.Variant.VariantKey) normal/large consumer targets"
 }
 $unknownOwnershipArchive = @{} + $configuredExample.Archives[0]
@@ -240,6 +245,12 @@ $wrongConsumerTargetArchive.Assets[1].Target = 'Interface/VenworksCanvas/Consume
 $wrongConsumerTargetVariant = [pscustomobject]@{ VariantKey = 'WRONG-CONSUMER-TARGET'; Archives = @($wrongConsumerTargetArchive) }
 Assert-TestRejected -Description 'Wrong configured consumer display target' -MessagePattern 'must be.*large\.swf' -Action {
   Assert-BuildScaleformArchiveOwnership -Variant $wrongConsumerTargetVariant
+}
+$hostMissingGfxArchive = @{} + $configuredCanvas.Archives[0]
+$hostMissingGfxArchive.Assets = @($configuredCanvas.Archives[0].Assets | Where-Object { [string]$_.Target -cne 'Interface/venworkscui.gfx' })
+$hostMissingGfxVariant = [pscustomobject]@{ VariantKey = 'HOST-MISSING-GFX'; Archives = @($hostMissingGfxArchive) }
+Assert-TestRejected -Description 'Host movie packaged without its gfx file' -MessagePattern 'Starfield requires both files' -Action {
+  Assert-BuildScaleformArchiveOwnership -Variant $hostMissingGfxVariant
 }
 
 $wrapperTokens = $null
@@ -305,6 +316,8 @@ try {
   $consumerAssets = @(
     @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'normal' }
     @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'large' }
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'normal' }
+    @{ Root = 'Scaleform'; Source = 'movies/Consumer.swf'; Target = 'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'; ConsumerNamespace = 'fixture.consumer'; DisplayMode = 'large' }
     @{ Root = 'Repository'; Source = 'assets/readme.txt'; Target = 'Docs/readme.txt' }
   )
   $consumerArchive = @{
@@ -316,12 +329,16 @@ try {
   Assert-TestNames -Actual @($consumerPlans[0].Payloads.Target) -Expected @(
     'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
     'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'
     'Docs/readme.txt'
   ) -Description 'Consumer archive movie ownership with legitimate nonmovie asset'
   $configuredConsumerTargets = @(Get-BuildConfiguredPackagePayloadTargets -Variants @($consumerVariant) -RepositoryRoot $fixtureRoot -PapyrusSourceRoot $papyrusRoot)
   Assert-TestNames -Actual @($configuredConsumerTargets.Target) -Expected @(
     'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.swf'
     'Interface/VenworksCanvas/Consumers/fixture.consumer/large.swf'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/normal.gfx'
+    'Interface/VenworksCanvas/Consumers/fixture.consumer/large.gfx'
     'Docs/readme.txt'
   ) -Description 'Configured package payload target inventory without compiled Scaleform inputs'
 

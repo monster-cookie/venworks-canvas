@@ -91,6 +91,7 @@ $Global:ModuleVariants = @(
         ScaleformOwnership = 'Host'
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
@@ -100,7 +101,9 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.gfx' }
         )
       }
       @{
@@ -112,6 +115,7 @@ $Global:ModuleVariants = @(
         ScaleformOwnership = 'Host'
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
@@ -121,7 +125,9 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.gfx' }
         )
       }
       @{
@@ -133,6 +139,7 @@ $Global:ModuleVariants = @(
         ScaleformOwnership = 'Host'
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.swf' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasHost.swf'; Target = 'Interface/venworkscui.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.swf'; Target = 'Interface/playerhudcomponents.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents.gfx'; Target = 'Interface/playerhudcomponents.gfx' }
           @{ Root = 'Scaleform'; Source = 'player-hud/playerhudcomponents_lrg.swf'; Target = 'Interface/playerhudcomponents_lrg.swf' }
@@ -142,7 +149,9 @@ $Global:ModuleVariants = @(
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.swf'; Target = 'Interface/hudmenu_lrg.swf' }
           @{ Root = 'Scaleform'; Source = 'player-hud-loader/hudmenu_lrg.gfx'; Target = 'Interface/hudmenu_lrg.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu.swf'; Target = 'Interface/spaceshiphudmenu.gfx' }
           @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.swf' }
+          @{ Root = 'Scaleform'; Source = 'ship-hud/spaceshiphudmenu_lrg.swf'; Target = 'Interface/spaceshiphudmenu_lrg.gfx' }
         )
       }
     ),
@@ -180,6 +189,8 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
@@ -193,6 +204,8 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
@@ -206,6 +219,8 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.swf'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/normal.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasExample.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example/large.gfx'; ConsumerNamespace = 'venworks.canvas.example'; DisplayMode = 'large' }
           @{ Root = 'Repository'; Source = 'Scaleform/canvas/resources/example'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.example' }
         )
       }
@@ -254,8 +269,12 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
           @{ Root = 'Repository'; Source = 'Scaleform/component-gallery/resources'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery' }
         )
       }
@@ -269,8 +288,12 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
         )
       }
       @{
@@ -283,8 +306,12 @@ $Global:ModuleVariants = @(
         Assets = @(
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.swf'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/normal.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'movies/CanvasComponentGallery.swf'; Target = 'Interface/VenworksCanvas/Consumers/venworks.canvas.component-gallery/large.gfx'; ConsumerNamespace = 'venworks.canvas.component-gallery'; DisplayMode = 'large' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.swf'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
           @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.swf'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu.swf'; Target = 'Interface/pausemenu.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'normal' }
+          @{ Root = 'Scaleform'; Source = 'pause-menu/pausemenu_lrg.swf'; Target = 'Interface/pausemenu_lrg.gfx'; HostMenu = 'pausemenu'; DisplayMode = 'large' }
         )
       }
     ),
