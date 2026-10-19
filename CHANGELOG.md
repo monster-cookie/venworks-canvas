@@ -6,7 +6,7 @@
 - The Component Gallery shows the active quest title, the current waypoint title, and the waypoint titles for that quest.
 - A Component Gallery failure is shown on the pause-menu error line and in the SFSE log. Unreadable quest data leaves the gallery on screen with those rows empty.
 - The Component Gallery redraws after the pause menu shows it. A page taller than the screen is no longer clipped away by its own scroll area.
-- The Canvas host and Component Gallery movies are also packaged as the `.gfx` files Starfield opens.
+- The Canvas host and Component Gallery stay packaged as `.swf` movies. The patched HUD `.gfx` movies remain required in the Canvas archives.
 
 ## Version 1.0.5 (October 3, 2026)
 
