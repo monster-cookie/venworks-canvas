@@ -57,7 +57,7 @@ package
 
       private static const MAX_HOST_CONTRACT_VERSION:int = 3;
 
-      private static const MAX_UI_CHANNELS:int = 18;
+      private static const MAX_UI_CHANNELS:int = 20;
 
       private static const MAX_EVENT_TOPICS:int = 16;
 
@@ -98,6 +98,8 @@ package
       private var hudTargets:CanvasHudTargets;
 
       private var htmlEngine:CanvasHtmlEngine;
+
+      private var menuStagePaint:Object;
 
       private var chronomarkSurface:CanvasChronomarkSurface;
 
@@ -354,6 +356,16 @@ package
          return this.htmlEngine.getScrollState(this.normalizeUuid(param1));
       }
 
+      public function getFailureStatus() : String
+      {
+         if(this.disposed || this.diagnostics == null || !this.diagnostics.visible)
+         {
+            return null;
+         }
+         var text:String = this.diagnostics.text;
+         return text == null || text.length == 0 ? null : text;
+      }
+
       public function dispose() : void
       {
          var consumerId:String = null;
@@ -364,6 +376,8 @@ package
          }
          this.disposed = true;
          this.initializationState = HOST_STATE_DISPOSED;
+         removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+         this.menuStagePaint = null;
          this.dismissBootScreen();
          removeEventListener(Event.REMOVED_FROM_STAGE,this.onRemovedFromStage);
          if(this.subscribed && this.dataManager != null && this.callback != null)
@@ -1712,7 +1726,7 @@ package
          if(param2 == null || !param2.success)
          {
             var detail:String = param2 == null || param2.diagnostic == null ? "missing terminal result" : param2.diagnostic.toString();
-            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,100));
+            this.appendDiagnostic("INVALID " + param1 + " | HTML " + this.sanitizeText(detail,180));
             this.unloadConsumer(param1);
             return;
          }
@@ -1727,6 +1741,48 @@ package
          this.appendDiagnostic("HTML PARSED " + param1 + " | RESOURCES " + param2.resources.length);
          this.appendDiagnostic("HTML RENDERED " + param1 + " | V1");
          this.completeConsumerReady(param1,loader,generation,contract);
+      }
+
+      private function queueMenuStagePaint(param1:String) : void
+      {
+         if(this.menuStagePaint == null)
+         {
+            this.menuStagePaint = {};
+         }
+         this.menuStagePaint[param1] = 0;
+         addEventListener(Event.ENTER_FRAME,this.onMenuStagePaint,false,0,true);
+      }
+
+      private function onMenuStagePaint(param1:Event) : void
+      {
+         var consumerId:String = null;
+         var pending:Boolean = false;
+         if(this.menuStagePaint == null)
+         {
+            removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+            return;
+         }
+         for(consumerId in this.menuStagePaint)
+         {
+            var attempts:int = int(this.menuStagePaint[consumerId]) + 1;
+            var status:String = this.htmlEngine == null ? "missing" : this.htmlEngine.paintConsumerOnStage(consumerId);
+            if(status == "waiting" && attempts < 30)
+            {
+               this.menuStagePaint[consumerId] = attempts;
+               pending = true;
+               continue;
+            }
+            delete this.menuStagePaint[consumerId];
+            trace("VWCANVAS HTML | menu paint | " + consumerId + " | " + status);
+            if(status == null || status.indexOf("ok") != 0)
+            {
+               this.appendDiagnostic("INVALID " + consumerId + " | HTML STAGE PAINT | " + status);
+            }
+         }
+         if(!pending)
+         {
+            removeEventListener(Event.ENTER_FRAME,this.onMenuStagePaint);
+         }
       }
 
       private function completeConsumerReady(param1:String, param2:Loader, param3:int, param4:Object) : void
@@ -1778,6 +1834,10 @@ package
          if(loader.parent !== this)
          {
             addChild(loader);
+         }
+         if(this.hostKind == "menu" && contract.htmlResult != null)
+         {
+            this.queueMenuStagePaint(consumerId);
          }
          if(this.diagnostics != null && this.diagnostics.parent === this)
          {
@@ -1949,6 +2009,7 @@ package
          if(this.isFailureDiagnostic(message))
          {
             this.diagnostics.visible = true;
+            trace("VWCANVAS " + message);
          }
       }
 

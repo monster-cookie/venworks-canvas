@@ -1,0 +1,6 @@
+---
+description: Venworks Canvas Linear team VWCNVS and tracker workflow
+alwaysApply: true
+---
+
+@.grok/rules/linear.md

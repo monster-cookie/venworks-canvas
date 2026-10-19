@@ -66,6 +66,7 @@
     <token>public function scrollConsumerBy(param1:String, param2:Number) : Object</token>
     <token>public function scrollConsumerTo(param1:String, param2:Number) : Object</token>
     <token>public function getConsumerScrollState(param1:String) : Object</token>
+    <token>public function getFailureStatus() : String</token>
     <token>MENU LOCAL TRANSPORT READY</token>
     <token>MENU UI DATA READY</token>
     <token>getVenworksCanvasMenuDataManager</token>
@@ -157,7 +158,6 @@
     <token>.jpg</token>
     <token>.jpeg</token>
     <token>.png</token>
-    <token>.dds</token>
     <token>BottomLeftGroup</token>
     <token>UIWatchAlert_</token>
     <token>customwatchalert</token>

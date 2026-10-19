@@ -134,6 +134,7 @@ package
          }
          this.activeItem = this.pending.shift();
          delete this.pendingByPath[String(this.activeItem.path)];
+         var requestPath:String = String(this.activeItem.path);
          var loader:URLLoader = new URLLoader();
          loader.dataFormat = URLLoaderDataFormat.BINARY;
          loader.addEventListener(Event.COMPLETE,this.onLoadComplete,false,0,true);
@@ -143,7 +144,7 @@ package
          this.activeLoader = loader;
          try
          {
-            loader.load(new URLRequest(this.resourceRoot + String(this.activeItem.path)));
+            loader.load(new URLRequest(this.resourceRoot + requestPath));
          }
          catch(loadError:*)
          {
@@ -165,6 +166,7 @@ package
          this.detachLoader(loader);
          this.activeLoader = null;
          this.activeItem = null;
+         var advance:Boolean = false;
          try
          {
             var bytes:ByteArray = loader.data as ByteArray;
@@ -186,58 +188,58 @@ package
             }
             this.aggregateBytes += bytes.length;
             var decoded:CanvasUtf8Result = CanvasUtf8Decoder.decode(bytes);
-            if(!decoded.success)
-            {
-               this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
-               return;
-            }
-            var document:CanvasHtmlDocument = null;
-            if(extension == ".html")
-            {
-               var parsed:CanvasHtmlParseResult = new CanvasHtmlParser().parse(decoded.text,String(item.path));
-               if(!parsed.success)
+               if(!decoded.success)
                {
-                  this.finishFailure(parsed.diagnostic);
+                  this.finishFailure(new CanvasHtmlDiagnostic("load","invalid-encoding",String(item.path),decoded.errorOffset));
                   return;
                }
-               document = parsed.document;
-               this.documentsByPath[String(item.path)] = document;
-               this.stylesheetCount += document.inlineStyleCount;
-               if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
+               var document:CanvasHtmlDocument = null;
+               if(extension == ".html")
                {
-                  this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",String(item.path),-1,"stylesheet-count"));
-                  return;
-               }
-            }
-            var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),extension.substr(1),decoded.text,bytes.length,document);
-            this.resources.push(resource);
-            this.loadedPaths[String(item.path)] = true;
-            if(String(item.path) == this.entryPath)
-            {
-               this.entryDocument = document;
-            }
-            if(document != null && !this.scheduleReferences(item,document.references))
-            {
-               return;
-            }
-            var imports:CanvasCssImportResult = null;
-            if(extension == ".css")
-            {
-               imports = new CanvasCssImportScanner().scan(decoded.text,String(item.path));
-               if(!imports.success || !this.scheduleCssImports(item,imports.imports))
-               {
-                  if(!imports.success)
+                  var parsed:CanvasHtmlParseResult = new CanvasHtmlParser().parse(decoded.text,String(item.path));
+                  if(!parsed.success)
                   {
-                     this.finishFailure(imports.diagnostic);
+                     this.finishFailure(parsed.diagnostic);
+                     return;
                   }
+                  document = parsed.document;
+                  this.documentsByPath[String(item.path)] = document;
+                  this.stylesheetCount += document.inlineStyleCount;
+                  if(this.stylesheetCount > CanvasHtmlLimits.MAX_STYLESHEETS)
+                  {
+                     this.finishFailure(new CanvasHtmlDiagnostic("style","limit-exceeded",String(item.path),-1,"stylesheet-count"));
+                     return;
+                  }
+               }
+               var resource:CanvasHtmlResource = new CanvasHtmlResource(String(item.path),extension.substr(1),decoded.text,bytes.length,document);
+               this.resources.push(resource);
+               this.loadedPaths[String(item.path)] = true;
+               if(String(item.path) == this.entryPath)
+               {
+                  this.entryDocument = document;
+               }
+               if(document != null && !this.scheduleReferences(item,document.references))
+               {
                   return;
                }
-            }
-            else if(document != null && !this.scheduleInlineCssImports(item,document))
-            {
-               return;
-            }
-            this.startNext();
+               var imports:CanvasCssImportResult = null;
+               if(extension == ".css")
+               {
+                  imports = new CanvasCssImportScanner().scan(decoded.text,String(item.path));
+                  if(!imports.success || !this.scheduleCssImports(item,imports.imports))
+                  {
+                     if(!imports.success)
+                     {
+                        this.finishFailure(imports.diagnostic);
+                     }
+                     return;
+                  }
+               }
+               else if(document != null && !this.scheduleInlineCssImports(item,document))
+               {
+                  return;
+               }
+               advance = true;
          }
          catch(processError:*)
          {
@@ -245,7 +247,22 @@ package
             {
                throw processError;
             }
-            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",String(item.path)));
+            var errorText:String = String(processError);
+            if(errorText.length > 120) errorText = errorText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",String(item.path),-1,errorText));
+            return;
+         }
+         if(!advance) return;
+         try
+         {
+            this.startNext();
+         }
+         catch(nextError:*)
+         {
+            if(!this.active || this.disposed || this.attemptGeneration != generation) throw nextError;
+            var nextText:String = String(nextError);
+            if(nextText.length > 120) nextText = nextText.substr(0,120);
+            this.finishFailure(new CanvasHtmlDiagnostic("lifecycle","adapter-failure",this.entryPath,-1,nextText));
          }
       }
 
@@ -503,7 +520,8 @@ package
 
       private function isCurrentEvent(param1:Event) : Boolean
       {
-         return this.active && !this.disposed && this.activeLoader != null && param1.currentTarget === this.activeLoader;
+         if(!this.active || this.disposed) return false;
+         return this.activeLoader != null && param1.currentTarget === this.activeLoader;
       }
 
       private function finishSuccess() : void
