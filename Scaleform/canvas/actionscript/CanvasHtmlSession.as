@@ -1,6 +1,7 @@
 package
 {
    import flash.display.DisplayObjectContainer;
+   import flash.display.Shape;
    import flash.display.Sprite;
    import flash.geom.Rectangle;
 
@@ -18,6 +19,8 @@ package
       private var stylesheet:CanvasCssCascade;
 
       private var viewport:Sprite;
+
+      private var viewportMask:Shape;
 
       private var retainedBoxes:Array;
 
@@ -243,6 +246,7 @@ package
          this.hudTargets = null;
          if(this.viewport != null)
          {
+            this.viewport.mask = null;
             this.viewport.scrollRect = null;
             while(this.viewport.numChildren > 0)
             {
@@ -253,9 +257,14 @@ package
                this.mount.removeChild(this.viewport);
             }
          }
+         if(this.viewportMask != null && this.viewportMask.parent != null)
+         {
+            this.viewportMask.parent.removeChild(this.viewportMask);
+         }
          this.retainedBoxes = null;
          this.documentDisplay = null;
          this.viewport = null;
+         this.viewportMask = null;
          this.stylesheet = null;
          if(this.loadResult != null)
          {
@@ -328,7 +337,6 @@ package
          {
             this.viewport.removeChild(previousDisplay);
          }
-         this.viewport.scrollRect = new Rectangle(0,0,param2,param3);
          this.viewport.x = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleX);
          this.viewport.y = this.hostLayout == null ? 0 : Number(this.hostLayout.visibleY);
          var mounted:Boolean = false;
@@ -342,11 +350,39 @@ package
          {
             return new CanvasHtmlDiagnostic("render","attach-failed",this.loadResult.entryDocument.resource,-1,"viewport");
          }
+         this.clipViewport(param2,param3,rendered.height);
          this.documentHeight = rendered.height;
          this.scrollOffset = Math.max(0,Math.min(Math.max(0,this.documentHeight - param3),this.scrollOffset));
          this.documentDisplay.y = -this.scrollOffset;
          if(this.hudTargets != null) this.hudTargets.apply(this.consumerId,rendered.targets);
          return null;
+      }
+
+      // A scroll area taller than the screen makes Scaleform drop the page. A mask keeps the same window.
+      private function clipViewport(param1:Number, param2:Number, param3:Number) : void
+      {
+         var tallerThanScreen:Boolean = param3 > CanvasStageGuard.screenHeight || param1 > CanvasStageGuard.screenWidth;
+         if(!tallerThanScreen)
+         {
+            this.viewport.mask = null;
+            if(this.viewportMask != null && this.viewportMask.parent != null) this.viewportMask.parent.removeChild(this.viewportMask);
+            this.viewport.scrollRect = new Rectangle(0,0,param1,param2);
+            return;
+         }
+         this.viewport.scrollRect = null;
+         if(this.viewportMask == null)
+         {
+            this.viewportMask = new Shape();
+            this.viewportMask.name = "CanvasHtmlViewportMask";
+         }
+         this.viewportMask.graphics.clear();
+         this.viewportMask.graphics.beginFill(0,1);
+         this.viewportMask.graphics.drawRect(0,0,param1,param2);
+         this.viewportMask.graphics.endFill();
+         this.viewportMask.x = this.viewport.x;
+         this.viewportMask.y = this.viewport.y;
+         if(this.viewportMask.parent !== this.mount) this.mount.addChild(this.viewportMask);
+         this.viewport.mask = this.viewportMask;
       }
 
       // The menu builds this page before its loader is on the pause menu. Repaint once that loader is showing.

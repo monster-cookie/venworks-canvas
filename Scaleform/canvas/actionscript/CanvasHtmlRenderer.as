@@ -658,6 +658,14 @@ package
          return result;
       }
 
+      // Fills are children so their draw coordinates stay on the stage. They have to sit behind the text and rows.
+      private function addStagePaint(sprite:Sprite, piece:Shape) : void
+      {
+         var index:int = 0;
+         while(index < sprite.numChildren && sprite.getChildAt(index).name == "CanvasStagePaint") index++;
+         sprite.addChildAt(piece,index);
+      }
+
       private function clearStagePaint(sprite:Sprite) : void
       {
          var index:int = sprite.numChildren - 1;
@@ -689,7 +697,7 @@ package
                piece.graphics.beginFill(color,alpha);
                piece.graphics.drawRect(0,0,pieceW,pieceH);
                piece.graphics.endFill();
-               sprite.addChild(piece);
+               this.addStagePaint(sprite,piece);
                column += tileW;
             }
             row += tileH;
@@ -731,18 +739,22 @@ package
             piece.graphics.lineStyle(thickness,color,alpha);
             piece.graphics.moveTo(0,0);
             piece.graphics.lineTo(dx * (end - start),dy * (end - start));
-            sprite.addChild(piece);
+            this.addStagePaint(sprite,piece);
             traveled += step;
          }
       }
 
-      // Scaleform can drop every child of a scrollRect taller than the screen. The viewport already clips the page.
+      // Scaleform drops every child of a scrollRect taller than the screen. The viewport mask clips that page.
       private function clipOverflow(sprite:Sprite, box:Object) : void
       {
          if(box.style["overflow"] != "hidden") return;
          var width:Number = Number(box.width);
          var height:Number = Number(box.height);
-         if(!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0 || width > CanvasStageGuard.screenWidth || height > CanvasStageGuard.screenHeight) return;
+         if(!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0 || width > CanvasStageGuard.screenWidth || height > CanvasStageGuard.screenHeight)
+         {
+            sprite.scrollRect = null;
+            return;
+         }
          sprite.scrollRect = new Rectangle(0,0,width,height);
       }
 
