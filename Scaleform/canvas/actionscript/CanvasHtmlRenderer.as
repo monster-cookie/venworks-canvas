@@ -23,6 +23,8 @@ package
 
       private var viewportHeight:Number;
 
+      private var designScale:Number = 1;
+
       private var failure:CanvasHtmlDiagnostic;
 
       private var svgCache:Object;
@@ -41,6 +43,11 @@ package
          this.resources = {};
          this.viewportWidth = param4;
          this.viewportHeight = param5;
+         // Theme documents are authored at 1920x1080. Grow every px with the viewport, and stay at 1 there.
+         var fitWidth:Number = param4 / 1920;
+         var fitHeight:Number = param5 / 1080;
+         var fit:Number = fitWidth < fitHeight ? fitWidth : fitHeight;
+         this.designScale = !isFinite(fit) || fit <= 0 ? 1 : fit < 0.5 ? 0.5 : fit > 4 ? 4 : fit;
          CanvasStageGuard.setScreen(param4,param5);
          this.failure = null;
          this.svgCache = {};
@@ -195,7 +202,7 @@ package
             {
                if(box.style["width"] != "auto")
                {
-                  width = CanvasCssValue.resolveLength(String(box.style["width"]),basis,basis);
+                  width = this.length(box.style["width"],basis,basis);
                }
                else
                {
@@ -267,7 +274,7 @@ package
             }
             else
             {
-               var fixedWidth:Number = CanvasCssValue.resolveLength(String(child.style["width"]),available,available);
+               var fixedWidth:Number = this.length(child.style["width"],available,available);
                child.assignedWidth = fixedWidth;
                fixed += fixedWidth + childMargins;
             }
@@ -323,7 +330,7 @@ package
                var measuredWidth:Number = Number(box.innerWidth);
                // Scaleform throws ReferenceError 1069 from textWidth and textHeight on some offstage fields.
                try { measuredHeight = field.textHeight; measuredWidth = field.textWidth; } catch(measureError:*) {}
-               field.height = Math.max(1,measuredHeight + 6);
+               field.height = Math.max(1,measuredHeight + 6 * this.designScale);
                Sprite(box.sprite).addChild(field);
                box.textField = field;
                box.textNaturalWidth = Math.min(Number(box.innerWidth),measuredWidth + 6);
@@ -449,7 +456,7 @@ package
                contentHeight = Math.max(contentHeight,lineY - startY + currentLineHeight);
             }
             var naturalHeight:Number = Number(box.border) * 2 + Number(box.paddingTop) + Number(box.paddingBottom) + Math.max(0,contentHeight);
-            var requestedHeight:Number = box.style["height"] == "auto" ? naturalHeight : CanvasCssValue.resolveLength(String(box.style["height"]),this.viewportHeight,naturalHeight);
+            var requestedHeight:Number = box.style["height"] == "auto" ? naturalHeight : this.length(box.style["height"],this.viewportHeight,naturalHeight);
             if(!isFinite(requestedHeight) || requestedHeight < 0 || requestedHeight > 8192)
             {
                return this.reject("invalid-height",CanvasHtmlNode(box.node).resource);
@@ -473,7 +480,7 @@ package
                   Sprite(child.sprite).x += this.length(child.style["left"],Number(box.innerWidth),0);
                   Sprite(child.sprite).y += this.length(child.style["top"],innerHeight,0);
                }
-               if(!CanvasHtmlTransform.apply(child,this.safeRect)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
+               if(!CanvasHtmlTransform.apply(child,this.safeRect,this.designScale)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
                if(!this.isBoundedCoordinate(Sprite(child.sprite).x) || !this.isBoundedCoordinate(Sprite(child.sprite).y))
                {
                   return this.reject("invalid-position",CanvasHtmlNode(child.node).resource);
@@ -508,7 +515,7 @@ package
             }
             Sprite(child.sprite).x = x;
             Sprite(child.sprite).y = y;
-            if(!CanvasHtmlTransform.apply(child,this.safeRect)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
+            if(!CanvasHtmlTransform.apply(child,this.safeRect,this.designScale)) return this.reject("invalid-transform",CanvasHtmlNode(child.node).resource);
             if(!this.isBoundedCoordinate(Sprite(child.sprite).x) || !this.isBoundedCoordinate(Sprite(child.sprite).y))
             {
                return this.reject("invalid-position",CanvasHtmlNode(child.node).resource);
@@ -530,9 +537,10 @@ package
 
       private function measureAsset(param1:Object, param2:CanvasHtmlNode) : Boolean
       {
-         if(param2.name == "img" && this.resolveImageResource(param2) == null)
+         if(param2.name == "img")
          {
-            return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
+            var resource:CanvasHtmlResource = this.resolveImageResource(param2);
+            if(resource == null) return this.reject("invalid-image",this.resolveSvgResourcePath(param2),"asset");
          }
          return this.measureSvg(param1,param2);
       }
@@ -561,7 +569,7 @@ package
          var height:Number = width * Number(viewbox[3]) / Number(viewbox[2]);
          if(param1.style["height"] != "auto")
          {
-            height = Math.max(1,CanvasCssValue.resolveLength(String(param1.style["height"]),this.viewportHeight,height) - Number(param1.paddingTop) - Number(param1.paddingBottom) - Number(param1.border) * 2);
+            height = Math.max(1,this.length(param1.style["height"],this.viewportHeight,height) - Number(param1.paddingTop) - Number(param1.paddingBottom) - Number(param1.border) * 2);
          }
          if(!this.isBoundedCoordinate(width) || !this.isBoundedCoordinate(height))
          {
@@ -650,6 +658,14 @@ package
          return result;
       }
 
+      // Fills are children so their draw coordinates stay on the stage. They have to sit behind the text and rows.
+      private function addStagePaint(sprite:Sprite, piece:Shape) : void
+      {
+         var index:int = 0;
+         while(index < sprite.numChildren && sprite.getChildAt(index).name == "CanvasStagePaint") index++;
+         sprite.addChildAt(piece,index);
+      }
+
       private function clearStagePaint(sprite:Sprite) : void
       {
          var index:int = sprite.numChildren - 1;
@@ -681,7 +697,7 @@ package
                piece.graphics.beginFill(color,alpha);
                piece.graphics.drawRect(0,0,pieceW,pieceH);
                piece.graphics.endFill();
-               sprite.addChild(piece);
+               this.addStagePaint(sprite,piece);
                column += tileW;
             }
             row += tileH;
@@ -723,9 +739,23 @@ package
             piece.graphics.lineStyle(thickness,color,alpha);
             piece.graphics.moveTo(0,0);
             piece.graphics.lineTo(dx * (end - start),dy * (end - start));
-            sprite.addChild(piece);
+            this.addStagePaint(sprite,piece);
             traveled += step;
          }
+      }
+
+      // Scaleform drops every child of a scrollRect taller than the screen. The viewport mask clips that page.
+      private function clipOverflow(sprite:Sprite, box:Object) : void
+      {
+         if(box.style["overflow"] != "hidden") return;
+         var width:Number = Number(box.width);
+         var height:Number = Number(box.height);
+         if(!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0 || width > CanvasStageGuard.screenWidth || height > CanvasStageGuard.screenHeight)
+         {
+            sprite.scrollRect = null;
+            return;
+         }
+         sprite.scrollRect = new Rectangle(0,0,width,height);
       }
 
       private function drawBox(param1:Object) : void
@@ -736,7 +766,8 @@ package
          var borderColor:Object = CanvasCssValue.parseColor(String(param1.style["border-color"]));
          sprite.visible = param1.style["visibility"] != "hidden";
          sprite.alpha = Number(param1.style["opacity"]);
-         if(param1.style["overflow"] == "hidden") sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
+         this.clipOverflow(sprite,param1);
+         // A reused panel keeps the fills already on its displayed sprite. A new child drawn on this pass is thrown away.
          if(CanvasHtmlRetainedTree.canDraw(param1))
          {
             param1.drawReused = true;
@@ -753,10 +784,7 @@ package
             this.paintBorder(sprite,0,0,Number(param1.width),Number(param1.height),Number(param1.border),uint(borderColor.color),Number(borderColor.alpha));
          }
          sprite.alpha = Number(param1.style["opacity"]);
-         if(param1.style["overflow"] == "hidden")
-         {
-            sprite.scrollRect = new Rectangle(0,0,Number(param1.width),Number(param1.height));
-         }
+         this.clipOverflow(sprite,param1);
          if(node.name == "hr")
          {
             var rule:Shape = new Shape();
@@ -789,8 +817,8 @@ package
             marker.embedFonts = true;
             marker.selectable = false;
             marker.mouseEnabled = false;
-            marker.width = 22;
-            marker.height = this.lineHeight(param1.style) + 4;
+            marker.width = 22 * this.designScale;
+            marker.height = this.lineHeight(param1.style) + 4 * this.designScale;
             marker.defaultTextFormat = markerFormat;
             marker.text = parentName == "ol" ? String((param1.parent.children as Array).indexOf(param1) + 1) + "." : "-";
             marker.setTextFormat(markerFormat);
@@ -804,12 +832,12 @@ package
       {
          var color:Object = CanvasCssValue.parseColor(String(param1["color"]));
          var size:Object = CanvasCssValue.parseLength(String(param1["font-size"]),false,false,false);
-         var format:TextFormat = new TextFormat(String(param1["font-family"]),Number(size.value),uint(color.color),param1["font-weight"] == "bold");
+         var format:TextFormat = new TextFormat(String(param1["font-family"]),Number(size.value) * this.designScale,uint(color.color),param1["font-weight"] == "bold");
          format.align = String(param1["text-align"]);
          if(param1["line-height"] != "normal")
          {
             var line:Object = CanvasCssValue.parseLength(String(param1["line-height"]),false,false,false);
-            format.leading = Math.max(1 - Number(size.value),Number(line.value) - Number(size.value));
+            format.leading = Math.max(1 - Number(size.value) * this.designScale,Number(line.value) * this.designScale - Number(size.value) * this.designScale);
          }
          return format;
       }
@@ -819,10 +847,10 @@ package
          var font:Object = CanvasCssValue.parseLength(String(param1["font-size"]),false,false,false);
          if(param1["line-height"] == "normal")
          {
-            return Number(font.value) * 1.2;
+            return Number(font.value) * this.designScale * 1.2;
          }
          var line:Object = CanvasCssValue.parseLength(String(param1["line-height"]),false,false,false);
-         return Number(line.value);
+         return Number(line.value) * this.designScale;
       }
 
       private function intrinsicWidth(param1:Object, param2:Number) : Number
@@ -872,14 +900,17 @@ package
             field.width = Number(param1.innerWidth);
             var measuredHeight:Number = this.lineHeight(param1.style);
             try { measuredHeight = field.textHeight; } catch(measureError:*) {}
-            field.height = Math.max(1,measuredHeight + 6);
+            field.height = Math.max(1,measuredHeight + 6 * this.designScale);
             param1.contentHeight = field.height;
          }
       }
 
       private function length(param1:Object, param2:Number, param3:Number) : Number
       {
-         return CanvasCssValue.resolveLength(String(param1),param2,param3);
+         var parsed:Object = CanvasCssValue.parseLength(String(param1),true,true,true);
+         if(parsed == null || parsed.unit == "auto") return param3;
+         if(parsed.unit == "%") return param2 * Number(parsed.value) / 100;
+         return Number(parsed.value) * this.designScale;
       }
 
       private function isLeaf(param1:String) : Boolean

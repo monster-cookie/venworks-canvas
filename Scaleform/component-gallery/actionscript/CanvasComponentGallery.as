@@ -9,6 +9,8 @@ package
 
       private static const DEFAULT_VIEWPORT_HEIGHT:Number = 1080;
 
+      private static const MAX_LIST_ITEMS:int = 64;
+
       private var htmlBridge:Object;
 
       private var playerDataUpdates:int;
@@ -33,7 +35,7 @@ package
             "minimumContractVersion":2,
             "maximumContractVersion":2,
             "hostKinds":["menu"],
-            "uiChannels":["PlayerData","PlayerFrequentData"],
+            "uiChannels":["PlayerData","PlayerFrequentData","QuestData"],
             "eventTopics":[],
             "marker":"COMPONENT-GALLERY"
          };
@@ -56,6 +58,12 @@ package
          else if(param1 == "PlayerFrequentData")
          {
             this.capturePlayerFrequentData(param2);
+         }
+         else if(param1 == "QuestData")
+         {
+            this.captureQuestData(param2);
+            this.submitSampleData();
+            return;
          }
          else
          {
@@ -153,6 +161,213 @@ package
             }
          }
          return result;
+      }
+
+      private function captureQuestData(param1:Object) : void
+      {
+         delete this.playerValues["quest.title"];
+         delete this.playerValues["quest.waypoint"];
+         delete this.playerValues["quest.waypoints"];
+         var quests:Array = this.readList(param1,"aQuests");
+         if(quests == null)
+         {
+            return;
+         }
+         var active:Object = this.findActiveQuest(quests);
+         if(active == null)
+         {
+            return;
+         }
+         var title:String = this.readTitle(active,"sName");
+         if(title != null)
+         {
+            this.playerValues["quest.title"] = title;
+         }
+         this.playerValues["quest.waypoints"] = this.readWaypointTitles(active);
+         var current:String = this.readCurrentWaypoint(active);
+         if(current != null)
+         {
+            this.playerValues["quest.waypoint"] = current;
+         }
+      }
+
+      private function findActiveQuest(param1:Array) : Object
+      {
+         var active:Object = null;
+         var count:int = int(Math.min(MAX_LIST_ITEMS,Number(param1.length)));
+         var index:int = 0;
+         while(index < count)
+         {
+            var quest:* = param1[index];
+            if(quest != null && typeof quest == "object" && !(quest is Array) && this.flagIsTrue(quest,"bActive"))
+            {
+               active = quest;
+            }
+            index++;
+         }
+         return active;
+      }
+
+      private function readWaypointTitles(param1:Object) : Array
+      {
+         var titles:Array = [];
+         var source:Array = this.readList(param1,"aObjectives");
+         if(source == null)
+         {
+            return titles;
+         }
+         var count:int = int(Math.min(MAX_LIST_ITEMS,Number(source.length)));
+         var index:int = 0;
+         while(index < count)
+         {
+            var item:* = source[index];
+            if(item != null && typeof item == "object" && !(item is Array))
+            {
+               var title:String = this.readTitle(item,"sName");
+               if(title != null)
+               {
+                  titles.push(title);
+               }
+            }
+            index++;
+         }
+         return titles;
+      }
+
+      private function readCurrentWaypoint(param1:Object) : String
+      {
+         var source:Array = this.readList(param1,"aObjectives");
+         if(source == null)
+         {
+            return null;
+         }
+         var count:int = int(Math.min(MAX_LIST_ITEMS,Number(source.length)));
+         var index:int = 0;
+         var found:Boolean = false;
+         var text:String = "";
+         while(index < count)
+         {
+            var item:* = source[index];
+            if(item != null && typeof item == "object" && !(item is Array))
+            {
+               if(found && this.flagIsFalse(item,"bORWithPrevious"))
+               {
+                  break;
+               }
+               if(this.flagIsTrue(item,"bActive") && !this.flagIsTrue(item,"bComplete") && !this.flagIsTrue(item,"bFailed"))
+               {
+                  var title:String = this.readTitle(item,"sName");
+                  if(title != null)
+                  {
+                     if(found)
+                     {
+                        text += " | " + title;
+                        break;
+                     }
+                     text = title;
+                     found = true;
+                  }
+               }
+            }
+            index++;
+         }
+         return found ? text : null;
+      }
+
+      private function readList(param1:Object, param2:String) : Array
+      {
+         if(param1 == null)
+         {
+            return null;
+         }
+         var value:* = undefined;
+         try
+         {
+            if(!(param2 in param1))
+            {
+               return null;
+            }
+            value = param1[param2];
+         }
+         catch(readError:*)
+         {
+            return null;
+         }
+         if(value == null || typeof value != "object")
+         {
+            return null;
+         }
+         var lengthValue:* = undefined;
+         try
+         {
+            lengthValue = value.length;
+         }
+         catch(lengthError:*)
+         {
+            return null;
+         }
+         var count:Number = Number(lengthValue);
+         if(!isFinite(count) || count < 0 || int(count) != count || count > 256)
+         {
+            return null;
+         }
+         var copy:Array = [];
+         var index:int = 0;
+         var limit:int = int(Math.min(MAX_LIST_ITEMS,count));
+         while(index < limit)
+         {
+            try
+            {
+               copy.push(value[index]);
+            }
+            catch(itemError:*)
+            {
+               break;
+            }
+            index++;
+         }
+         return copy;
+      }
+
+      private function readTitle(param1:Object, param2:String) : String
+      {
+         var raw:* = this.readField(param1,param2);
+         if(typeof raw != "string")
+         {
+            return null;
+         }
+         var value:String = String(raw).split("\\n").join("").split("\\N").join("");
+         if(value.length == 0 || value.length > 256)
+         {
+            return null;
+         }
+         return value;
+      }
+
+      private function readField(param1:Object, param2:String) : *
+      {
+         try
+         {
+            if(param1 == null || !(param2 in param1))
+            {
+               return undefined;
+            }
+            return param1[param2];
+         }
+         catch(readError:*)
+         {
+         }
+         return undefined;
+      }
+
+      private function flagIsTrue(param1:Object, param2:String) : Boolean
+      {
+         return this.readField(param1,param2) === true;
+      }
+
+      private function flagIsFalse(param1:Object, param2:String) : Boolean
+      {
+         return this.readField(param1,param2) === false;
       }
 
       private function capturePlayerData(param1:Object) : void

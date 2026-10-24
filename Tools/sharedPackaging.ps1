@@ -207,6 +207,28 @@ function Assert-BuildScaleformArchiveOwnership {
       if ($consumerAssets.Count -ne 0 -or $extensionAssets.Count -ne 0 -or @($scaleformAssets | Where-Object { ![string]::IsNullOrWhiteSpace([string](Get-BuildPackagePropertyValue -InputObject $_ -Name 'DisplayMode')) }).Count -ne 0) {
         throw "$($Variant.VariantKey) host archive cannot declare consumer Scaleform asset metadata."
       }
+      # Starfield opens the .swf and the .gfx for each movie.
+      $moviePairs = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
+      foreach ($asset in $scaleformAssets) {
+        $target = ([string](Get-BuildPackagePropertyValue -InputObject $asset -Name 'Target')).Replace('\', '/')
+        $extension = [IO.Path]::GetExtension($target).ToLowerInvariant()
+        if ($extension -cnotin @('.swf', '.gfx')) {
+          throw "$($Variant.VariantKey) host Scaleform target '$target' must be a .swf or .gfx movie."
+        }
+        $stem = $target.Substring(0, $target.Length - $extension.Length)
+        if (!$moviePairs.ContainsKey($stem)) {
+          $moviePairs.Add($stem, [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal))
+        }
+        if (!$moviePairs[$stem].Add($extension)) {
+          throw "$($Variant.VariantKey) host archive declares '$target' more than once."
+        }
+      }
+      foreach ($stem in $moviePairs.Keys) {
+        $extensions = $moviePairs[$stem]
+        if (!$extensions.Contains('.swf') -or !$extensions.Contains('.gfx')) {
+          throw "$($Variant.VariantKey) host movie '$stem' must package both .swf and .gfx. Starfield requires both files."
+        }
+      }
       continue
     }
     if ($scaleformAssets.Count -eq 0) {
@@ -240,7 +262,11 @@ function Assert-BuildScaleformArchiveOwnership {
       if ([string]::IsNullOrWhiteSpace($source)) {
         throw "$($Variant.VariantKey) consumer archive has an empty Scaleform Source."
       }
-      $expectedTarget = "Interface/VenworksCanvas/Consumers/$consumerNamespace/$displayMode.swf"
+      $extension = [IO.Path]::GetExtension($target).ToLowerInvariant()
+      if ($extension -cnotin @('.swf', '.gfx')) {
+        throw "$($Variant.VariantKey) consumer Scaleform target '$target' must be a .swf or .gfx movie."
+      }
+      $expectedTarget = "Interface/VenworksCanvas/Consumers/$consumerNamespace/$displayMode$extension"
       if ($target -cne $expectedTarget) {
         throw "$($Variant.VariantKey) consumer Scaleform target '$target' must be '$expectedTarget'."
       }
@@ -254,14 +280,17 @@ function Assert-BuildScaleformArchiveOwnership {
       if ([string]$pair.Source -cne $source) {
         throw "$($Variant.VariantKey) consumer '$consumerNamespace' normal and large assets must use the same Scaleform Source."
       }
-      if (!$pair.Modes.Add($displayMode)) {
-        throw "$($Variant.VariantKey) consumer '$consumerNamespace' declares DisplayMode '$displayMode' more than once."
+      $modeKey = "$displayMode$extension"
+      if (!$pair.Modes.Add($modeKey)) {
+        throw "$($Variant.VariantKey) consumer '$consumerNamespace' declares $modeKey more than once."
       }
     }
     foreach ($consumerNamespace in $pairs.Keys) {
       $modes = $pairs[$consumerNamespace].Modes
-      if ($modes.Count -ne 2 -or !$modes.Contains('normal') -or !$modes.Contains('large')) {
-        throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare one normal and one large Scaleform asset from the same source."
+      foreach ($requiredMode in @('normal.swf', 'large.swf', 'normal.gfx', 'large.gfx')) {
+        if (!$modes.Contains($requiredMode)) {
+          throw "$($Variant.VariantKey) consumer '$consumerNamespace' must declare $requiredMode from the same source. Starfield requires both files."
+        }
       }
     }
     if ($ownership -ceq 'ConsumerExtension') {
@@ -280,21 +309,40 @@ function Assert-BuildScaleformArchiveOwnership {
         if ([string]::IsNullOrWhiteSpace($source)) {
           throw "$($Variant.VariantKey) consumer extension archive has an empty Scaleform Source."
         }
-        $expectedTarget = if ($displayMode -ceq 'large') { "Interface/$($hostMenu)_lrg.swf" } else { "Interface/$hostMenu.swf" }
+        $extension = [IO.Path]::GetExtension($target).ToLowerInvariant()
+        if ($extension -cnotin @('.swf', '.gfx')) {
+          throw "$($Variant.VariantKey) consumer extension target '$target' must be a .swf or .gfx movie."
+        }
+        $expectedTarget = if ($displayMode -ceq 'large') { "Interface/$($hostMenu)_lrg$extension" } else { "Interface/$hostMenu$extension" }
         if ($target -cne $expectedTarget) {
           throw "$($Variant.VariantKey) consumer extension target '$target' must be '$expectedTarget'."
         }
         if (!$hostMenus.ContainsKey($hostMenu)) {
-          $hostMenus.Add($hostMenu, [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal))
+          $hostMenus.Add($hostMenu, [pscustomobject]@{
+            Sources = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+            Modes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          })
         }
-        if (!$hostMenus[$hostMenu].Add($displayMode)) {
-          throw "$($Variant.VariantKey) consumer extension '$hostMenu' declares DisplayMode '$displayMode' more than once."
+        $menu = $hostMenus[$hostMenu]
+        if ($menu.Sources.ContainsKey($displayMode)) {
+          if ([string]$menu.Sources[$displayMode] -cne $source) {
+            throw "$($Variant.VariantKey) consumer extension '$hostMenu' $displayMode .swf and .gfx must use the same Scaleform Source."
+          }
+        }
+        else {
+          $menu.Sources.Add($displayMode, $source)
+        }
+        $modeKey = "$displayMode$extension"
+        if (!$menu.Modes.Add($modeKey)) {
+          throw "$($Variant.VariantKey) consumer extension '$hostMenu' declares $modeKey more than once."
         }
       }
       foreach ($hostMenu in $hostMenus.Keys) {
-        $modes = $hostMenus[$hostMenu]
-        if ($modes.Count -ne 2 -or !$modes.Contains('normal') -or !$modes.Contains('large')) {
-          throw "$($Variant.VariantKey) consumer extension '$hostMenu' must declare one normal and one large host-menu patch."
+        $modes = $hostMenus[$hostMenu].Modes
+        foreach ($requiredMode in @('normal.swf', 'large.swf', 'normal.gfx', 'large.gfx')) {
+          if (!$modes.Contains($requiredMode)) {
+            throw "$($Variant.VariantKey) consumer extension '$hostMenu' must declare $requiredMode. Starfield requires both files."
+          }
         }
       }
     }

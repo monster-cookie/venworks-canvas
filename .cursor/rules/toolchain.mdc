@@ -1,0 +1,6 @@
+---
+description: Venworks Canvas repository identity, toolchain, and Starfield target
+alwaysApply: true
+---
+
+@.grok/rules/toolchain.md

@@ -15,7 +15,7 @@
     <token>minimumContractVersion</token>
     <token>maximumContractVersion</token>
     <token>"hostKinds":["menu"]</token>
-    <token>"uiChannels":["PlayerData","PlayerFrequentData"]</token>
+    <token>"uiChannels":["PlayerData","PlayerFrequentData","QuestData"]</token>
     <token>handleUIData</token>
     <token>handleCanvasEvent</token>
     <token>handleLifecycle</token>
@@ -36,6 +36,12 @@
     <token>samplemeter</token>
     <token>sampleupdates</token>
     <token>player.name</token>
+    <token>QuestData</token>
+    <token>quest.title</token>
+    <token>quest.waypoint</token>
+    <token>quest.waypoints</token>
+    <token>aQuests</token>
+    <token>aObjectives</token>
     <token>player.health</token>
     <token>player.maxhealth</token>
     <token>player.oxygen</token>

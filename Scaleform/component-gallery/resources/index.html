@@ -303,6 +303,30 @@
             <div class="gallery-result"><p data-vw-template="POWER {power.current:integer}/{power.maximum:integer}"></p></div>
           </div>
         </section>
+
+        <section class="gallery-group">
+          <h2 class="gallery-group-title">Live quest placeholders</h2>
+          <div id="quest-title-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>quest.title</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;quest.title&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="quest.title"></p></div>
+          </div>
+          <div id="quest-waypoint-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>quest.waypoint</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-text=&quot;quest.waypoint&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-text="quest.waypoint"></p></div>
+          </div>
+          <div id="quest-waypoints-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>quest.waypoints</span></div>
+            <div class="gallery-syntax"><p>&lt;div data-vw-for-each=&quot;quest.waypoints&quot; data-vw-text=&quot;item&quot;&gt;&lt;/div&gt;</p></div>
+            <div class="gallery-result"><div data-vw-for-each="quest.waypoints" data-vw-text="item"></div></div>
+          </div>
+          <div id="quest-template-row" class="gallery-row">
+            <div class="gallery-tag gallery-placeholder-key"><span>quest template</span></div>
+            <div class="gallery-syntax"><p>&lt;p data-vw-template=&quot;{quest.title} | {quest.waypoint}&quot;&gt;&lt;/p&gt;</p></div>
+            <div class="gallery-result"><p data-vw-template="{quest.title} | {quest.waypoint}"></p></div>
+          </div>
+        </section>
       </div>
       <div class="gallery-table">
         <section class="gallery-group">

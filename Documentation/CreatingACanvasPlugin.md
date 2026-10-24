@@ -157,7 +157,7 @@ Compile the document class as an ActionScript 3 movie targeting the same Player 
 
 Your build must produce a consumer movie, not a second Canvas host. Do not embed Canvas's HTML parser, renderer, subscription manager, or host classes in the consumer SWF. The consumer should contain only its adapter and any small, add-on-owned data helpers.
 
-If one movie adapts to the viewport, package the same SWF as both `normal.swf` and `large.swf`. Use separate builds only when the two display modes genuinely require different movies.
+If one movie adapts to the viewport, package the same SWF as both `normal.swf` and `large.swf`. Starfield opens both the `.swf` and the `.gfx` for that movie, so package those same bytes as `normal.gfx` and `large.gfx` as well. Use separate builds only when the two display modes genuinely require different movies.
 
 ## 5. Create the Papyrus registrar
 
@@ -241,6 +241,8 @@ Acme-Canvas-Example - Main.ba2
   Scripts/Acme/CanvasExample/Registrar.pex
   Interface/VenworksCanvas/Consumers/acme.canvas-example/normal.swf
   Interface/VenworksCanvas/Consumers/acme.canvas-example/large.swf
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/normal.gfx
+  Interface/VenworksCanvas/Consumers/acme.canvas-example/large.gfx
   Interface/VenworksCanvas/Consumers/acme.canvas-example/index.html
   Interface/VenworksCanvas/Consumers/acme.canvas-example/panel.css
 ```

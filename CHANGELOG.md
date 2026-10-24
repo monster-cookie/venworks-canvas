@@ -1,5 +1,15 @@
 # Venworks Canvas and UI Data Layer
 
+## Version 1.0.6 (UNRELEASED)
+
+- HUD panel washes are SVG fills in the theme. This build no longer decodes DDS plate images, because this player does not draw a bitmap the HUD builds at runtime.
+- The Component Gallery shows the active quest title, the current waypoint title, and the waypoint titles for that quest.
+- A Component Gallery failure is shown on the pause-menu error line and in the SFSE log. Unreadable quest data leaves the gallery on screen with those rows empty.
+- The Component Gallery redraws after the pause menu shows it. A page taller than the screen is no longer clipped away by its own scroll area.
+- Gallery text and rows draw in front of the page background. A tall page is clipped with a mask so Scaleform does not drop it.
+- Starfield requires both the `.swf` and the `.gfx` file for each packaged movie. The Canvas host, patched HUD, spaceship HUD, pause menu, and Component Gallery ship both.
+- The player HUD weapon icon is drawn from `WeaponIcons.swf`. A `CCSUP` icon is drawn from its own movie.
+
 ## Version 1.0.5 (October 3, 2026)
 
 - The Player HUD now shows a boot animation until the first HUD panel is ready.
