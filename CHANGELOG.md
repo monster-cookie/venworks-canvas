@@ -8,6 +8,7 @@
 - The Component Gallery redraws after the pause menu shows it. A page taller than the screen is no longer clipped away by its own scroll area.
 - Gallery text and rows draw in front of the page background. A tall page is clipped with a mask so Scaleform does not drop it.
 - Starfield requires both the `.swf` and the `.gfx` file for each packaged movie. The Canvas host, patched HUD, spaceship HUD, pause menu, and Component Gallery ship both.
+- The player HUD weapon icon is drawn from `WeaponIcons.swf`. A `CCSUP` icon is drawn from its own movie.
 
 ## Version 1.0.5 (October 3, 2026)
 

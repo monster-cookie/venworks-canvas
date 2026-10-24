@@ -27,8 +27,9 @@ package
       {
          if(this.hostKind != "player" || !CanvasHtmlNativeSymbol.valid(name,value)) throw new Error("Unsupported native symbol");
          if(name == "compass-marker") return CanvasHtmlNativeSymbol.marker(value);
+         if(name == "weapon-icon") return CanvasWeaponIcon.create(value,width,height);
          var host:CanvasHudTargets = this;
-         var path:String = name == "vehicle-exit-prompt" ? "RightMeters_mc.HUDVehicle_mc.GetUpButton_mc" : "RightMeters_mc.EquippedWeaponIconHolder_mc";
+         var path:String = "RightMeters_mc.HUDVehicle_mc.GetUpButton_mc";
          if(this.find(path) == null) throw new Error("Native symbol unavailable: "+name);
          return new CanvasHtmlNativeSymbol(function():DisplayObject {
             var display:DisplayObject = host.find(path);

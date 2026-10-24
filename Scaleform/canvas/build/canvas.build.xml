@@ -26,6 +26,8 @@
     <token>CanvasHtmlRetainedTree</token>
     <token>CanvasHudTargets</token>
     <token>CanvasHtmlNativeSymbol</token>
+    <token>CanvasWeaponIcon</token>
+    <token>WeaponIcons.swf</token>
     <token>CanvasHtmlMarkerIcon</token>
     <token>CanvasHtmlMeter</token>
     <token>CanvasHtmlEngine</token>
